@@ -85,7 +85,7 @@ def get_token() -> str:
             {"name": "LLM_API_BASE", "description": "Base URL for OpenAI-compatible API endpoint"},
             {"name": "LLM_API_KEY", "description": "API key for OpenAI-compatible API endpoint"},
             {"name": "MCP_URL", "description": "MCP Server URL for the weather tool"},
-            {"name": "MCP_TRANSPORT", "description": "MCP transport type (sse or streamable-http), defaults to sse"},
+            {"name": "ACP_MCP_TRANSPORT", "description": "MCP transport type (sse or streamable_http), defaults to sse"},
         ],
         ui={"type": "hands-off", "user_greeting": "Ask me about the weather"},
         examples={
