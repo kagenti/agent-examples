@@ -16,7 +16,7 @@ def get_mcpclient():
     return MultiServerMCPClient({
         "math": {
             "url": os.getenv("MCP_URL", "http://localhost:8000/sse"),
-            "transport": "sse",
+            "transport": os.getenv("MCP_TRANSPORT", "sse"),
         }
     })
 
