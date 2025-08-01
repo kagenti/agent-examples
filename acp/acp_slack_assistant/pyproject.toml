@@ -1,0 +1,32 @@
+[project]
+name = "acp-slack-assistant"
+version = "0.0.1"
+description = "Simple ollama-based Langgraph agent with MCP tool calling."
+authors = [
+    { name = "Paolo Dettori" }
+]
+readme = "README.md"
+license = { text = "Apache" }
+requires-python = ">=3.11"
+dependencies = [
+    "acp-sdk>=0.8.1",
+    "langgraph>=0.2.55",
+    "langchain-community>=0.3.9",
+    "tavily-python>=0.5.0",
+    "langchain-ollama>=0.2.1",
+    "duckduckgo-search~=7.5.5",
+    "beautifulsoup4>=4.13.3",
+    "langchain-openai>=0.3.7",
+    "openinference-instrumentation-langchain>=0.1.36",
+    "pydantic-settings>=2.8.1",
+    "langchain-mcp-adapters>=0.0.10",
+    "python-keycloak>=5.5.1",
+]
+
+[project.scripts]
+server = "acp_slack_assistant.agent:run"
+
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
