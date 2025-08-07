@@ -30,7 +30,7 @@ def get_weather(city: str) -> str:
 # host can be specified with HOST env variable
 # transport can be specified with MCP_TRANSPORT env variable (defaults to sse)
 def run_server():
-    transport = os.getenv("MCP_TRANSPORT", "sse")
+    transport = os.getenv("MCP_TRANSPORT", "streamable-http")
     mcp.run(transport=transport) 
 
 if __name__ == "__main__":
