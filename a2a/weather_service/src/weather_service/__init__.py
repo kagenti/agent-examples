@@ -6,7 +6,7 @@ from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExport
 
 def setup_tracer():
     resource = Resource.create(attributes={
-        "service.name": "acp-server",
+        "service.name": "a2a-server",
     })
     provider = TracerProvider(resource=resource)
     processor = BatchSpanProcessor(OTLPSpanExporter())

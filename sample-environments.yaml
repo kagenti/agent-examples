@@ -22,7 +22,7 @@ data:
       {"name": "LLM_API_BASE", "value": "https://api.openai.com/v1"},
       {"name": "LLM_MODEL", "value": "gpt-4o-mini-2024-07-18"}
     ]
-  # mcp weather assumes we are using streamable-transport
+  # mcp weather assumes we are using streamable-http transport
   mcp-weather: |
     [
       {"name": "MCP_URL", "value": "http://weather-tool:8000/mcp"}
@@ -34,7 +34,7 @@ data:
   mcp-slack-config: |
     [
       {
-        "name": "SLACK_BOT_TOKEN", 
+        "name": "SLACK_BOT_TOKEN",
         "valueFrom": {"secretKeyRef": {"name": "slack-secret", "key": "bot-token"}}
       }
     ]

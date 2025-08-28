@@ -16,7 +16,7 @@ def get_mcpclient():
     return MultiServerMCPClient({
         "math": {
             "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
-            "transport": os.getenv("ACP_MCP_TRANSPORT", "streamable_http"),
+            "transport": os.getenv("MCP_TRANSPORT", "streamable-http"),
         }
     })
 
@@ -27,7 +27,7 @@ async def get_graph(client) -> StateGraph:
         openai_api_base=config.llm_api_base,
         temperature=0,
     )
-    
+
     # Get tools asynchronously
     tools = await client.get_tools()
     llm_with_tools = llm.bind_tools(tools)
