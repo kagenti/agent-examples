@@ -34,6 +34,7 @@ class SimpleTokenVerifier(TokenVerifier):
             audiences = data["aud"]
             return self.expected_audience in audiences
 
+    # when no client_id given
     def _dummy_token(self, token: str) -> AccessToken | None:
         return AccessToken(
                 token=token,
@@ -86,7 +87,6 @@ class SimpleTokenVerifier(TokenVerifier):
                     expires_at=data.get("exp"),
                     resource=(" ".join(data.get("aud"))),  # Include resource in token
                 )
-                logger.debug(str(access_token))
                 return access_token
             except Exception as e:
                 logger.error(f"Token introspection failed: {e}")
@@ -103,7 +103,7 @@ class SimpleTokenVerifier(TokenVerifier):
 
 def get_token_verifier():
     introspection_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
-    client_id = os.getenv("CLIENT_NAME")
+    client_id = os.getenv("CLIENT_ID")
     client_secret = os.getenv("CLIENT_SECRET")
     expected_audience = os.getenv("AUDIENCE")
     if introspection_endpoint is None:
