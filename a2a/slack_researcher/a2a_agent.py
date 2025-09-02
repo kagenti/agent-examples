@@ -58,11 +58,11 @@ class BearerAuthBackend(AuthenticationBackend):
                 return None
 
             # perform token validation
-            token = self.get_token(conn)
+            token = await self.get_token(conn)
             if token is None:
                 logger.error(f"Expected but could not obtain access token.")
                 return None
-            credentials, user = self.validate_bearer_token(token)
+            credentials, user = await self.validate_bearer_token(token)
             return credentials, user
         except Exception as e:
             logger.error("Exception when attempting to obtain user token")
