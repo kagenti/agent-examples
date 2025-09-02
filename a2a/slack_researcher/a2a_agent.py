@@ -42,7 +42,11 @@ class BearerAuthBackend(AuthenticationBackend):
         return AuthCredentials(["authenticated"]), user
 
     async def get_token(self, conn):
+        logger.debug(f"Obtaining bearer token...")
+        headers = conn.headers
+        logger.debug(f"Headers obtained: {headers}")
         auth = conn.headers.get("authorization")
+        logger.debug(f"Authorization header found: {auth}")
         if not auth or not auth.lower().startswith("bearer "):
             logger.error("Expected `Authorization: Bearer` access token; None provided.")
             return None
