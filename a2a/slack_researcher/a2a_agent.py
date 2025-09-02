@@ -31,9 +31,10 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(levelname)s: %(message)s')
 
 class BearerAuthBackend(AuthenticationBackend):
-    self.introspection_endpoint = settings.INTROSPECTION_ENDPOINT
-    self.client_id = settings.CLIENT_ID
-    self.client_secret = settings.CLIENT_SECRET
+    def __init__(self):
+        self.introspection_endpoint = settings.INTROSPECTION_ENDPOINT
+        self.client_id = settings.CLIENT_ID
+        self.client_secret = settings.CLIENT_SECRET
 
     async def validate_bearer_token(self, token):
         logger.debug(f"Validating bearer token...")
