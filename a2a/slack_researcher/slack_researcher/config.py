@@ -5,7 +5,7 @@ import sys
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
-from typing import Literal
+from typing import Literal, Optional
 
 
 class Settings(BaseSettings):
@@ -35,6 +35,28 @@ class Settings(BaseSettings):
     )
     MCP_URL: str = Field(os.getenv("MCP_URL", "http://slack-tool:8000"), description="Endpoint for an option MCP server")
     SERVICE_PORT: int = Field(os.getenv("SERVICE_URL", 8000), description="Port on which the service will run.")
+
+    # auth variables
+    ISSUER: Optional[str] = Field(
+        os.getenv("ISSUER", None), 
+        description="The issuer for incoming JWT tokens"
+    )
+    INTROSPECTION_ENDPOINT: Optional[str] = Field(
+        os.getenv("INTROSPECTION_ENDPOINT", None),
+        description="The introspection endpoint for incoming JWT tokens"
+    )
+    AUDIENCE: Optional[str] = Field(
+        os.getenv("AUDIENCE", None),
+        description="Expected audience value during resource validation"
+    )
+    CLIENT_ID: Optional[str] = Field(
+        os.getenv("CLIENT_NAME", None),
+        description="Client ID of the agent in the OAuth server"
+    )
+    CLIENT_SECRET: Optional[str] = Field( # Note it is assumed the app is a confidential app
+        os.getenv("CLIENT_SECRET", None),
+        description="Client secret of the agent in the OAuth server"
+    )
 
     class Config:
         env_file = ".env"

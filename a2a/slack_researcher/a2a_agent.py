@@ -31,19 +31,43 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(levelname)s: %(message)s')
 
 class BearerAuthBackend(AuthenticationBackend):
-    """ Very temporary demo to grab auth token and print it"""
+    def __init__(self):
+        self.introspection_endpoint = settings.INTROSPECTION_ENDPOINT
+        self.client_id = settings.CLIENT_ID
+        self.client_secret = settings.CLIENT_SECRET
+
+    async def validate_bearer_token(self, token):
+        logger.debug(f"Validating bearer token...")
+        user = SimpleUser(token)
+        return AuthCredentials(["authenticated"]), user
+
+    async def get_token(self, conn):
+        logger.debug(f"Obtaining bearer token...")
+        headers = conn.headers
+        logger.debug(f"Headers obtained: {headers}")
+        auth = conn.headers.get("authorization")
+        logger.debug(f"Authorization header found: {auth}")
+        if not auth or not auth.lower().startswith("bearer "):
+            logger.error("Expected `Authorization: Bearer` access token; None provided.")
+            return None
+        token = auth.split(" ", 1)[1]
+        logger.debug(f"Obtained access token: {token}")
+        return token
+
+    """ Executed upon request """
     async def authenticate(self, conn):
         try:
-            auth = conn.headers.get("authorization")
-            if not auth or not auth.lower().startswith("bearer "):
-                print("No bearer token provided")
-                return
-            token = auth.split(" ", 1)[1]
-            print(f"TOKEN: {token}")
+            if None in [self.introspection_endpoint, self.client_id, self.client_secret]:
+                logger.warning(f"One or more of INTROSPECTION_ENDPOINT, CLIENT_NAME, CLIENT_SECRET env vars are not set. No token validation will be performed. ")
+                return None
 
-            # Storing the token as the username - not a real life scenario - just demo-ing the passing of creds
-            user = SimpleUser(token)
-            return AuthCredentials(["authenticated"]), user
+            # perform token validation
+            token = await self.get_token(conn)
+            if token is None:
+                logger.error(f"Expected but could not obtain access token.")
+                return None
+            credentials, user = await self.validate_bearer_token(token)
+            return credentials, user
         except Exception as e:
             logger.error("Exception when attempting to obtain user token")
             logger.error(e)
