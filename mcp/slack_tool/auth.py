@@ -2,24 +2,27 @@ import os
 import sys
 import logging
 import httpx
-from pydantic import AnyHttpUrl
-from mcp.server.auth.settings import AuthSettings
-from mcp.server.auth.provider import AccessToken, TokenVerifier
+from fastmcp.server.auth.providers.jwt import JWTVerifier
+from fastmcp.server.auth.auth import AuthProvider, AccessToken
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "DEBUG"), stream=sys.stdout, format='%(levelname)s: %(message)s')
 
 
-class SimpleTokenVerifier(TokenVerifier):
-    """Simple token verifier for demonstration."""
-    def __init__(self, introspection_endpoint = None, 
-                 client_id = None, 
-                 client_secret = None,
-                 expected_audience = None):
+class SimpleIntrospectionAuthProvider(AuthProvider):
+    """Simple JWT verifier for FastMCP."""
+    def __init__(self, introspection_endpoint=None, 
+                 client_id=None, 
+                 client_secret=None,
+                 expected_audience=None,
+                 base_url=None,
+                 required_scopes=None):
         self.introspection_endpoint = introspection_endpoint
         self.client_id = client_id
         self.client_secret = client_secret
         self.expected_audience = expected_audience
+        self.base_url = base_url
+        self.required_scopes = required_scopes or []
 
     def _validate_resource(self, data) -> bool:
         # check aud claim in data
@@ -34,15 +37,14 @@ class SimpleTokenVerifier(TokenVerifier):
             audiences = data["aud"]
             return self.expected_audience in audiences
 
-    # when no client_id given
-    def _dummy_token(self, token: str) -> AccessToken | None:
+    def _dummy_token(self, token: str) -> AccessToken:
         return AccessToken(
-                token=token,
-                client_id="hard-coded-client-id",
-                scopes=[],
-                expires_at=None,
-                resource=None,
-                )
+            token=token,
+            client_id="hard-coded-client-id",
+            scopes=[],
+            expires_at=None,
+            claims={"sub": "hard-coded-client-id", "client_id": "hard-coded-client-id"}
+        )
 
     def _verify_token(self, token: str) -> AccessToken | None:
         timeout = httpx.Timeout(10.0, connect=5.0)
@@ -85,14 +87,12 @@ class SimpleTokenVerifier(TokenVerifier):
                     client_id=data.get("client_id", "unknown"),
                     scopes=data.get("scope", "").split() if data.get("scope") else [],
                     expires_at=data.get("exp"),
-                    resource=(" ".join(data.get("aud"))),  # Include resource in token
+                    claims=data  # Include all original claims
                 )
                 return access_token
             except Exception as e:
                 logger.error(f"Token introspection failed: {e}")
                 return None
-
-
 
     async def verify_token(self, token: str) -> AccessToken | None:
         logger.info(f"Received Access Token: {token}")
@@ -101,26 +101,18 @@ class SimpleTokenVerifier(TokenVerifier):
         # if id and secret are defined, verify against issuer
         return self._verify_token(token)
 
-def get_token_verifier():
+def get_auth_provider():
     introspection_endpoint = os.getenv("INTROSPECTION_ENDPOINT")
     client_id = os.getenv("CLIENT_ID")
     client_secret = os.getenv("CLIENT_SECRET")
     expected_audience = os.getenv("AUDIENCE")
+    issuer = os.getenv("ISSUER")
+    
     if introspection_endpoint is None:
         return None
     else:
-        return SimpleTokenVerifier(introspection_endpoint=introspection_endpoint, 
-                                   client_id=client_id,
-                                   client_secret=client_secret,
-                                   expected_audience=expected_audience)
-
-def get_auth():
-    issuer = os.getenv("ISSUER")
-    if issuer is None:
-        return None
-    else:
-        return AuthSettings(
-                issuer_url=AnyHttpUrl(issuer),  # Authorization Server URL
-                resource_server_url=AnyHttpUrl("http://0.0.0.0:8000"),  # TODO This server's URL
-                required_scopes=[],
-              )
+        return SimpleIntrospectionAuthProvider(introspection_endpoint=introspection_endpoint, 
+                                             client_id=client_id,
+                                             client_secret=client_secret,
+                                             expected_audience=expected_audience,
+                                             base_url=issuer)

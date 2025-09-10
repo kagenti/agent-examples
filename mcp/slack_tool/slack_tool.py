@@ -2,11 +2,11 @@ import os
 import sys
 import logging
 from typing import List, Dict, Any
-from mcp.server.fastmcp import FastMCP
-from mcp.server.auth.middleware.auth_context import get_access_token
+from fastmcp import FastMCP
+from fastmcp.server.dependencies import get_access_token, AccessToken
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-from auth import get_token_verifier, get_auth
+from auth import get_auth_provider
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "DEBUG"), stream=sys.stdout, format='%(levelname)s: %(message)s')
@@ -29,7 +29,7 @@ def slack_client_from_bot_token(bot_token):
         logger.exception(f"An unexpected error occurred during Slack client initialization: {e}")
         return None
 
-def get_slack_client(access_token = None):
+def get_slack_client(access_token=None):
     if ADMIN_SLACK_BOT_TOKEN is None:
         logger.debug(f"No ADMIN_SLACK_BOT_TOKEN configured - automatically configuring based on SLACK_BOT_TOKEN. ")
         return slack_client_from_bot_token(SLACK_BOT_TOKEN)
@@ -37,7 +37,9 @@ def get_slack_client(access_token = None):
     if access_token is None:
         logger.error(f"ADMIN_SLACK_BOT_TOKEN configured, but no access token passed. ")
         return None
-    access_token_scopes = access_token.scopes
+    
+    # Access token is now claims dict from FastMCP AccessToken
+    access_token_scopes = access_token.get("scope", "").split() if access_token.get("scope") else []
     logger.debug(f"Received scopes: {access_token_scopes}")
     admin_scope = os.getenv("ADMIN_SCOPE_NAME")
     is_admin = admin_scope in access_token_scopes
@@ -47,10 +49,10 @@ def get_slack_client(access_token = None):
     return slack_client_from_bot_token(SLACK_BOT_TOKEN)
 
 
-mcp = FastMCP("Slack", host="0.0.0.0", port=8000,
-              token_verifier=get_token_verifier(),
-              auth=get_auth(),
-        )
+# Create FastMCP app with same parameters as original
+# This combines both token_verifier and auth functionality from the original
+auth_provider = get_auth_provider()
+mcp = FastMCP("Slack", auth=auth_provider)
 
 @mcp.tool()
 def get_channels() -> List[Dict[str, Any]]:
@@ -59,8 +61,9 @@ def get_channels() -> List[Dict[str, Any]]:
     """
     logger.debug(f"Called get_channels tool")
 
-
-    slack_client = get_slack_client(access_token=get_access_token())
+    # Get the current authenticated user's token using FastMCP 2.0 dependency
+    access_token: AccessToken | None = get_access_token()
+    slack_client = get_slack_client(access_token=access_token.claims if access_token else None)
     if slack_client is None:
         return [{"error": f"Could not start slack client. Check the configured bot token"}]
 
@@ -93,7 +96,8 @@ def get_channel_history(channel_id: str, limit: int = 20) -> List:
     """
     logger.debug(f"Called get_channel_history tool: {channel_id}")
 
-    slack_client = get_slack_client(access_token=get_access_token())
+    access_token: AccessToken | None = get_access_token()
+    slack_client = get_slack_client(access_token=access_token.claims if access_token else None)
     if slack_client is None:
         return [{"error": f"Could not start slack client. Check the configured bot token"}]
 
@@ -115,7 +119,9 @@ def get_channel_history(channel_id: str, limit: int = 20) -> List:
 # transport can be specified with MCP_TRANSPORT env variable (defaults to streamable-http)
 def run_server():
     transport = os.getenv("MCP_TRANSPORT", "streamable-http")
-    mcp.run(transport=transport)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    mcp.run(transport=transport, host=host, port=port)
 
 if __name__ == "__main__":
     if SLACK_BOT_TOKEN is None: # default slack token
