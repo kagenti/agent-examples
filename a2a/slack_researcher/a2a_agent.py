@@ -3,6 +3,7 @@ Module for A2A Agent.
 """
 
 import logging
+import httpx
 import sys
 import traceback
 from typing import Callable
@@ -20,7 +21,10 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, SecurityScheme, HTTPAuthSecurityScheme
 from a2a.utils import new_agent_text_message, new_task
 
+from starlette.responses import JSONResponse
+from starlette.requests import Request
 from starlette.authentication import AuthCredentials, SimpleUser, AuthenticationBackend
+from starlette.authentication import AuthenticationError as StarletteAuthenticationError
 from starlette.middleware.authentication import AuthenticationMiddleware
 
 from slack_researcher.config import settings, Settings
@@ -30,23 +34,116 @@ from slack_researcher.main import SlackAgent
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(levelname)s: %(message)s')
 
-class BearerAuthBackend(AuthenticationBackend):
-    """ Very temporary demo to grab auth token and print it"""
-    async def authenticate(self, conn):
-        try:
-            auth = conn.headers.get("authorization")
-            if not auth or not auth.lower().startswith("bearer "):
-                print("No bearer token provided")
-                return
-            token = auth.split(" ", 1)[1]
-            print(f"TOKEN: {token}")
+def on_auth_error(request: Request, e: Exception):
+    # default values
+    status_code = 401
+    message = "Authentication failed"
+    headers = {"WWW-Authenticate": "Bearer"}
 
-            # Storing the token as the username - not a real life scenario - just demo-ing the passing of creds
-            user = SimpleUser(token)
-            return AuthCredentials(["authenticated"]), user
-        except Exception as e:
-            logger.error("Exception when attempting to obtain user token")
-            logger.error(e)
+    if isinstance(e, AuthenticationError):
+        status_code = e.status_code
+    message = str(e)
+    
+    return JSONResponse(
+        {"error": message},
+        status_code=status_code,
+        headers=headers if status_code == 401 else None
+    )
+
+class AuthenticationError(StarletteAuthenticationError):
+    def __init__(self, message: str, status_code: int = 401):
+        self.status_code = status_code
+        super().__init__(message)
+
+class BearerAuthBackend(AuthenticationBackend):
+    def __init__(self):
+        self.introspection_endpoint = settings.INTROSPECTION_ENDPOINT
+        self.client_id = settings.CLIENT_ID
+        self.client_secret = settings.CLIENT_SECRET
+        self.expected_audience = settings.AUDIENCE
+
+    async def introspect_bearer_token(self, token):
+        logger.debug("Introspecting bearer token...")
+        async with httpx.AsyncClient() as client:
+            try:
+                response = await client.post(
+                    self.introspection_endpoint,
+                    data={
+                        "token": token,
+                        "client_id": self.client_id,
+                        "client_secret": self.client_secret,
+                    },
+                    headers={"Content-Type": "application/x-www-form-urlencoded"},
+                )
+                logger.debug(f"Response to token introspection: {response}")
+
+                if response.status_code != 200:
+                    logger.error(f"Token introspection returned status {response.status_code}")
+                    return None
+                
+                data = response.json()
+                logger.debug(f"data: {data}")
+                if not data.get("active", False):
+                    return None
+                return data
+            except Exception as e:
+                logger.error(f"An unexpected error occurred during token validation")
+                return None
+
+    # return true if properly validated, false otherwise
+    async def validate_claims(self, token_data):
+        logger.debug("Validating bearer token claims...")
+
+        # check audience
+        if self.expected_audience is None:
+            logger.warning(f"No AUDIENCE env var set - failing resource validation")
+            return False
+        if not "aud" in token_data:
+            logger.error(f"No aud claim in token - failing resource validation")
+        included_audiences = token_data["aud"]
+        return self.expected_audience in included_audiences
+
+    async def get_token(self, conn):
+        logger.debug(f"Obtaining bearer token...")
+        headers = conn.headers
+        logger.debug(f"Headers obtained: {headers}")
+        auth = conn.headers.get("authorization")
+        logger.debug(f"Authorization header found: {auth}")
+        if not auth or not auth.lower().startswith("bearer "):
+            logger.error("Expected `Authorization: Bearer` access token; None provided.")
+            return None
+        token = auth.split(" ", 1)[1]
+        logger.debug(f"Obtained access token: {token}")
+        return token
+
+    """ Executed upon request """
+    async def authenticate(self, conn):
+        if None in [self.introspection_endpoint, self.client_id, self.client_secret]:
+            logger.warning(f"One or more of INTROSPECTION_ENDPOINT, CLIENT_NAME, CLIENT_SECRET env vars are not set. No token validation will be performed. ")
+            return None
+        
+        # bypass authentication for agent card
+        if conn.scope.get("path") == "/.well-known/agent.json":
+            logger.debug("Bypassing authentication for public /.well-known/agent.json path.")
+            return None # Allows the request to proceed without authentication
+
+        # perform token validation
+        token = await self.get_token(conn)
+        if token is None:
+            raise AuthenticationError(message = "Bearer token not found in Authorization header.")
+
+        # introspect token
+        data = await self.introspect_bearer_token(token)
+        if data is None or not data.get("active", False):
+            raise AuthenticationError(message = "he provided token is invalid, expired, or inactive.")
+
+        # resource validation
+        resource_validated = await self.validate_claims(data)
+        if not resource_validated: 
+            raise AuthenticationError(message = "The token is not valid for this resource (audience mismatch).", status_code=403)
+
+        user = SimpleUser(token)
+        return AuthCredentials(["authenticated"]), user
     
 
 def get_agent_card(host: str, port: int):
@@ -237,6 +334,6 @@ def run():
     )
 
     app = server.build()  # this returns a Starlette app
-    app.add_middleware(AuthenticationMiddleware, backend=BearerAuthBackend())
+    app.add_middleware(AuthenticationMiddleware, backend=BearerAuthBackend(), on_error=on_auth_error)
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)
