@@ -9,6 +9,9 @@ from typing import Literal, Optional
 
 
 class Settings(BaseSettings):
+    # static path for client secret file
+    secret_file_path: str = "/shared/secret.txt"
+
     LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
         os.getenv("LOG_LEVEL", "DEBUG"),
         description="Application log level",       
@@ -60,7 +63,7 @@ class Settings(BaseSettings):
         description="Client ID to authenticate to OAuth server"
     )
     CLIENT_SECRET: Optional[str] = Field(
-        os.getenv("CLIENT_SECRET", None),
+        None,
         description="Client secret to authenticate to OAuth server"
     )
     TARGET_AUDIENCE: Optional[str] = Field(
@@ -83,6 +86,15 @@ class Settings(BaseSettings):
                 self.EXTRA_HEADERS = json.loads(os.getenv("EXTRA_HEADERS"))
             except json.JSONDecodeError:
                 raise ValueError("EXTRA_HEADERS must be a valid JSON string")
+
+        # --- Load CLIENT_SECRET from file ---
+        try:
+            with open(self.secret_file_path, "r") as f:
+                self.CLIENT_SECRET = f.read().strip()
+        except FileNotFoundError:
+            logging.warning("CLIENT_SECRET file not found at {self.secret_file_path}")
+        except Exception as e:
+            logging.error(f"Error reading CLIENT_SECRET: {e}")
 
         return self
 
