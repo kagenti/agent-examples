@@ -123,7 +123,7 @@ class WeatherExecutor(AgentExecutor):
                 logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
             except Exception as tool_error:
                 logger.error(f'Failed to connect to MCP server: {tool_error}')
-                await event_emitter.emit_event("Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
                 return
 
             graph = await get_graph(mcpclient)
