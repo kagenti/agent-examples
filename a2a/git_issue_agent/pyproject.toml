@@ -1,0 +1,24 @@
+[project]
+name = "git-issue-agent"
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+description = "Git issue Agent module"
+dependencies = [
+    "python-dotenv>=1.1.0",
+    "a2a-sdk>=0.2.16",
+    "crewai",
+    "crewai-tools",
+    "crewai-tools[mcp]",
+    "authlib>=1.6.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+
+[project.scripts]
+server = "a2a_agent:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
