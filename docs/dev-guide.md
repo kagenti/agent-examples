@@ -11,7 +11,7 @@
 Via HTTPS:
 
 ```shell
-git clone https://github.com/kagenti/agent-examples.git
+git clone https://github.com/<your-username>/agent-examples.git
 cd agent-examples
 ```
 
