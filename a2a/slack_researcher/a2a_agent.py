@@ -166,7 +166,6 @@ class ResearchExecutor(AgentExecutor):
 
                 headers = await auth_headers(
                     user_token, 
-                    target_audience=settings.TARGET_AUDIENCE, 
                     target_scopes=settings.TARGET_SCOPES
                 )
 
