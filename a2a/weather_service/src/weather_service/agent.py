@@ -154,7 +154,8 @@ def run():
     """
     Runs the A2A Agent application.
     """
-    agent_card = get_agent_card(host="0.0.0.0", port=8000)
+    # agent_card = get_agent_card(host="0.0.0.0", port=8000)
+    agent_card = get_agent_card(host="weather-agent.localtest.me", port=8080)
 
     request_handler = DefaultRequestHandler(
         agent_executor=WeatherExecutor(),
