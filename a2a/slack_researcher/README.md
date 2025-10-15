@@ -31,7 +31,6 @@ The Slack Researcher Agent is designed to perform research tasks across Slack ch
 > **Note on Authorization configuration**
 > By default, no token validation is performed. To enable token validation, set `JWKS_URL`.
 > If `ISSUER` is additionally set, the `iss` claim will be checked to equal this value.
-> If `AUDIENCE` is additionally set, the `aud` claim will be checked to equal this value.
 > If all of `TOKEN_URL`, `CLIENT_ID`, and `CLIENT_SECRET` are set in addition, token exchange will be performed using Bearer tokens from incoming requests, to send to the MCP endpoint.
 > In addition to `TOKEN_URL`, `CLIENT_ID`, `CLIENT_SECRET`, which trigger token exchange, `TARGET_SCOPES` can be optionally configured to be the `scope` in the token exchange request.
 

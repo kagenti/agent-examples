@@ -70,10 +70,6 @@ class Settings(BaseSettings):
         os.getenv("JWKS_URI", None),
         description="Endpoint to obtain JWKS from auth server"
     )
-    AUDIENCE: Optional[str] = Field(
-        os.getenv("AUDIENCE", None),
-        description="Expected audience value during resource validation"
-    )
 
     # auth variables for token exchange
     TOKEN_URL: Optional[str] = Field(
@@ -81,7 +77,7 @@ class Settings(BaseSettings):
         description="Token endpoint to obtain new access tokens"
     )
     CLIENT_ID: Optional[str] = Field(
-        get_client_id,
+        get_client_id(),
         description="Client ID to authenticate to OAuth server"
     )
     CLIENT_SECRET: Optional[str] = Field(

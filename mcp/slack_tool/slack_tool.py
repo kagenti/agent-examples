@@ -8,6 +8,29 @@ from fastmcp.server.auth.providers.jwt import JWTVerifier
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+def get_client_id() -> str:
+    """
+    Read the SVID JWT from file and extract the client ID from the "sub" claim.
+    """
+    # Read SVID JWT from file to get client ID
+    jwt_file_path = "/opt/jwt_svid.token"
+    try:
+        with open(jwt_file_path, "r") as file:
+            content = file.read()
+
+    except FileNotFoundError:
+        print(f"Error: The file {jwt_file_path} was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    if content is None or content.strip() == "":
+        raise Exception(f"No content read from SVID JWT.")
+
+    decoded = jwt.decode(content, options={"verify_signature": False})
+    if "sub" not in decoded:
+        raise Exception('SVID JWT does not contain a "sub" claim.')
+    return decoded["sub"]
+
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "DEBUG"), stream=sys.stdout, format='%(levelname)s: %(message)s')
 
@@ -54,12 +77,12 @@ def get_slack_client(access_token=None):
 verifier = None
 JWKS_URI = os.getenv("JWKS_URI")
 ISSUER = os.getenv("ISSUER")
-AUDIENCE = os.getenv("AUDIENCE")
+CLIENT_ID = get_client_id()
 if not JWKS_URI is None:
     verifier = JWTVerifier(
         jwks_uri = JWKS_URI,
         issuer = ISSUER,
-        audience = AUDIENCE
+        audience = CLIENT_ID # the CLIENT_ID will be the same as the AUDIENCE
     )
 mcp = FastMCP("Slack", auth=verifier)
 
