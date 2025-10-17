@@ -14,11 +14,10 @@ You can configure the server with the following environment variables:
 | `MCP_TRANSPORT`          | No        | `streamable-http`      | Passed into mcp.run to determine mcp transport |
 | `JWKS_URI`               | No        | - | If populated, will perform token validation using the JWKS endpoint |
 | `ISSUER`                 | No        | - | If populated with `JWKS_URI`, will additionally check the `iss` claim during token validation |
-| `AUDIENCE`               | No        | - | If populated with `JWKS_URI`, will additionally check the `aud` claim during token validation |
 | `ADMIN_SLACK_BOT_TOKEN`  | No        | - | Bot token for Slack server with Admin privileges. Required for fine grained authz |
 | `ADMIN_SCOPE_NAME`       | No        | - | Scope that triggers `ADMIN_SLACK_BOT_TOKEN` to be used |
 
-Note: `JWKS_URI` triggers token validation at runtime. `ISSUER` and `AUDIENCE` will not affect behavior if `JWKS_URI` is not implemented. 
+Note: `JWKS_URI` triggers token validation at runtime. `ISSUER` will not affect behavior if `JWKS_URI` is not implemented. 
 
 Note: Fine-grained authz is enabled with `ADMIN_SLACK_BOT_TOKEN` and `ADMIN_SCOPE_NAME`. If a received access token includes the `ADMIN_SCOPE_NAME` as a scope, it will use the `ADMIN_SLACK_BOT_TOKEN`
 

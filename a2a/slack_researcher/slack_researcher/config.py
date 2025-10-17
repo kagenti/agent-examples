@@ -1,12 +1,34 @@
 import json
 import logging
 import os
-import sys
+import jwt
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
 from typing import Literal, Optional
 
+def get_client_id() -> str:
+    """
+    Read the SVID JWT from file and extract the client ID from the "sub" claim.
+    """
+    # Read SVID JWT from file to get client ID
+    jwt_file_path = "/opt/jwt_svid.token"
+    try:
+        with open(jwt_file_path, "r") as file:
+            content = file.read()
+
+    except FileNotFoundError:
+        print(f"Error: The file {jwt_file_path} was not found.")
+    except Exception as e:
+        print(f"An error occurred: {e}")
+
+    if content is None or content.strip() == "":
+        raise Exception(f"No content read from SVID JWT.")
+
+    decoded = jwt.decode(content, options={"verify_signature": False})
+    if "sub" not in decoded:
+        raise Exception('SVID JWT does not contain a "sub" claim.')
+    return decoded["sub"]
 
 class Settings(BaseSettings):
     # static path for client secret file
@@ -14,7 +36,7 @@ class Settings(BaseSettings):
 
     LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
         os.getenv("LOG_LEVEL", "DEBUG"),
-        description="Application log level",       
+        description="Application log level",
     )
     TASK_MODEL_ID: str = Field(
         os.getenv("TASK_MODEL_ID", "granite3.3:8b"),
@@ -48,10 +70,6 @@ class Settings(BaseSettings):
         os.getenv("JWKS_URI", None),
         description="Endpoint to obtain JWKS from auth server"
     )
-    AUDIENCE: Optional[str] = Field(
-        os.getenv("AUDIENCE", None),
-        description="Expected audience value during resource validation"
-    )
 
     # auth variables for token exchange
     TOKEN_URL: Optional[str] = Field(
@@ -59,16 +77,12 @@ class Settings(BaseSettings):
         description="Token endpoint to obtain new access tokens"
     )
     CLIENT_ID: Optional[str] = Field(
-        os.getenv("CLIENT_ID", None),
+        get_client_id(),
         description="Client ID to authenticate to OAuth server"
     )
     CLIENT_SECRET: Optional[str] = Field(
         None,
         description="Client secret to authenticate to OAuth server"
-    )
-    TARGET_AUDIENCE: Optional[str] = Field(
-        os.getenv("TARGET_AUDIENCE", None),
-        description="Target audience to request during token exchange"
     )
     TARGET_SCOPES: Optional[str] = Field(
         os.getenv("TARGET_SCOPES", None),

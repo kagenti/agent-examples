@@ -10,6 +10,7 @@ dependencies = [
     "a2a-sdk>=0.2.16",
     "python-keycloak>=5.5.1",
     "authlib>=1.6.0",
+    "PyJWT>=2.10.1",
 ]
 
 [tool.ruff]
