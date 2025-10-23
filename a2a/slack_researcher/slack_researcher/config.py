@@ -7,7 +7,7 @@ from pydantic import model_validator
 from pydantic import Field
 from typing import Literal, Optional
 
-def get_client_id() -> str:
+def get_client_id_from_svid() -> str:
     """
     Read the SVID JWT from file and extract the client ID from the "sub" claim.
     """
@@ -33,6 +33,17 @@ def get_client_id() -> str:
         return decoded["sub"]
     except KeyError:
         raise KeyError('SVID JWT is missing required "sub" claim.')
+
+def get_client_secret_from_svid(secret_file_path) -> Optional[str]:
+    try:
+        with open(secret_file_path, "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"CLIENT_SECRET file not found at {self.secret_file_path}")
+        return None
+    except Exception as e:
+        print(f"Error reading CLIENT_SECRET file: {e}")
+        return None
 
 class Settings(BaseSettings):
     # static path for client secret file
@@ -74,6 +85,10 @@ class Settings(BaseSettings):
         os.getenv("JWKS_URI", None),
         description="Endpoint to obtain JWKS from auth server"
     )
+    AUDIENCE: Optional[str] = Field(
+        os.getenv("AUDIENCE", get_client_id_from_svid()),
+        description="Expected audience value during resource validation"
+    )
 
     # auth variables for token exchange
     TOKEN_URL: Optional[str] = Field(
@@ -81,11 +96,11 @@ class Settings(BaseSettings):
         description="Token endpoint to obtain new access tokens"
     )
     CLIENT_ID: Optional[str] = Field(
-        get_client_id(),
+        get_client_id_from_svid(),
         description="Client ID to authenticate to OAuth server"
     )
     CLIENT_SECRET: Optional[str] = Field(
-        None,
+        get_client_secret_from_svid(secret_file_path),
         description="Client secret to authenticate to OAuth server"
     )
     TARGET_SCOPES: Optional[str] = Field(
@@ -104,16 +119,6 @@ class Settings(BaseSettings):
                 self.EXTRA_HEADERS = json.loads(os.getenv("EXTRA_HEADERS"))
             except json.JSONDecodeError:
                 raise ValueError("EXTRA_HEADERS must be a valid JSON string")
-
-        # --- Load CLIENT_SECRET from file ---
-        try:
-            with open(self.secret_file_path, "r") as f:
-                self.CLIENT_SECRET = f.read().strip()
-        except FileNotFoundError:
-            logging.warning(f"CLIENT_SECRET file not found at {self.secret_file_path}")
-        except Exception as e:
-            logging.error(f"Error reading CLIENT_SECRET file: {e}")
-
         return self
 
 settings = Settings()  # type: ignore[call-arg]

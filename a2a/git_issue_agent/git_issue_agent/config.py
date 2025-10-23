@@ -1,12 +1,58 @@
 import json
 import os
+import jwt
+import sys
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
 from typing import Literal, Optional
 
+def get_client_id_from_svid() -> Optional]str]:
+    """
+    Read the SVID JWT from file and extract the client ID from the "sub" claim.
+    """
+    # Read SVID JWT from file to get client ID
+    jwt_file_path = "/opt/jwt_svid.token"
+
+    content = None
+    try:
+        with open(jwt_file_path, "r") as file:
+            content = file.read()
+    except FileNotFoundError:
+        print(f"SVID JWT file {jwt_file_path} not found.")
+        return None
+
+    if content is None or content.strip() == "":
+        print(f"No content in SVID JWT file {jwt_file_path}.")
+        return None
+
+    try:
+        decoded = jwt.decode(content, options={"verify_signature": False})
+    except jwt.DecodeError:
+        print(f"Failed to decode SVID JWT file {jwt_file_path}.")
+        return None
+
+    try:
+        return decoded["sub"]
+    except KeyError:
+        print("SVID JWT is missing required "sub" claim.")
+        return None
+
+def get_client_secret_from_svid(secret_file_path) -> Optional[str]:
+    try:
+        with open(secret_file_path, "r") as f:
+            return f.read().strip()
+    except FileNotFoundError:
+        print(f"CLIENT_SECRET file not found at {self.secret_file_path}")
+        return None
+    except Exception as e:
+        print(f"Error reading CLIENT_SECRET file: {e}")
+        return None
 
 class Settings(BaseSettings):
+    # static path for client secret file
+    secret_file_path: str = "/shared/secret.txt"
+
     LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
         os.getenv("LOG_LEVEL", "INFO"),
         description="Application log level",       
@@ -40,7 +86,7 @@ class Settings(BaseSettings):
         description="Endpoint to obtain JWKS from auth server"
     )
     AUDIENCE: Optional[str] = Field(
-        os.getenv("AUDIENCE", None),
+        os.getenv("AUDIENCE", get_client_id_from_svid()),
         description="Expected audience value during resource validation"
     )
 
@@ -50,11 +96,11 @@ class Settings(BaseSettings):
         description="Token endpoint to obtain new access tokens"
     )
     CLIENT_ID: Optional[str] = Field(
-        os.getenv("CLIENT_ID", None),
+        os.getenv("CLIENT_ID", get_client_id_from_svid()),
         description="Client ID to authenticate to OAuth server"
     )
     CLIENT_SECRET: Optional[str] = Field(
-        os.getenv("CLIENT_SECRET", None),
+        os.getenv("CLIENT_SECRET", get_client_secret_from_svid(secret_file_path)),
         description="Client secret to authenticate to OAuth server"
     )
     TARGET_AUDIENCE: Optional[str] = Field(

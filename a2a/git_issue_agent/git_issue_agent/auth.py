@@ -43,7 +43,7 @@ class BearerAuthBackend(AuthenticationBackend):
 
         self.claims_options = {}
         if settings.AUDIENCE is None:
-            logger.debug(f"AUDIENCE env var not set. No audience check will be performed. ")
+            logger.debug(f"AUDIENCE or CLIENT_ID not set. No audience check will be performed. ")
         else:
             self.claims_options["aud"] = {"essential": True, "value": settings.AUDIENCE}
         if settings.ISSUER is None:
