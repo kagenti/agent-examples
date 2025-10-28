@@ -99,17 +99,11 @@ def search_airports(query: str, limit: int = 10) -> str:
     try:
         results = ff_search_airport(query)
     except Exception as e:
-        logger.error("airport search failed: %s", e)
         return json.dumps({"error": str(e)})
 
     airports = []
     for a in (results or [])[:limit]:
-        if hasattr(a, "value"):
-            airports.append(getattr(a, "value"))
-        elif hasattr(a, "name"):
-            airports.append(getattr(a, "name"))
-        else:
-            airports.append(str(a))
+        airports.append(getattr(a, "value"))
 
     return json.dumps(airports)
 
