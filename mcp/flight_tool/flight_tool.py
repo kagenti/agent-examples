@@ -83,20 +83,33 @@ def _date_in_past(d: date) -> bool:
         return False
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
-def search_airports(query: str) -> str:
+def search_airports(query: str, limit: int = 10) -> str:
     """Search for airports by name or code.
 
     This wrapper calls the underlying fast-flights airport search and returns a
-    simple JSON array of results. 
-   
+    simple JSON array of results. Each element will be one of:
+      - the enum `.value` (common for IATA codes), or
+      - the enum `.name`, or
+      - the string representation of the item.
+
     Parameters:
     - query: search string (city name, airport name, or IATA code)
+    - limit: max number of results to return
     """
-    results = ff_search_airport(query)
+    try:
+        results = ff_search_airport(query)
+    except Exception as e:
+        logger.error("airport search failed: %s", e)
+        return json.dumps({"error": str(e)})
 
     airports = []
-    for a in (results):
-        airports.append(getattr(a, "value"))
+    for a in (results or [])[:limit]:
+        if hasattr(a, "value"):
+            airports.append(getattr(a, "value"))
+        elif hasattr(a, "name"):
+            airports.append(getattr(a, "name"))
+        else:
+            airports.append(str(a))
 
     return json.dumps(airports)
 
