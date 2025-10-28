@@ -1,0 +1,14 @@
+[project]
+name = "flight_tool"
+version = "0.1.0"
+description = "MCP tool for searching flights via fast-flights API"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.11.0",
+    "fast_flights>=0.1.0",
+    "playwright>=1.55.0",
+]
+
+
+
