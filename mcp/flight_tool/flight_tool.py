@@ -82,40 +82,23 @@ def _date_in_past(d: date) -> bool:
     except Exception:
         return False
 
-
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
-def search_airports(query: str, limit: int = 10) -> str:
-    """Search for airports by name or code. Each airport is serialized as an object with fields:
-    - name: enum member name (e.g. TAIPEI_SONGSHAN_AIRPORT)
-    - code: likely the IATA code (if available on the enum `.value`)
-    - repr: string representation of the enum
+def search_airports(query: str) -> str:
+    """Search for airports by name or code.
 
+    This wrapper calls the underlying fast-flights airport search and returns a
+    simple JSON array of results. 
+   
     Parameters:
     - query: search string (city name, airport name, or IATA code)
-    - limit: max number of results to return
     """
-    try:
-        results = ff_search_airport(query)
-    except Exception as e:
-        logger.error("airport search failed: %s", e)
-        return json.dumps({"error": str(e)})
+    results = ff_search_airport(query)
 
-    raw = []
-    for a in (results or [])[:limit]:
-        if hasattr(a, "name") or hasattr(a, "value"):
-            raw.append({
-                "name": getattr(a, "name", None),
-                "value": getattr(a, "value", None),
-                "repr": str(a),
-            })
-        else:
-            try:
-                json.dumps(a)
-                raw.append(a)
-            except Exception:
-                raw.append(str(a))
+    airports = []
+    for a in (results):
+        airports.append(getattr(a, "value"))
 
-    return json.dumps(raw)
+    return json.dumps(airports)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
