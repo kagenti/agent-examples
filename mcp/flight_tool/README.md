@@ -1,12 +1,10 @@
 # Flight MCP tool
 
-This MCP server exposes tools for searching flights via a fast-flights style API, modeled after `mcp/weather_tool`.
+This MCP server exposes tools for searching flights via fast-flights, a python library for accessing Google Flights data
 
 ## Tools
-- `search_flights(from_airport, to_airport, departure_date, return_date?, cabin?, adults?, children?, infants_in_seat?, infants_on_lap?, currency?, airlines?, max_stops?)`
+- `search_flights(from_airport, to_airport, departure_date, return_date?, cabin?, adults?, children?, infants_in_seat?, infants_on_lap?, currency?, airlines?, max_stops?)` - wrapper around fast-flights flight search API. Returns flights that fit the given parameter.
 - `search_airports(query, limit=10)` — wrapper around the fast-flights airport search API. This tool returns the raw API results (serialized) so callers can inspect enum members or IATA codes directly.
-
-- `search_airports(query, limit=10)` — wrapper around the fast-flights airport search API. This tool now returns the raw API results (serialized) so callers can inspect enum members or IATA codes directly.
 
 ### search_flights Parameters:
 - **Required**: `from_airport`, `to_airport`, `departure_date`
