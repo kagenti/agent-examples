@@ -1,11 +1,11 @@
-from file_organizer.agent import RulesEngine
 from langgraph.graph import StateGraph, MessagesState, START
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.messages import SystemMessage,  AIMessage
 from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
-import os
+
 from file_organizer.configuration import Configuration
+from file_organizer.rules import RulesEngine
 
 config = Configuration()
 

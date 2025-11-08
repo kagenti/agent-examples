@@ -2,10 +2,8 @@ import logging
 import os
 import uvicorn
 from textwrap import dedent
-import yaml
-import fnmatch
-from typing import List, Optional
 import re
+from typing import Optional
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -18,6 +16,7 @@ from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
 
 from file_organizer.graph import get_graph, get_mcpclient
+from file_organizer.rules import RulesEngine, load_rules_from_string
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
