@@ -1,0 +1,223 @@
+import logging
+import os
+import uvicorn
+from textwrap import dedent
+import yaml
+import fnmatch
+from typing import List, Optional
+import re
+
+from a2a.server.agent_execution import AgentExecutor, RequestContext
+from a2a.server.apps import A2AStarletteApplication
+from a2a.server.events.event_queue import EventQueue
+from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
+from a2a.utils import new_agent_text_message, new_task
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from langchain_core.messages import HumanMessage
+
+from file_organizer.graph import get_graph, get_mcpclient
+
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
+
+LangChainInstrumentor().instrument()
+
+class FileRule:
+    def __init__(self, pattern: str, target: str, action: str, priority: int = 0):
+        self.pattern = pattern
+        self.target = target
+        self.action = action
+        self.priority = priority
+
+class RulesEngine:
+    def __init__(self, rules: List[FileRule]):
+        self.rules = sorted(rules, key=lambda r: r.priority, reverse=True)
+
+    def get_rules_summary(self) -> str:
+        if not self.rules:
+            return "No organization rules defined."
+        summary = "File Organization Rules (sorted by priority):\n"
+        for i, rule in enumerate(self.rules, 1):
+            summary += f"{i}. Pattern: '{rule.pattern}' → {rule.action.upper()} to '{rule.target}' (Priority: {rule.priority})\n"
+        return summary
+
+def load_rules_from_string(yaml_content: str) -> RulesEngine:
+    try:
+        data = yaml.safe_load(yaml_content)
+        rules = []
+        if data and 'rules' in data:
+            for rule_data in data['rules']:
+                rules.append(FileRule(
+                    pattern=rule_data.get('pattern', '*'),
+                    target=rule_data.get('target', ''),
+                    action=rule_data.get('action', 'copy'),
+                    priority=rule_data.get('priority', 0)
+                ))
+        logger.info(f"Loaded {len(rules)} rules from YAML string")
+        return RulesEngine(rules)
+    except Exception as e:
+        logger.error(f"Error loading rules from YAML string: {e}")
+        return RulesEngine([])
+
+
+def get_agent_card(host: str, port: int):
+    """Returns the Agent Card for the AG2 Agent."""
+    capabilities = AgentCapabilities(streaming=True)
+    skill = AgentSkill(
+        id="file_organizer",
+        name="File Organizer",
+        description="**File Organizer** – Personalized assistant for organizing files.",
+        tags=["file-organization"],
+        examples=[
+            "Organize all files in this bucket by file type",
+            "Move all PDFs to a new folder",
+        ],
+    )
+    return AgentCard(
+        name="File Organizer",
+        description=dedent(
+            """\
+            This agent provides a simple file organization assistance.
+
+            ## Input Parameters
+            - **prompt** (string) – the action you want to perform on files (move or copy).
+
+            ## Key Features
+            - **MCP Tool Calling** – uses a MCP tool to organize files.
+            """,
+        ),
+        url=f"http://{host}:{port}/",
+        version="1.0.0",
+        default_input_modes=["text"],
+        default_output_modes=["text"],
+        capabilities=capabilities,
+        skills=[skill],
+    )
+
+class A2AEvent:
+    """
+    A class to handle events for A2A Agent.
+
+    Attributes:
+        task_updater (TaskUpdater): The task updater instance.
+    """
+
+    def __init__(self, task_updater: TaskUpdater):
+        self.task_updater = task_updater
+
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
+        logger.info("Emitting event %s", message)
+
+        if final or failed:
+            parts = [TextPart(text=message)]
+            await self.task_updater.add_artifact(parts)
+            if final:
+                await self.task_updater.complete()
+            if failed:
+                await self.task_updater.failed()
+        else:
+            await self.task_updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    message,
+                    self.task_updater.context_id,
+                    self.task_updater.task_id,
+                ),
+            )
+
+class FileOrganizerExecutor(AgentExecutor):
+    """
+    A class to handle file organizer execution for A2A Agent.
+    """
+    async def execute(self, context: RequestContext, event_queue: EventQueue):
+        """
+        The agent allows to organize files through a natural language conversational interface
+        with user-defined rules
+        """
+
+        # Setup Event Emitter
+        task = context.current_task
+        if not task:
+            task = new_task(context.message)  # type: ignore
+            await event_queue.enqueue_event(task)
+        task_updater = TaskUpdater(event_queue, task.id, task.context_id)
+        event_emitter = A2AEvent(task_updater)
+
+        # Parse user input for rules and the main prompt
+        user_input = context.get_user_input()
+        
+        # Extract YAML block for rules
+        rules_engine = RulesEngine([])
+        yaml_match = re.search(r"```yaml\n(.*?)\n```", user_input, re.DOTALL)
+        if yaml_match:
+            yaml_content = yaml_match.group(1)
+            rules_engine = load_rules_from_string(yaml_content)
+            logger.info("Extracted rules from user input.")
+        else:
+            logger.info("No YAML rules block found in user input.")
+
+        # The rest of the input is the message for the agent
+        prompt = re.sub(r"```yaml\n(.*?)\n```", "", user_input, flags=re.DOTALL).strip()
+        messages = [HumanMessage(content=prompt)]
+        input_data = {"messages": messages}
+        logger.info(f'Processing messages: {input_data}')
+
+        try:
+            output = None
+            # Test MCP connection first
+            logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
+
+            mcpclient = get_mcpclient()
+
+            # Try to get tools to verify connection
+            try:
+                tools = await mcpclient.get_tools()
+                logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+            except Exception as tool_error:
+                logger.error(f'Failed to connect to MCP server: {tool_error}')
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP cloud storage at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the cloud storage MCP server is running. Error: {tool_error}", failed=True)
+                return
+
+            graph = await get_graph(mcpclient, rules_engine)
+            async for event in graph.astream(input_data, stream_mode="updates"):
+                await event_emitter.emit_event(
+                    "\n".join(
+                        f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
+                        for key, value in event.items()
+                    )
+                    + "\n"
+                )
+                output = event
+                logger.info(f'event: {event}')
+            output = output.get("assistant", {}).get("final_answer")
+            await event_emitter.emit_event(str(output), final=True)
+        except Exception as e:
+            logger.error(f'Graph execution error: {e}')
+            await event_emitter.emit_event(f"Error: Failed to process file organization request. {str(e)}", failed=True)
+            raise Exception(str(e))
+
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
+        """
+        Not implemented
+        """
+        raise Exception("cancel not supported")
+
+def run():
+    """
+    Runs the A2A Agent application.
+    """
+    agent_card = get_agent_card(host="0.0.0.0", port=8000)
+
+    request_handler = DefaultRequestHandler(
+        agent_executor=FileOrganizerExecutor(),
+        task_store=InMemoryTaskStore(),
+    )
+
+    server = A2AStarletteApplication(
+        agent_card=agent_card,
+        http_handler=request_handler,
+    )
+
+    uvicorn.run(server.build(), host="0.0.0.0", port=8000)
