@@ -1,4 +1,4 @@
-from a2a.file_organizer.src.file_organizer.agent import RulesEngine
+from file_organizer.agent import RulesEngine
 from langgraph.graph import StateGraph, MessagesState, START
 from langchain_mcp_adapters.client import MultiServerMCPClient
 from langchain_core.messages import SystemMessage,  AIMessage
