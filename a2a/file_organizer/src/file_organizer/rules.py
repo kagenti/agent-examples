@@ -1,6 +1,5 @@
 import logging
 import yaml
-from typing import List
 
 logger = logging.getLogger(__name__)
 
@@ -12,7 +11,7 @@ class FileRule:
         self.priority = priority
 
 class RulesEngine:
-    def __init__(self, rules: List[FileRule]):
+    def __init__(self, rules: list[FileRule]):
         self.rules = sorted(rules, key=lambda r: r.priority, reverse=True)
 
     def get_rules_summary(self) -> str:
