@@ -4,7 +4,7 @@ from langchain_core.messages import SystemMessage,  AIMessage
 from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
 import os
-from weather_service.configuration import Configuration
+from file_organizer.configuration import Configuration
 from file_organizer.rules import RulesEngine
 
 config = Configuration()
@@ -76,18 +76,3 @@ Your task:
     # Compile graph
     graph = builder.compile()
     return graph
-
-# async def main():
-#     from langchain_core.messages import HumanMessage
-#     client = get_mcpclient()
-#     graph = await get_graph(client)
-#     messages = [HumanMessage(content="how is the weather in NY today?")]
-#     async for event in graph.astream({"messages": messages}, stream_mode="updates"):
-#         print(event)
-#         output = event
-#     output = output.get("assistant", {}).get("final_answer")
-#     print(f">>> {output}")
-
-# if __name__ == "__main__":
-#     import asyncio
-#     asyncio.run(main())
