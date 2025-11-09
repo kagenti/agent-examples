@@ -15,13 +15,11 @@ class ExtendedMessagesState(MessagesState):
      final_answer: str = ""
 
 def get_mcpclient():
-    mcp_url = os.getenv("MCP_URL", "http://localhost:8000/sse")
-    mcp_transport = os.getenv("MCP_TRANSPORT", "streamable_http")
     
     return MultiServerMCPClient({
         "cloud_storage": {
-            "url": mcp_url,
-            "transport": mcp_transport,
+            "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
         }
     })
 
