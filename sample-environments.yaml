@@ -47,3 +47,7 @@ data:
       {"name": "SERVICE_PORT", "value": "8000"},
       {"name": "LOG_LEVEL", "value": "INFO"}
     ]
+  mcp-flight: |
+    [
+      {"name": "MCP_URL", "value": "http://flight-tool:8000/mcp"}
+    ]
