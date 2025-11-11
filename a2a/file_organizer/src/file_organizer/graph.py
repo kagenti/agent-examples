@@ -34,11 +34,16 @@ async def get_graph(client, rules_engine: RulesEngine = None) -> StateGraph:
     # Get tools asynchronously
     tools = await client.get_tools()
     llm_with_tools = llm.bind_tools(tools)
+    bucket_uri = os.getenv("BUCKET_URI")
 
     # Build system message with rules
     rules_summary = rules_engine.get_rules_summary() if rules_engine else "No organization rules defined."
-    
+
+    bucket_info = f"Target bucket: {bucket_uri if bucket_uri else "Not specified, prompt user to provide one."}"
+
     sys_msg = SystemMessage(content=f"""You are a helpful assistant tasked with organizing files in cloud storage buckets.
+
+{bucket_info}
 
 {rules_summary}
 
@@ -50,7 +55,8 @@ Your task:
    - Filename patterns or naming conventions
    - Logical grouping (e.g., similar file types together)
 4. Always use the exact action specified in the rule (move or copy)
-5. Provide a summary of all actions taken
+5. When specifying file paths, use the target bucket URI provided above
+6. Provide a summary of all actions taken
 """)
 
     # Node
