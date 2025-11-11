@@ -6,7 +6,6 @@ from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
 
 from file_organizer.configuration import Configuration
-from file_organizer.rules import RulesEngine
 
 config = Configuration()
 
@@ -23,7 +22,7 @@ def get_mcpclient():
         }
     })
 
-async def get_graph(client, rules_engine: RulesEngine = None) -> StateGraph:
+async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
         model=config.llm_model,
         openai_api_key=config.llm_api_key,
@@ -36,27 +35,29 @@ async def get_graph(client, rules_engine: RulesEngine = None) -> StateGraph:
     llm_with_tools = llm.bind_tools(tools)
     bucket_uri = os.getenv("BUCKET_URI")
 
-    # Build system message with rules
-    rules_summary = rules_engine.get_rules_summary() if rules_engine else "No organization rules defined."
+    bucket_info = f"Target bucket: {bucket_uri}" if bucket_uri else "No bucket URI configured. Ask the user to specify which bucket to organize."
 
-    bucket_info = f"Target bucket: {bucket_uri if bucket_uri else "Not specified, prompt user to provide one."}"
-
-    sys_msg = SystemMessage(content=f"""You are a helpful assistant tasked with organizing files in cloud storage buckets.
+    sys_msg = SystemMessage(content=f"""You are a file organization assistant for cloud storage buckets.
 
 {bucket_info}
 
-{rules_summary}
-
-Your task:
-1. For each file, check if it matches any of the rules above (sorted by priority)
-2. If a file matches a rule, execute the specified action (move/copy) to the target location
-3. If a file does NOT match any rule, use your best judgment to organize it based on:
-   - File extension and type
+Your workflow:
+1. Discover what tools are available to you by examining your tool list
+2. Use the appropriate tool to LIST or discover files in the bucket
+3. Analyze each file and decide how to organize it based on:
+   - File extension and type (e.g., .pdf, .jpg, .txt)
    - Filename patterns or naming conventions
-   - Logical grouping (e.g., similar file types together)
-4. Always use the exact action specified in the rule (move or copy)
-5. When specifying file paths, use the target bucket URI provided above
-6. Provide a summary of all actions taken
+   - Logical grouping (similar file types together)
+4. Use the appropriate tool to MOVE or COPY each file to its organized location
+5. Provide a summary of what you actually did (not what you would do)
+
+IMPORTANT:
+- You have access to cloud storage tools - USE THEM
+- Every file operation must be done through a tool call
+- Do not hallucinate or pretend to organize files - actually call the tools
+- If you don't know what tools are available, examine them first
+- Always verify the bucket URI before performing operations
+- Provide concrete evidence of what actions were taken (via tool results)
 """)
 
     # Node

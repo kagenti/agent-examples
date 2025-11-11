@@ -2,7 +2,6 @@ import logging
 import os
 import uvicorn
 from textwrap import dedent
-import re
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -15,7 +14,6 @@ from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
 
 from file_organizer.graph import get_graph, get_mcpclient
-from file_organizer.rules import RulesEngine, load_rules_from_string
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -94,7 +92,6 @@ class FileOrganizerExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         The agent allows to organize files through a natural language conversational interface
-        with user-defined rules
         """
 
         # Setup Event Emitter
@@ -105,22 +102,9 @@ class FileOrganizerExecutor(AgentExecutor):
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
 
-        # Parse user input for rules and the main prompt
+        # Get user input directly
         user_input = context.get_user_input()
-        
-        # Extract YAML block for rules
-        rules_engine = RulesEngine([])
-        yaml_match = re.search(r"```yaml\n(.*?)\n```", user_input, re.DOTALL)
-        if yaml_match:
-            yaml_content = yaml_match.group(1)
-            rules_engine = load_rules_from_string(yaml_content)
-            logger.info("Extracted rules from user input.")
-        else:
-            logger.info("No YAML rules block found in user input.")
-
-        # The rest of the input is the message for the agent
-        prompt = re.sub(r"```yaml\n(.*?)\n```", "", user_input, flags=re.DOTALL).strip()
-        messages = [HumanMessage(content=prompt)]
+        messages = [HumanMessage(content=user_input)]
         input_data = {"messages": messages}
         logger.info(f'Processing messages: {input_data}')
 
@@ -140,7 +124,8 @@ class FileOrganizerExecutor(AgentExecutor):
                 await event_emitter.emit_event(f"Error: Cannot connect to MCP cloud storage at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the cloud storage MCP server is running. Error: {tool_error}", failed=True)
                 return
 
-            graph = await get_graph(mcpclient, rules_engine)
+            graph = await get_graph(mcpclient)
+            output = None
             async for event in graph.astream(input_data, stream_mode="updates"):
                 await event_emitter.emit_event(
                     "\n".join(
@@ -151,8 +136,12 @@ class FileOrganizerExecutor(AgentExecutor):
                 )
                 output = event
                 logger.info(f'event: {event}')
-            output = output.get("assistant", {}).get("final_answer")
-            await event_emitter.emit_event(str(output), final=True)
+            
+            if output:
+                final_answer = output.get("assistant", {}).get("final_answer", "File organization completed.")
+                await event_emitter.emit_event(str(final_answer), final=True)
+            else:
+                await event_emitter.emit_event("File organization completed.", final=True)
         except Exception as e:
             logger.error(f'Graph execution error: {e}')
             await event_emitter.emit_event(f"Error: Failed to process file organization request. {str(e)}", failed=True)
