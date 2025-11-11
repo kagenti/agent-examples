@@ -17,7 +17,7 @@ def get_mcpclient():
     
     return MultiServerMCPClient({
         "cloud_storage": {
-            "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+            "url": os.getenv("MCP_URL", "http://cloud-storage-tool:8000/mcp"),
             "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
         }
     })
@@ -43,12 +43,12 @@ async def get_graph(client) -> StateGraph:
 
 Your workflow:
 1. Discover what tools are available to you by examining your tool list
-2. Use the appropriate tool to LIST or discover files in the bucket
+2. Use get_objects tool to list or discover files in the bucket
 3. Analyze each file and decide how to organize it based on:
    - File extension and type (e.g., .pdf, .jpg, .txt)
    - Filename patterns or naming conventions
    - Logical grouping (similar file types together)
-4. Use the appropriate tool to MOVE or COPY each file to its organized location
+4. Use the perform_action tool to MOVE or COPY each file to its organized location
 5. Provide a summary of what you actually did (not what you would do)
 
 IMPORTANT:
