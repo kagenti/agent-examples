@@ -43,21 +43,13 @@ async def get_graph(client) -> StateGraph:
 
 Your workflow:
 1. Discover what tools are available to you by examining your tool list
-2. Use get_objects tool to list or discover files in the bucket
+2. List or discover files in the bucket using the appropriate tool
 3. Analyze each file and decide how to organize it based on:
    - File extension and type (e.g., .pdf, .jpg, .txt)
    - Filename patterns or naming conventions
    - Logical grouping (similar file types together)
-4. Use the perform_action tool to MOVE or COPY each file to its organized location
-5. Provide a summary of what you actually did (not what you would do)
-
-IMPORTANT:
-- You have access to cloud storage tools - USE THEM
-- Every file operation must be done through a tool call
-- Do not hallucinate or pretend to organize files - actually call the tools
-- If you don't know what tools are available, examine them first
-- Always verify the bucket URI before performing operations
-- Provide concrete evidence of what actions were taken (via tool results)
+4. Use the appropriate tool to MOVE or COPY each file to its organized location
+5. Provide a summary of what you did
 """)
 
     # Node
