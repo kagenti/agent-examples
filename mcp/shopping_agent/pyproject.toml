@@ -1,0 +1,20 @@
+[project]
+name = "shopping_agent"
+version = "0.1.0"
+description = "Shopping Agent MCP Tool using LangChain, LangGraph, OpenAI, and SerpAPI"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.11.0",
+    "langchain>=0.3.0",
+    "langchain-openai>=0.2.0",
+    "langchain-community>=0.3.0",
+    "langgraph>=0.2.0",
+    "openai>=1.0.0",
+    "google-search-results>=2.4.2",
+    "requests>=2.32.3",
+]
+
+[tool.setuptools]
+py-modules = ["shopping_agent"]
+
