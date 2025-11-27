@@ -1,6 +1,7 @@
 import logging
 import os
 import uvicorn
+import uuid
 from textwrap import dedent
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -10,15 +11,17 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
 
 from weather_service.graph import get_graph, get_mcpclient
+from weather_service.observability import (
+    set_baggage_context,
+    extract_baggage_from_headers,
+    log_trace_info
+)
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-LangChainInstrumentor().instrument()
 
 
 def get_agent_card(host: str, port: int):
@@ -95,7 +98,47 @@ class WeatherExecutor(AgentExecutor):
         The agent allows to retrieve weather info through a natural language conversational interface
         """
 
+        # ============================================================
+        # OTEL BAGGAGE CONTEXT PROPAGATION
+        # Extract baggage from request headers and set in OTEL context
+        # This ensures user_id, request_id, etc. flow through all spans
+        # ============================================================
+
+        # Extract headers from request context (if available)
+        # A2A SDK may expose headers differently, so we handle both cases
+        headers = {}
+        if hasattr(context, 'headers'):
+            headers = dict(context.headers)
+        elif hasattr(context, 'message') and hasattr(context.message, 'headers'):
+            headers = dict(context.message.headers) if context.message.headers else {}
+
+        # Extract baggage from headers
+        baggage_data = extract_baggage_from_headers(headers)
+
+        # If no request_id in headers, generate one
+        if 'request_id' not in baggage_data:
+            baggage_data['request_id'] = f"req-{uuid.uuid4()}"
+
+        # If no user_id in headers, use anonymous
+        if 'user_id' not in baggage_data:
+            baggage_data['user_id'] = "anonymous"
+
+        # Add task/context IDs from A2A if available
+        if context.current_task:
+            baggage_data['task_id'] = context.current_task.id
+            baggage_data['context_id'] = context.current_task.context_id
+
+        # Set baggage context - this propagates to ALL spans in this trace
+        set_baggage_context(baggage_data)
+
+        # Log trace info for debugging
+        log_trace_info()
+
+        logger.info(f"🔍 Baggage context set: {baggage_data}")
+
+        # ============================================================
         # Setup Event Emitter
+        # ============================================================
         task = context.current_task
         if not task:
             task = new_task(context.message)  # type: ignore

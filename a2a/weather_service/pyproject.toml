@@ -18,7 +18,14 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
     "python-keycloak>=5.5.1",
-    "opentelemetry-exporter-otlp",
+    # OpenTelemetry Core
+    "opentelemetry-api>=1.20.0",
+    "opentelemetry-sdk>=1.20.0",
+    "opentelemetry-exporter-otlp>=1.20.0",
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0",
+    "opentelemetry-instrumentation>=0.41b0",
+    # OpenInference Semantic Conventions
+    "openinference-semantic-conventions>=0.1.0",
 ]
 
 [project.scripts]
