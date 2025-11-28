@@ -26,11 +26,39 @@ from typing import Dict, Any, Optional
 from opentelemetry import trace, baggage, context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 from opentelemetry.sdk.resources import Resource
 from openinference.instrumentation.langchain import LangChainInstrumentor
 
 logger = logging.getLogger(__name__)
+
+
+def _get_otlp_exporter(endpoint: str, protocol: str):
+    """
+    Get the appropriate OTLP exporter based on protocol.
+
+    Args:
+        endpoint: OTLP endpoint URL
+        protocol: Protocol to use ('grpc' or 'http/protobuf')
+
+    Returns:
+        Configured OTLP span exporter
+    """
+    if protocol.lower() == "grpc":
+        from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import (
+            OTLPSpanExporter as GrpcExporter,
+        )
+        # For gRPC, endpoint should not have http:// prefix
+        grpc_endpoint = endpoint.replace("http://", "").replace("https://", "")
+        return GrpcExporter(endpoint=grpc_endpoint, insecure=True)
+    else:
+        # Default to HTTP/protobuf
+        from opentelemetry.exporter.otlp.proto.http.trace_exporter import (
+            OTLPSpanExporter as HttpExporter,
+        )
+        # Ensure endpoint has /v1/traces path for HTTP
+        if not endpoint.endswith("/v1/traces"):
+            endpoint = endpoint.rstrip("/") + "/v1/traces"
+        return HttpExporter(endpoint=endpoint)
 
 
 class ObservabilityConfig:
@@ -52,10 +80,14 @@ class ObservabilityConfig:
             f"{self.namespace}-agents"
         )
 
-        # OTLP endpoint
+        # OTLP endpoint and protocol
         self.otlp_endpoint = os.getenv(
             "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "http://otel-collector.observability.svc.cluster.local:4317"
+            "http://otel-collector.kagenti-system.svc.cluster.local:4318"
+        )
+        self.otlp_protocol = os.getenv(
+            "OTEL_EXPORTER_OTLP_PROTOCOL",
+            "http/protobuf"  # Default to HTTP for wider compatibility
         )
 
         # Additional resource attributes
@@ -132,6 +164,7 @@ def setup_observability(config: Optional[ObservabilityConfig] = None) -> None:
     logger.info(f"Namespace:         {config.namespace}")
     logger.info(f"Phoenix Project:   {config.phoenix_project}")
     logger.info(f"OTLP Endpoint:     {config.otlp_endpoint}")
+    logger.info(f"OTLP Protocol:     {config.otlp_protocol}")
     logger.info(f"Deployment Env:    {config.deployment_env}")
     logger.info("=" * 70)
 
@@ -142,11 +175,8 @@ def setup_observability(config: Optional[ObservabilityConfig] = None) -> None:
     # Create tracer provider
     tracer_provider = TracerProvider(resource=resource)
 
-    # Create OTLP gRPC exporter
-    otlp_exporter = OTLPSpanExporter(
-        endpoint=config.otlp_endpoint,
-        insecure=True,  # Use TLS in production
-    )
+    # Create OTLP exporter based on configured protocol
+    otlp_exporter = _get_otlp_exporter(config.otlp_endpoint, config.otlp_protocol)
 
     # Add batch span processor for efficiency
     tracer_provider.add_span_processor(BatchSpanProcessor(otlp_exporter))
@@ -189,14 +219,15 @@ def set_baggage_context(context_data: Dict[str, Any]) -> context.Context:
         ... })
         >>> # All subsequent spans will have these attributes
     """
-    ctx = baggage.get_current()
+    # Start with the current context (not baggage.get_current which doesn't exist)
+    ctx = context.get_current()
 
     for key, value in context_data.items():
         if value is not None:  # Only set non-None values
             ctx = baggage.set_baggage(key, str(value), context=ctx)
             logger.debug(f"Set baggage: {key}={value}")
 
-    # Attach baggage to current context
+    # Attach the updated context with baggage
     context.attach(ctx)
 
     return ctx
@@ -214,7 +245,8 @@ def get_baggage_context() -> Dict[str, str]:
         >>> print(baggage_data)
         {'user_id': 'alice', 'request_id': 'req-123'}
     """
-    ctx = baggage.get_current()
+    # Get current context and extract all baggage from it
+    ctx = context.get_current()
     return dict(baggage.get_all(ctx))
 
 
