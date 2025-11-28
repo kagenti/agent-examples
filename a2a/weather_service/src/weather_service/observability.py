@@ -83,7 +83,7 @@ class ObservabilityConfig:
         # OTLP endpoint and protocol
         self.otlp_endpoint = os.getenv(
             "OTEL_EXPORTER_OTLP_ENDPOINT",
-            "http://otel-collector.kagenti-system.svc.cluster.local:4318"
+            "http://otel-collector.kagenti-system.svc.cluster.local:8335"
         )
         self.otlp_protocol = os.getenv(
             "OTEL_EXPORTER_OTLP_PROTOCOL",
