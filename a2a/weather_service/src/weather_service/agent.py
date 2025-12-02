@@ -17,8 +17,16 @@ from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
     set_baggage_context,
     extract_baggage_from_headers,
-    log_trace_info
+    log_trace_info,
+    create_agent_span,
 )
+
+# Import OpenInference context manager for adding attributes to all spans
+try:
+    from openinference.instrumentation import using_attributes
+except ImportError:
+    # Fallback if openinference-instrumentation not installed
+    from contextlib import nullcontext as using_attributes
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -170,17 +178,54 @@ class WeatherExecutor(AgentExecutor):
                 return
 
             graph = await get_graph(mcpclient)
-            async for event in graph.astream(input, stream_mode="updates"):
-                await event_emitter.emit_event(
-                    "\n".join(
-                        f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
-                        for key, value in event.items()
-                    )
-                    + "\n"
-                )
-                output = event
-                logger.info(f'event: {event}')
-            output =  output.get("assistant", {}).get("final_answer")
+
+            # ============================================================
+            # OPENINFERENCE TRACE CONTEXT
+            # Wrap graph execution with using_attributes and create_agent_span
+            # This ensures all LangChain spans have session.id, user.id, etc.
+            # and are nested under a root AGENT span for easy filtering
+            # ============================================================
+            user_input = context.get_user_input()
+
+            # Prepare OpenInference attributes
+            oi_session_id = task.context_id if task else baggage_data.get('context_id')
+            oi_user_id = baggage_data.get('user_id', 'anonymous')
+            oi_metadata = {
+                "task_id": task.id if task else baggage_data.get('task_id'),
+                "request_id": baggage_data.get('request_id'),
+            }
+
+            # using_attributes adds session.id, user.id to ALL spans in scope
+            # create_agent_span creates a root AGENT span for the conversation
+            with using_attributes(
+                session_id=oi_session_id,
+                user_id=oi_user_id,
+                metadata=oi_metadata,
+            ):
+                with create_agent_span(
+                    name="weather_agent_task",
+                    task_id=task.id if task else None,
+                    context_id=task.context_id if task else None,
+                    user_id=oi_user_id,
+                    input_text=user_input,
+                ) as agent_span:
+                    async for event in graph.astream(input, stream_mode="updates"):
+                        await event_emitter.emit_event(
+                            "\n".join(
+                                f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
+                                for key, value in event.items()
+                            )
+                            + "\n"
+                        )
+                        output = event
+                        logger.info(f'event: {event}')
+
+                    output = output.get("assistant", {}).get("final_answer")
+
+                    # Set output on the agent span
+                    if output:
+                        agent_span.set_attribute("output.value", str(output))
+
             await event_emitter.emit_event(str(output), final=True)
         except Exception as e:
             logger.error(f'Graph execution error: {e}')

@@ -3,31 +3,47 @@ OpenTelemetry and OpenInference observability setup for Weather Agent.
 
 This module provides:
 - Auto-instrumentation with OpenInference semantic conventions
-- OTEL baggage propagation for context tracking (user_id, request_id, etc.)
+- OpenInference context managers for session/user tracking
 - Phoenix project routing via resource attributes
 - GenAI semantic conventions compliance
 
+Key Features:
+- `using_attributes`: Add session_id, user_id, metadata to all spans in scope
+- `create_agent_span`: Create a root AGENT span for the conversation
+- Auto-instrumentation of LangChain/LangGraph via OpenInference
+
 Usage:
-    from weather_service.observability import setup_observability, set_baggage_context
+    from weather_service.observability import (
+        setup_observability,
+        create_agent_span,
+    )
+    from openinference.instrumentation import using_attributes
 
     # At agent startup
     setup_observability()
 
-    # In request handler
-    set_baggage_context({
-        "user_id": "alice",
-        "request_id": "req-123",
-    })
+    # In request handler - wrap execution with context
+    with using_attributes(
+        session_id="context-123",
+        user_id="alice",
+        metadata={"task_id": "task-456"},
+    ):
+        with create_agent_span("agent_task", task_id="task-456") as span:
+            # All LangChain spans inside will have session.id and user.id
+            result = await graph.astream(input)
 """
 
 import logging
 import os
 from typing import Dict, Any, Optional
-from opentelemetry import trace, baggage, context
+from contextlib import contextmanager
+from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
+from opentelemetry.trace import Status, StatusCode
 from openinference.instrumentation.langchain import LangChainInstrumentor
+from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
 
 logger = logging.getLogger(__name__)
 
@@ -324,3 +340,77 @@ def log_trace_info() -> None:
         logger.info("=" * 70)
     else:
         logger.warning("No active trace context")
+
+
+# Global tracer for creating manual spans
+_tracer: Optional[trace.Tracer] = None
+
+
+def get_tracer() -> trace.Tracer:
+    """Get the global tracer for creating manual spans."""
+    global _tracer
+    if _tracer is None:
+        _tracer = trace.get_tracer(__name__)
+    return _tracer
+
+
+@contextmanager
+def create_agent_span(
+    name: str = "agent_task",
+    task_id: Optional[str] = None,
+    context_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+    input_text: Optional[str] = None,
+):
+    """
+    Create a root AGENT span for the conversation with OpenInference attributes.
+
+    This span serves as the root for all LangChain/LangGraph auto-instrumented
+    spans, providing a clear entry point for each agent interaction.
+
+    Args:
+        name: Span name (default: "agent_task")
+        task_id: A2A task ID for filtering conversations
+        context_id: A2A context ID (conversation session)
+        user_id: User identifier
+        input_text: The user's input message
+
+    Yields:
+        The created span
+
+    Example:
+        with create_agent_span(
+            task_id="task-123",
+            context_id="ctx-456",
+            user_id="alice",
+            input_text="What's the weather in Tokyo?"
+        ) as span:
+            result = await graph.astream(input)
+            span.set_attribute("output.value", str(result))
+    """
+    tracer = get_tracer()
+
+    # Build attributes following OpenInference semantic conventions
+    attributes = {
+        # OpenInference span kind for AI observability
+        SpanAttributes.OPENINFERENCE_SPAN_KIND: OpenInferenceSpanKindValues.AGENT.value,
+    }
+
+    # Add A2A task/context IDs as custom attributes for filtering
+    if task_id:
+        attributes["a2a.task_id"] = task_id
+    if context_id:
+        attributes["a2a.context_id"] = context_id
+    if user_id:
+        attributes["user.id"] = user_id
+    if input_text:
+        attributes[SpanAttributes.INPUT_VALUE] = input_text
+
+    with tracer.start_as_current_span(name, attributes=attributes) as span:
+        try:
+            yield span
+            span.set_status(Status(StatusCode.OK))
+        except Exception as e:
+            span.set_status(Status(StatusCode.ERROR, str(e)))
+            span.record_exception(e)
+            raise
