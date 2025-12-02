@@ -343,14 +343,21 @@ def log_trace_info() -> None:
 
 
 # Global tracer for creating manual spans
+# IMPORTANT: Use OpenInference-compatible tracer name so spans pass through
+# the OTEL Collector filter which only allows "openinference.instrumentation.*"
 _tracer: Optional[trace.Tracer] = None
+TRACER_NAME = "openinference.instrumentation.agent"
 
 
 def get_tracer() -> trace.Tracer:
-    """Get the global tracer for creating manual spans."""
+    """Get the global tracer for creating manual spans.
+
+    Uses OpenInference-compatible tracer name to ensure spans are routed
+    to Phoenix by the OTEL Collector's filter/phoenix processor.
+    """
     global _tracer
     if _tracer is None:
-        _tracer = trace.get_tracer(__name__)
+        _tracer = trace.get_tracer(TRACER_NAME)
     return _tracer
 
 
