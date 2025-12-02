@@ -5,8 +5,11 @@ from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
 import os
 import json
+import logging
 from image_service.configuration import Configuration
 
+logging.basicConfig(level=logging.DEBUG)
+logger = logging.getLogger(__name__)
 config = Configuration()
 
 # Extend MessagesState to include a final answer
