@@ -19,6 +19,7 @@ from weather_service.observability import (
     extract_baggage_from_headers,
     log_trace_info,
     create_agent_span,
+    trace_context_from_headers,
 )
 
 # Import OpenInference context manager for adding attributes to all spans
@@ -107,9 +108,9 @@ class WeatherExecutor(AgentExecutor):
         """
 
         # ============================================================
-        # OTEL BAGGAGE CONTEXT PROPAGATION
-        # Extract baggage from request headers and set in OTEL context
-        # This ensures user_id, request_id, etc. flow through all spans
+        # OTEL TRACE CONTEXT AND BAGGAGE PROPAGATION
+        # Extract trace context (traceparent) and baggage from HTTP headers
+        # This enables proper parent-child span relationships across services
         # ============================================================
 
         # Extract headers from request context (if available)
@@ -119,6 +120,10 @@ class WeatherExecutor(AgentExecutor):
             headers = dict(context.headers)
         elif hasattr(context, 'message') and hasattr(context.message, 'headers'):
             headers = dict(context.message.headers) if context.message.headers else {}
+
+        # Log incoming trace context for debugging
+        traceparent = headers.get('traceparent', headers.get('Traceparent', 'none'))
+        logger.info(f"🔗 Incoming traceparent: {traceparent}")
 
         # Extract baggage from headers
         baggage_data = extract_baggage_from_headers(headers)
@@ -136,101 +141,106 @@ class WeatherExecutor(AgentExecutor):
             baggage_data['task_id'] = context.current_task.id
             baggage_data['context_id'] = context.current_task.context_id
 
-        # Set baggage context - this propagates to ALL spans in this trace
-        set_baggage_context(baggage_data)
-
-        # Log trace info for debugging
-        log_trace_info()
-
-        logger.info(f"🔍 Baggage context set: {baggage_data}")
+        logger.info(f"🔍 Baggage context: {baggage_data}")
 
         # ============================================================
-        # Setup Event Emitter
+        # WRAP ENTIRE EXECUTION WITH TRACE CONTEXT
+        # This ensures all spans created are children of incoming trace
         # ============================================================
-        task = context.current_task
-        if not task:
-            task = new_task(context.message)  # type: ignore
-            await event_queue.enqueue_event(task)
-        task_updater = TaskUpdater(event_queue, task.id, task.context_id)
-        event_emitter = A2AEvent(task_updater)
+        with trace_context_from_headers(headers):
+            # Set baggage context within the trace context
+            set_baggage_context(baggage_data)
 
-        # Parse Messages
-        messages = [HumanMessage(content=context.get_user_input())]
-        input = {"messages": messages}
-        logger.info(f'Processing messages: {input}')
+            # Log trace info for debugging
+            log_trace_info()
 
-        task_updater = TaskUpdater(event_queue, task.id, task.context_id)
+            # ============================================================
+            # Setup Event Emitter
+            # ============================================================
+            task = context.current_task
+            if not task:
+                task = new_task(context.message)  # type: ignore
+                await event_queue.enqueue_event(task)
+            task_updater = TaskUpdater(event_queue, task.id, task.context_id)
+            event_emitter = A2AEvent(task_updater)
 
-        try:
-            output = None
-            # Test MCP connection first
-            logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
+            # Parse Messages
+            messages = [HumanMessage(content=context.get_user_input())]
+            input = {"messages": messages}
+            logger.info(f'Processing messages: {input}')
 
-            mcpclient = get_mcpclient()
+            task_updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-            # Try to get tools to verify connection
             try:
-                tools = await mcpclient.get_tools()
-                logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
-            except Exception as tool_error:
-                logger.error(f'Failed to connect to MCP server: {tool_error}')
-                await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
-                return
+                output = None
+                # Test MCP connection first
+                logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
 
-            graph = await get_graph(mcpclient)
+                mcpclient = get_mcpclient()
 
-            # ============================================================
-            # OPENINFERENCE TRACE CONTEXT
-            # Wrap graph execution with using_attributes and create_agent_span
-            # This ensures all LangChain spans have session.id, user.id, etc.
-            # and are nested under a root AGENT span for easy filtering
-            # ============================================================
-            user_input = context.get_user_input()
+                # Try to get tools to verify connection
+                try:
+                    tools = await mcpclient.get_tools()
+                    logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+                except Exception as tool_error:
+                    logger.error(f'Failed to connect to MCP server: {tool_error}')
+                    await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+                    return
 
-            # Prepare OpenInference attributes
-            oi_session_id = task.context_id if task else baggage_data.get('context_id')
-            oi_user_id = baggage_data.get('user_id', 'anonymous')
-            oi_metadata = {
-                "task_id": task.id if task else baggage_data.get('task_id'),
-                "request_id": baggage_data.get('request_id'),
-            }
+                graph = await get_graph(mcpclient)
 
-            # using_attributes adds session.id, user.id to ALL spans in scope
-            # create_agent_span creates a root AGENT span for the conversation
-            with using_attributes(
-                session_id=oi_session_id,
-                user_id=oi_user_id,
-                metadata=oi_metadata,
-            ):
-                with create_agent_span(
-                    name="weather_agent_task",
-                    task_id=task.id if task else None,
-                    context_id=task.context_id if task else None,
+                # ============================================================
+                # OPENINFERENCE TRACE CONTEXT
+                # Wrap graph execution with using_attributes and create_agent_span
+                # This ensures all LangChain spans have session.id, user.id, etc.
+                # and are nested under a root AGENT span for easy filtering
+                # ============================================================
+                user_input = context.get_user_input()
+
+                # Prepare OpenInference attributes
+                oi_session_id = task.context_id if task else baggage_data.get('context_id')
+                oi_user_id = baggage_data.get('user_id', 'anonymous')
+                oi_metadata = {
+                    "task_id": task.id if task else baggage_data.get('task_id'),
+                    "request_id": baggage_data.get('request_id'),
+                }
+
+                # using_attributes adds session.id, user.id to ALL spans in scope
+                # create_agent_span creates a root AGENT span for the conversation
+                with using_attributes(
+                    session_id=oi_session_id,
                     user_id=oi_user_id,
-                    input_text=user_input,
-                ) as agent_span:
-                    async for event in graph.astream(input, stream_mode="updates"):
-                        await event_emitter.emit_event(
-                            "\n".join(
-                                f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
-                                for key, value in event.items()
+                    metadata=oi_metadata,
+                ):
+                    with create_agent_span(
+                        name="weather_agent_task",
+                        task_id=task.id if task else None,
+                        context_id=task.context_id if task else None,
+                        user_id=oi_user_id,
+                        input_text=user_input,
+                    ) as agent_span:
+                        async for event in graph.astream(input, stream_mode="updates"):
+                            await event_emitter.emit_event(
+                                "\n".join(
+                                    f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
+                                    for key, value in event.items()
+                                )
+                                + "\n"
                             )
-                            + "\n"
-                        )
-                        output = event
-                        logger.info(f'event: {event}')
+                            output = event
+                            logger.info(f'event: {event}')
 
-                    output = output.get("assistant", {}).get("final_answer")
+                        output = output.get("assistant", {}).get("final_answer")
 
-                    # Set output on the agent span
-                    if output:
-                        agent_span.set_attribute("output.value", str(output))
+                        # Set output on the agent span
+                        if output:
+                            agent_span.set_attribute("output.value", str(output))
 
-            await event_emitter.emit_event(str(output), final=True)
-        except Exception as e:
-            logger.error(f'Graph execution error: {e}')
-            await event_emitter.emit_event(f"Error: Failed to process weather request. {str(e)}", failed=True)
-            raise Exception(str(e))
+                await event_emitter.emit_event(str(output), final=True)
+            except Exception as e:
+                logger.error(f'Graph execution error: {e}')
+                await event_emitter.emit_event(f"Error: Failed to process weather request. {str(e)}", failed=True)
+                raise Exception(str(e))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """

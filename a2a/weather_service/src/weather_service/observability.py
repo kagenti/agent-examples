@@ -42,6 +42,10 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.trace import Status, StatusCode
+from opentelemetry.propagate import set_global_textmap, extract, inject
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
 from openinference.instrumentation.langchain import LangChainInstrumentor
 from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
 
@@ -204,8 +208,18 @@ def setup_observability(config: Optional[ObservabilityConfig] = None) -> None:
     # This adds openinference.span.kind attributes to LangChain spans
     LangChainInstrumentor().instrument()
 
+    # Configure W3C Trace Context and Baggage propagators for distributed tracing
+    # This enables trace context propagation across HTTP calls:
+    # - TraceContextTextMapPropagator: handles 'traceparent' header (trace_id + parent_span_id)
+    # - W3CBaggagePropagator: handles 'baggage' header (user metadata like user_id, tenant_id)
+    set_global_textmap(CompositePropagator([
+        TraceContextTextMapPropagator(),
+        W3CBaggagePropagator(),
+    ]))
+
     logger.info("✅ OpenTelemetry observability configured successfully")
     logger.info("✅ LangChain auto-instrumented with OpenInference")
+    logger.info("✅ W3C Trace Context and Baggage propagators configured")
     logger.info("✅ Traces will route to Phoenix project: %s", config.phoenix_project)
 
 
@@ -421,3 +435,76 @@ def create_agent_span(
             span.set_status(Status(StatusCode.ERROR, str(e)))
             span.record_exception(e)
             raise
+
+
+def extract_trace_context(headers: Dict[str, str]) -> context.Context:
+    """
+    Extract trace context from HTTP headers.
+
+    This extracts both W3C Trace Context (traceparent) and Baggage headers,
+    enabling proper parent-child span relationships across service boundaries.
+
+    Args:
+        headers: HTTP headers dict (can be any mapping type)
+
+    Returns:
+        Context with extracted trace information
+
+    Example:
+        >>> # In request handler
+        >>> ctx = extract_trace_context(request.headers)
+        >>> with tracer.start_as_current_span("handle_request", context=ctx):
+        ...     # Spans here are children of the incoming trace
+    """
+    return extract(headers)
+
+
+def inject_trace_context(headers: Dict[str, str]) -> Dict[str, str]:
+    """
+    Inject current trace context into HTTP headers.
+
+    This injects both W3C Trace Context (traceparent) and Baggage headers,
+    enabling proper parent-child span relationships when calling other services.
+
+    Args:
+        headers: Dict to inject headers into (modified in place)
+
+    Returns:
+        The headers dict with trace context added
+
+    Example:
+        >>> # Before making HTTP call
+        >>> headers = {"Content-Type": "application/json"}
+        >>> inject_trace_context(headers)
+        >>> response = await client.post(url, headers=headers)
+    """
+    inject(headers)
+    return headers
+
+
+@contextmanager
+def trace_context_from_headers(headers: Dict[str, str]):
+    """
+    Context manager that activates trace context from HTTP headers.
+
+    Use this to wrap request handling code so that all spans created
+    within the context become children of the incoming trace.
+
+    Args:
+        headers: HTTP headers containing traceparent/baggage
+
+    Yields:
+        The extracted context
+
+    Example:
+        >>> async def handle_request(request):
+        ...     with trace_context_from_headers(request.headers) as ctx:
+        ...         # All spans here are connected to incoming trace
+        ...         result = await process_message(request.message)
+    """
+    ctx = extract(headers)
+    token = context.attach(ctx)
+    try:
+        yield ctx
+    finally:
+        context.detach(token)
