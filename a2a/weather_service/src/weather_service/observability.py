@@ -38,7 +38,6 @@ import os
 from typing import Dict, Any, Optional
 from contextlib import contextmanager
 from opentelemetry import trace, baggage, context
-from opentelemetry.context import Context
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.sdk.resources import Resource
@@ -369,7 +368,6 @@ def create_agent_span(
     context_id: Optional[str] = None,
     user_id: Optional[str] = None,
     input_text: Optional[str] = None,
-    as_root: bool = True,
 ):
     """
     Create a root AGENT span for the conversation with OpenInference attributes.
@@ -383,7 +381,6 @@ def create_agent_span(
         context_id: A2A context ID (conversation session)
         user_id: User identifier
         input_text: The user's input message
-        as_root: If True, creates a true root span with no parent (default: True)
 
     Yields:
         The created span
@@ -416,11 +413,7 @@ def create_agent_span(
     if input_text:
         attributes[SpanAttributes.INPUT_VALUE] = input_text
 
-    # Use empty Context() to create a true root span (no parent inheritance)
-    # This prevents inheriting parentId from A2A SDK telemetry spans
-    span_context = Context() if as_root else None
-
-    with tracer.start_as_current_span(name, attributes=attributes, context=span_context) as span:
+    with tracer.start_as_current_span(name, attributes=attributes) as span:
         try:
             yield span
             span.set_status(Status(StatusCode.OK))
