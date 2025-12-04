@@ -107,37 +107,60 @@ class ImageExecutor(AgentExecutor):
             async for event in graph.astream(input, stream_mode="updates"):
                 await event_emitter.emit_event(
                     "\n".join(
-                        f"{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
+                        f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
                         for key, value in event.items()
                     )
                     + "\n"
                 )
                 output = event
+                logger.info(f'event: {event}')
             
-            result =  output.get("assistant", {}).get("final_answer")
+            # Try to get final_answer from the assistant state
+            result = output.get("assistant", {}).get("final_answer")
+
+            # If no final_answer found (e.g. no tool called), try to get the last message content
+            if not result:
+                messages = output.get("assistant", {}).get("messages", [])
+                if messages:
+                    last_msg = messages[-1]
+                    # Check if it's an AIMessage or similar with content
+                    if hasattr(last_msg, "content"):
+                         result = last_msg.content
+                    elif isinstance(last_msg, dict) and "content" in last_msg:
+                         result = last_msg["content"]
+
+            # If we still have no result, just return
+            if not result:
+                return
 
             try:
-                image_base64 = result.get("image_base64")
-                image_url = result.get("url")
+                # Check if it looks like our image result structure
+                if isinstance(result, dict) and "image_base64" in result:
+                    image_base64 = result.get("image_base64")
+                    image_url = result.get("url")
 
-                if isinstance(image_base64, (bytes, bytearray)):
-                    content_b64 = base64.b64encode(image_base64).decode("utf-8")
-                else:
-                    content_b64 = str(image_base64)
+                    if isinstance(image_base64, (bytes, bytearray)):
+                        content_b64 = base64.b64encode(image_base64).decode("utf-8")
+                    else:
+                        content_b64 = str(image_base64)
 
-                parts = [
-                    DataPart(
-                        data={
-                            "content": content_b64,
-                            "content_encoding": "base64",
-                            "content_type": "image/png",
-                            "source_url": image_url,
-                        }
-                    )
-                ]
+                    parts = [
+                        DataPart(
+                            data={
+                                "content": content_b64,
+                                "content_encoding": "base64",
+                                "content_type": "image/png",
+                                "source_url": image_url,
+                            }
+                        )
+                    ]
 
-                await task_updater.add_artifact(parts, name="image.png")
-                await task_updater.complete()
+                    await task_updater.add_artifact(parts, name="image.png")
+                    await task_updater.complete()
+                    return
+                
+                # Fallback: treat as text
+                await event_emitter.emit_event(str(result), final=True)
                 return
             except Exception as e:
                 err_msg = f"Error processing graph result: {e}"
