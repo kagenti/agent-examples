@@ -171,7 +171,7 @@ class ImageExecutor(AgentExecutor):
         raise Exception("cancel not supported")
 
 def run():
-    agent_card = get_agent_card(host="0.0.0.0", port=8001)
+    agent_card = get_agent_card(host="0.0.0.0", port=8000)
 
     request_handler = DefaultRequestHandler(
         agent_executor=ImageExecutor(),
@@ -182,4 +182,4 @@ def run():
         agent_card=agent_card,
         http_handler=request_handler,
     )
-    uvicorn.run(server.build(), host="0.0.0.0", port=int(os.getenv("IMAGE_AGENT_PORT", "8001")))
+    uvicorn.run(server.build(), host="0.0.0.0", port=int(os.getenv("IMAGE_AGENT_PORT", "8000")))
