@@ -18,7 +18,7 @@ class ExtendedMessagesState(MessagesState):
 
 def get_mcpclient():
     return MultiServerMCPClient({
-        "math": {
+        "image": {
             "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
             "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
         }
@@ -37,12 +37,22 @@ async def get_graph(client) -> StateGraph:
     llm_with_tools = llm.bind_tools(tools)
 
     # System message
-    sys_msg = SystemMessage(content="You are a helpful assistant that provides random images. When a user requests an image, call the get_image tool with the specified height and width dimensions.")
+    sys_msg = SystemMessage(content="""You are a helpful assistant. Only call the get_image tool when the user EXPLICITLY asks for an image with specific dimensions (e.g., 'show me an image', 'generate an image 400x400', 'image 200 300'). 
+                                        For any conversation that does NOT explicitly request an image, respond directly with text. DO NOT call any tools for these cases.
+                                        When you do call get_image, you MUST provide valid positive integers for both height and width parameters.""")
 
     # Node
     def assistant(state: ExtendedMessagesState) -> ExtendedMessagesState:
-        # Invoke LLM and append its response to the conversation
-        result = llm_with_tools.invoke([sys_msg] + state["messages"])
+        # Only call tool if the user's message is asking for an image
+        user_message = state["messages"][-1].content.lower() if state["messages"] else ""
+        is_image_request = any(keyword in user_message for keyword in [
+            "image", "picture", "photo", "generate", "show me", "give me"
+        ]) and any(dim in user_message for dim in ["x", "100", "200", "300", "400", "500", "600", "700", "800", "900", "1000"])
+        if is_image_request:
+            result = llm_with_tools.invoke([sys_msg] + state["messages"])
+        else:
+            result = llm.invoke([sys_msg] + state["messages"])
+        
         state["messages"].append(result)
 
         # Find the most recent ToolMessage and set its content as final_answer

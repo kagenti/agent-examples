@@ -29,7 +29,7 @@ def get_agent_card(host: str, port: int):
         name="Image Agent",
         description="Agent that requests an image from the image MCP tool and returns the base64 to the UI.",
         tags=["image"],
-        examples=["image 200 300", "show me an image 400x400"],
+        examples=["give me a 100x100 image", "show me an image 400x400"],
     )
     return AgentCard(
         name="Image Agent",
@@ -38,7 +38,7 @@ def get_agent_card(host: str, port: int):
             This agent fetches an image from the MCP `image_tool` and returns the base64-encoded
             image (and original URL) back to the UI as a JSON artifact.
 
-            Input: a short text that may include two integers (height width). Defaults to 200x300.
+            Input: a short text that may include two integers (height width).
             """
         ),
         url=f"http://{host}:{port}/",
@@ -107,31 +107,23 @@ class ImageExecutor(AgentExecutor):
             async for event in graph.astream(input, stream_mode="updates"):
                 await event_emitter.emit_event(
                     "\n".join(
-                        f"🚶‍♂️{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
+                        f"{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
                         for key, value in event.items()
                     )
                     + "\n"
                 )
                 output = event
-                logger.info(f'event: {event}')
-            
-            # Try to get final_answer from the assistant state
+        
             result = output.get("assistant", {}).get("final_answer")
 
-            # If no final_answer found (e.g. no tool called), try to get the last message content
             if not result:
                 messages = output.get("assistant", {}).get("messages", [])
                 if messages:
                     last_msg = messages[-1]
-                    # Check if it's an AIMessage or similar with content
                     if hasattr(last_msg, "content"):
-                         result = last_msg.content
+                        result = last_msg.content
                     elif isinstance(last_msg, dict) and "content" in last_msg:
-                         result = last_msg["content"]
-
-            # If we still have no result, just return
-            if not result:
-                return
+                        result = last_msg["content"]
 
             try:
                 # Check if it looks like our image result structure
@@ -171,14 +163,15 @@ class ImageExecutor(AgentExecutor):
         except Exception as e:
             logger.error(f'Graph execution error: {e}')
             await event_emitter.emit_event(f"Error: Failed to process image request. {str(e)}", failed=True)
-            raise Exception(str(e))
+            # Do not re-raise exception to avoid breaking SSE stream with a 500 response
+            return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Not implemented"""
         raise Exception("cancel not supported")
 
 def run():
-    agent_card = get_agent_card(host="0.0.0.0", port=8000)
+    agent_card = get_agent_card(host="0.0.0.0", port=8001)
 
     request_handler = DefaultRequestHandler(
         agent_executor=ImageExecutor(),
@@ -189,4 +182,4 @@ def run():
         agent_card=agent_card,
         http_handler=request_handler,
     )
-    uvicorn.run(server.build(), host="0.0.0.0", port=int(os.getenv("IMAGE_AGENT_PORT", "8000")))
+    uvicorn.run(server.build(), host="0.0.0.0", port=int(os.getenv("IMAGE_AGENT_PORT", "8001")))
