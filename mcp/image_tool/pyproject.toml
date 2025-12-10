@@ -1,0 +1,10 @@
+[project]
+name = "image_tool"
+version = "0.1.0"
+description = "MCP tool for returning images from picsum.photos"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.11.0",
+    "requests>=2.0.0",
+]
