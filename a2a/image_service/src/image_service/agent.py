@@ -29,7 +29,7 @@ def get_agent_card(host: str, port: int):
         name="Image Agent",
         description="Agent that requests an image from the image MCP tool and returns the base64 to the UI.",
         tags=["image"],
-        examples=["give me a 100x100 image", "show me an image 400x400"],
+        examples=["give me a 100x100 image", "show me an image that is 400 by 400"],
     )
     return AgentCard(
         name="Image Agent",

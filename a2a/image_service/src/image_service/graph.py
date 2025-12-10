@@ -5,32 +5,28 @@ from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
 import os
 import json
-import logging
 from image_service.configuration import Configuration
 from typing import Optional
 
-logger = logging.getLogger(__name__)
 config = Configuration()
-
-_mcp_client = MultiServerMCPClient({
-    "image": {
-        "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
-        "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
-    }
-})
 
 # Extend MessagesState to include a final answer
 class ExtendedMessagesState(MessagesState):
     final_answer: Optional[dict] = None
 
 def get_mcpclient():
-    return _mcp_client
+    return MultiServerMCPClient({
+        "image": {
+            "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+        }
+    })
 
 async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
         model=config.llm_model,
         openai_api_key=config.llm_api_key,
-        openai_api_base=str(config.llm_api_base),
+        openai_api_base=config.llm_api_base,
         temperature=0,
     )
 
