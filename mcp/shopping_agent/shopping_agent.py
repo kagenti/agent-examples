@@ -86,11 +86,11 @@ def recommend_products(query: str, maxResults: int = 10) -> str:
             products.append(product)
             
         # Fallback to regular search if no shopping results found
-        if not products and "organic_results" in results:
-            logger.info("No shopping results found, falling back to organic results")
-            # This might happen if we switch engine to 'google' or if shopping has no results
-            # But with engine='google_shopping', we should get shopping_results
-            pass
+        # if not products and "organic_results" in results:
+        #     logger.info("No shopping results found, falling back to organic results")
+        #     This might happen if we switch engine to 'google' or if shopping has no results
+        #     But with engine='google_shopping', we should get shopping_results
+        #     (No fallback implemented)
             
         return json.dumps({
             "query": query,
