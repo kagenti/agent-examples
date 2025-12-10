@@ -203,15 +203,12 @@ My top recommendation is the Winter Wool Scarf for its superior quality and warm
 - **Authentication**: API key via environment variable
 - **Results**: Aggregated product listings
 
-### LangChain Components
+### SerpAPI Integration
 
-```
-langchain_community.utilities.SerpAPIWrapper
-    ├── Search query optimization
-    ├── Result parsing
-    └── API key management
-```
-
+The system uses the SerpAPI Python client directly for product search. 
+- **Search query construction**: Queries are constructed based on user input and sent to SerpAPI.
+- **Result parsing**: The JSON response from SerpAPI is parsed to extract relevant product information.
+- **API key management**: The SerpAPI API key is managed via environment variables.
 ## Error Handling
 
 ### Error Flow
