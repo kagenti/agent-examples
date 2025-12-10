@@ -209,7 +209,6 @@ The Shopping Agent uses a simple, efficient architecture:
 | Technology | Purpose |
 |------------|---------|
 | **FastMCP** | MCP server framework for tool exposure |
-| **LangChain Community** | SerpAPI wrapper utilities |
 | **SerpAPI** | Real-time product search across retailers |
 
 ## Configuring Your AI Agent
