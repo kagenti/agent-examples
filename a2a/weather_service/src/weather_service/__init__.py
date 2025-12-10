@@ -1,16 +1,12 @@
-from opentelemetry.sdk.resources import Resource
-from opentelemetry import trace
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+"""
+Weather Service - OpenTelemetry Observability Setup
 
-def setup_tracer():
-    resource = Resource.create(attributes={
-        "service.name": "a2a-server",
-    })
-    provider = TracerProvider(resource=resource)
-    processor = BatchSpanProcessor(OTLPSpanExporter())
-    provider.add_span_processor(processor)
-    trace.set_tracer_provider(provider)
+This module initializes OpenTelemetry tracing with OpenInference instrumentation
+for automatic LLM observability in Phoenix.
+"""
 
-setup_tracer()
+from weather_service.observability import setup_observability
+
+# Set up OpenTelemetry tracing with OpenInference
+# This must run before importing agent code to ensure instrumentation is active
+setup_observability()
