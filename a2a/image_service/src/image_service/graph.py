@@ -30,7 +30,7 @@ async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
         model=config.llm_model,
         openai_api_key=config.llm_api_key,
-        openai_api_base=config.llm_api_base,
+        openai_api_base=str(config.llm_api_base),
         temperature=0,
     )
 
