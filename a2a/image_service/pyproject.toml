@@ -1,7 +1,7 @@
 [project]
 name = "image-service"
 version = "0.0.1"
-description = "Simple ollama-based Langgraph agent with MCP tool calling."
+description = "Simple LangGraph agent with MCP tool calling for image generation."
 readme = "README.md"
 license = { text = "Apache" }
 requires-python = ">=3.11"

@@ -86,25 +86,23 @@ class ImageExecutor(AgentExecutor):
         event_emitter = ImageEvent(task_updater)
 
         try:
-            output = None
             # Test MCP connection first
-            logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
+            logger.info('Attempting to connect to MCP server at: %s', os.getenv("MCP_URL", "http://localhost:8000/sse"))
             mcpclient = get_mcpclient()
-
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+                logger.info('Successfully connected to MCP server. Available tools: %s', [tool.name for tool in tools])
             except Exception as tool_error:
                 logger.error(f'Failed to connect to MCP server: {tool_error}')
-                await event_emitter.emit_event(f"Error: Cannot connect to MCP image service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the image MCP server is running. Error: {tool_error}", failed=True)
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP image service at {os.getenv('MCP_URL', 'http://localhost:8000/mcp')}. Please ensure the image MCP server is running. Error: {tool_error}", failed=True)
                 return
 
             graph = await get_graph(mcpclient)
             messages = [HumanMessage(content=context.get_user_input())]
-            input = {"messages": messages}
+            graph_input = {"messages": messages}
             output = None
-            async for event in graph.astream(input, stream_mode="updates"):
+            async for event in graph.astream(graph_input, stream_mode="updates"):
                 await event_emitter.emit_event(
                     "\n".join(
                         f"{key}: {str(value)[:100] + '...' if len(str(value)) > 100 else str(value)}"
@@ -124,6 +122,10 @@ class ImageExecutor(AgentExecutor):
                         result = last_msg.content
                     elif isinstance(last_msg, dict) and "content" in last_msg:
                         result = last_msg["content"]
+                    else:
+                        result = ""
+                else:
+                    result = ""
 
             try:
                 # Check if it looks like our image result structure
@@ -161,9 +163,8 @@ class ImageExecutor(AgentExecutor):
                 return
 
         except Exception as e:
-            logger.error(f'Graph execution error: {e}')
-            await event_emitter.emit_event(f"Error: Failed to process image request. {str(e)}", failed=True)
-            # Do not re-raise exception to avoid breaking SSE stream with a 500 response
+            logger.exception('Graph execution error')
+            await event_emitter.emit_event(f"Error: Failed to process image request. {type(e).__name__}: {str(e)}", failed=True)
             return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
