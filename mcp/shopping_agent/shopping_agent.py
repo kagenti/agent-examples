@@ -5,7 +5,6 @@ import os
 import sys
 import json
 import logging
-from typing import Dict, Any, List
 from fastmcp import FastMCP
 from serpapi import GoogleSearch
 
