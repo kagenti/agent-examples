@@ -19,32 +19,14 @@ _mcp_client = MultiServerMCPClient({
     }
 })
 
-# Cache for the compiled graph to avoid expensive recompilation on every request
-_compiled_graph = None
-
 # Extend MessagesState to include a final answer
 class ExtendedMessagesState(MessagesState):
     final_answer: Optional[dict] = None
 
 def get_mcpclient():
-    """
-    Return the shared MultiServerMCPClient instance.
-    This client is reused across requests for better performance.
-    """
     return _mcp_client
 
 async def get_graph(client) -> StateGraph:
-    """
-    Get or create the compiled LangGraph graph.
-    The graph is compiled once on first call and cached for reuse across requests.    
-    Note: If tools need to be dynamically reloaded (e.g., MCP server changes),
-    you would need to clear the cache by setting _compiled_graph = None.
-    """
-    global _compiled_graph
-    
-    # Return cached graph if available
-    if _compiled_graph is not None:
-        return _compiled_graph
     llm = ChatOpenAI(
         model=config.llm_model,
         openai_api_key=config.llm_api_key,
@@ -117,7 +99,6 @@ async def get_graph(client) -> StateGraph:
         should_continue,
     )
 
-    # Compile graph and cache it for reuse
+    # Compile and return graph
     graph = builder.compile()
-    _compiled_graph = graph
-    return _compiled_graph
+    return graph
