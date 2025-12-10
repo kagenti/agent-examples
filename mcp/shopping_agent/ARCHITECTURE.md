@@ -438,7 +438,7 @@ Agent: [Analyzes products and responds to user with]:
 |-------|-----------|---------|
 | **Protocol** | FastMCP | MCP server framework |
 | **Search** | SerpAPI | Product search across retailers |
-| **Integration** | LangChain Community | SerpAPI wrapper utilities |
+| **Integration** | serpapi package | Direct SerpAPI integration utilities |
 | **Runtime** | Python 3.10+ | Application runtime |
 | **Package Manager** | uv | Fast Python package management |
 | **Containerization** | Docker | Deployment and isolation |
