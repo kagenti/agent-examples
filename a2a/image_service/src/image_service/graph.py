@@ -66,7 +66,6 @@ async def get_graph(client) -> StateGraph:
                 else:
                     state["final_answer"] = content
             except Exception as e:
-                logger.error("Assistant node: error processing ToolMessage: %s", e)
                 state["final_answer"] = {
                     "error": "Failed to process tool result",
                     "details": str(e)
