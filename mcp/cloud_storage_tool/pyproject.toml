@@ -1,0 +1,13 @@
+[project]
+name = "cloud-storage-tool"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "fastmcp",
+    "google-cloud-storage",
+    "jwt",
+    "boto3",
+    "azure-storage-blob"
+]
