@@ -31,6 +31,10 @@ data:
     [
       {"name": "MCP_URL", "value": "http://slack-tool:8000/mcp"}
     ]
+  mcp-reservations: |
+    [
+      {"name": "MCP_URL", "value": "http://reservation-tool:8000/mcp"}
+    ]
   mcp-slack-config: |
     [
       {

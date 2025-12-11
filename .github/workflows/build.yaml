@@ -28,10 +28,14 @@ jobs:
           - name: slack_researcher
             path: ./a2a
           - name: weather_service
-            path: ./a2a  
+            path: ./a2a
+          - name: reservation_service
+            path: ./a2a
           - name: weather_tool
             path: ./mcp
           - name: slack_tool
+            path: ./mcp
+          - name: reservation_tool
             path: ./mcp
 
     steps:

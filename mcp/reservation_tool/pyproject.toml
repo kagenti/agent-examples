@@ -1,0 +1,18 @@
+[project]
+name = "reservation_tool"
+version = "0.1.0"
+description = "Restaurant reservation MCP server with provider abstraction"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.11.0",
+    "pydantic>=2.0.0",
+    "pyjwt>=2.8.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0.0",
+    "pytest-asyncio>=0.21.0",
+    "flake8>=6.0.0",
+]
