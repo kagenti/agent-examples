@@ -51,3 +51,7 @@ data:
     [
       {"name": "MCP_URL", "value": "http://flight-tool:8000/mcp"}
     ]
+  mcp-image: |
+    [
+      {"name": "MCP_URL", "value": "http://image-tool:8000/mcp"}
+    ]
