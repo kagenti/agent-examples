@@ -1,0 +1,21 @@
+# Shopping Agent MCP Server Configuration Example
+# Copy this file to .env or export these variables in your shell
+
+
+# Required: SerpAPI Key
+# Get your key from: https://serpapi.com/manage-api-key
+export SERPAPI_API_KEY="your-serpapi-key-here"
+
+# Optional: Server Configuration
+# Host address (default: 0.0.0.0)
+export HOST="0.0.0.0"
+
+# Server port (default: 8000)
+export PORT="8000"
+
+# MCP transport type (default: http)
+export MCP_TRANSPORT="http"
+
+# Logging level (default: INFO)
+# Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+export LOG_LEVEL="INFO"
