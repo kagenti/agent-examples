@@ -137,7 +137,7 @@ After adding the new env vars, apply to Kagenti using `kubectl apply -n team1 -f
 Now that the environment variables are available, start an instance of the tool
 
 - Browse to http://kagenti-ui.localtest.me:8080/Import_New_Tool
-- Select namespace (e.g. `team1`)
+- Select namespace 
 - Set the Target Port to 9090
 - Specify Subfolder `mcp/github_tool`
 - Click "Build & Deploy New Tool" to deploy.

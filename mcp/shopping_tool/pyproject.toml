@@ -1,0 +1,15 @@
+[project]
+name = "shopping_agent"
+version = "0.1.0"
+description = "Shopping Agent MCP Tool using SerpAPI for product search"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=2.11.0",
+    "google-search-results>=2.4.2",
+    "requests>=2.32.3",
+]
+
+[tool.setuptools]
+py-modules = ["shopping_agent"]
+
