@@ -42,6 +42,18 @@ data:
         "valueFrom": {"secretKeyRef": {"name": "slack-secret", "key": "bot-token"}}
       }
     ]
+  # mcp shopping uses http transport
+  mcp-shopping: |
+    [
+      {"name": "MCP_URL", "value": "http://shopping-tool:8000/mcp"}
+    ]
+  mcp-shopping-config: |
+    [
+      {
+        "name": "SERPAPI_API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "shopping-secret", "key": "serpapi-key"}}
+      }
+    ]
   slack-researcher-config: |
     [
       {"name": "TASK_MODEL_ID", "value": "granite3.3:8b"},
