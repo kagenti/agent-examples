@@ -1,5 +1,6 @@
 import os
 import signal
+import subprocess
 import sys
 from multiprocessing import Process
 
@@ -43,9 +44,33 @@ def run_mcp() -> None:
 
 
 def main() -> None:
+    # Set APPWORLD_ROOT to a writable location in Kubernetes
     appworld_root = os.environ.get("APPWORLD_ROOT")
-    if appworld_root:
-        update_root(appworld_root)
+    if not appworld_root:
+        # Default to /tmp which is writable in K8s
+        appworld_root = "/tmp/appworld"
+        os.environ["APPWORLD_ROOT"] = appworld_root
+    
+    # Ensure the directory exists
+    os.makedirs(appworld_root, exist_ok=True)
+    update_root(appworld_root)
+    
+    # Run appworld install if not already installed
+    try:
+        from appworld.cli import verify_fully_installed
+        try:
+            verify_fully_installed()
+        except Exception:
+            # Installation needed - run it
+            print("Running appworld install...")
+            subprocess.run(
+                ["appworld", "install"],
+                check=True,
+                env={**os.environ, "APPWORLD_ROOT": appworld_root}
+            )
+            print("appworld install completed successfully")
+    except Exception as e:
+        print(f"Warning during installation check: {e}")
 
     apis_process = Process(target=run_apis)
     mcp_process = Process(target=run_mcp)
