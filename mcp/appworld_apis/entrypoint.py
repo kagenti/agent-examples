@@ -24,7 +24,8 @@ def run_apis() -> None:
 def run_mcp() -> None:
     from appworld.serve import _mcp
 
-    transport = os.environ.get("MCP_TRANSPORT", "http")
+    #transport = os.environ.get("MCP_TRANSPORT", "http")
+    transport = "http"
     port = int(os.environ.get("MCP_PORT", "8001"))
     remote_apis_url = os.environ.get("REMOTE_APIS_URL", "http://localhost:8000")
     output_type = os.environ.get("MCP_OUTPUT_TYPE", "both")
