@@ -37,6 +37,7 @@ ENV APIS_PORT=8000 \
     APIS_ON_DISK=1 \
     MCP_TRANSPORT=http \
     MCP_PORT=8001 \
+    APPWORLD_ROOT=/app \
     REMOTE_APIS_URL=http://localhost:8000
 
 CMD ["python", "/app/entrypoint.py"]
