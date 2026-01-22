@@ -22,12 +22,14 @@ RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && pip install ".[mcp]" \
     && appworld install \
     && cd /app \
-    && appworld download data \
-    && cd / \
-    && rm -rf /tmp/appworld
+    && appworld download data
 
+# Keep git and source files for runtime - needed by appworld in Kubernetes
+# RUN apt-get purge -y --auto-remove build-essential python3-dev git \
+#     && rm -rf /var/lib/apt/lists/*
 
-RUN apt-get purge -y --auto-remove build-essential python3-dev git \
+# Clean up only build tools, keep git and git-lfs
+RUN apt-get purge -y --auto-remove build-essential python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
 
@@ -37,7 +39,6 @@ ENV APIS_PORT=8000 \
     APIS_ON_DISK=1 \
     MCP_TRANSPORT=http \
     MCP_PORT=8001 \
-    APPWORLD_ROOT=/app \
     REMOTE_APIS_URL=http://localhost:8000
 
 CMD ["python", "/app/entrypoint.py"]
