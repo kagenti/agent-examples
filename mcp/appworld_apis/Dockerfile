@@ -3,7 +3,8 @@ FROM python:3.11-slim
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     NO_SHOW_URLS=1 \
-    PYTHONPATH=/app/src
+    PYTHONPATH=/app/src \
+    APPWORLD_CACHE=/app/.cache/appworld
 
 WORKDIR /app
 
@@ -19,8 +20,8 @@ RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && git lfs pull \
     && pip install "." \
     && pip install ".[mcp]" \
-    && appworld install \
     && cd /app \
+    && appworld install \
     && appworld download data
 
 # Keep git and source files for runtime - needed by appworld in Kubernetes
