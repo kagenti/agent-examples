@@ -2,7 +2,6 @@ FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
-    APPWORLD_ROOT=/data/appworld \
     NO_SHOW_URLS=1 \
     PYTHONPATH=/app/src
 

@@ -13,7 +13,42 @@ def _str_is_true(value: str | None) -> bool:
     return value.lower() in {"1", "true", "yes", "on"}
 
 
+def ensure_appworld_installed() -> None:
+    """Ensure appworld is fully installed before any imports that require it."""
+    # Set APPWORLD_ROOT to a writable location in Kubernetes
+    appworld_root = os.environ.get("APPWORLD_ROOT")
+    if not appworld_root:
+        # Default to /tmp which is writable in K8s
+        appworld_root = "/tmp/appworld"
+        os.environ["APPWORLD_ROOT"] = appworld_root
+    
+    # Ensure the directory exists
+    os.makedirs(appworld_root, exist_ok=True)
+    update_root(appworld_root)
+    
+    # Run appworld install if not already installed
+    try:
+        from appworld.cli import verify_fully_installed
+        try:
+            verify_fully_installed()
+            print("appworld is already fully installed")
+        except Exception as e:
+            # Installation needed - run it
+            print(f"appworld not fully installed: {e}")
+            print("Running appworld install...")
+            subprocess.run(
+                ["appworld", "install"],
+                check=True,
+                env={**os.environ, "APPWORLD_ROOT": appworld_root}
+            )
+            print("appworld install completed successfully")
+    except Exception as e:
+        print(f"Error during installation check: {e}")
+        raise
+
+
 def run_apis() -> None:
+    # Import only after ensuring appworld is installed
     from appworld.serve.apis import run
 
     port = int(os.environ.get("APIS_PORT", "8000"))
@@ -23,6 +58,7 @@ def run_apis() -> None:
 
 
 def run_mcp() -> None:
+    # Import only after ensuring appworld is installed
     from appworld.serve import _mcp
 
     #transport = os.environ.get("MCP_TRANSPORT", "http")
@@ -44,33 +80,8 @@ def run_mcp() -> None:
 
 
 def main() -> None:
-    # Set APPWORLD_ROOT to a writable location in Kubernetes
-    appworld_root = os.environ.get("APPWORLD_ROOT")
-    if not appworld_root:
-        # Default to /tmp which is writable in K8s
-        appworld_root = "/tmp/appworld"
-        os.environ["APPWORLD_ROOT"] = appworld_root
-    
-    # Ensure the directory exists
-    os.makedirs(appworld_root, exist_ok=True)
-    update_root(appworld_root)
-    
-    # Run appworld install if not already installed
-    try:
-        from appworld.cli import verify_fully_installed
-        try:
-            verify_fully_installed()
-        except Exception:
-            # Installation needed - run it
-            print("Running appworld install...")
-            subprocess.run(
-                ["appworld", "install"],
-                check=True,
-                env={**os.environ, "APPWORLD_ROOT": appworld_root}
-            )
-            print("appworld install completed successfully")
-    except Exception as e:
-        print(f"Warning during installation check: {e}")
+    # Ensure appworld is installed BEFORE starting any processes
+    ensure_appworld_installed()
 
     apis_process = Process(target=run_apis)
     mcp_process = Process(target=run_mcp)
