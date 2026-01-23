@@ -15,36 +15,58 @@ def _str_is_true(value: str | None) -> bool:
 
 def ensure_appworld_installed() -> None:
     """Ensure appworld is fully installed before any imports that require it."""
-    # Set APPWORLD_ROOT to a writable location in Kubernetes
-    appworld_root = os.environ.get("APPWORLD_ROOT")
-    if not appworld_root:
-        # Default to /tmp which is writable in K8s
-        appworld_root = "/tmp/appworld"
-        os.environ["APPWORLD_ROOT"] = appworld_root
+    appworld_root = os.environ.get("APPWORLD_ROOT", "/app")
+    
+    print(f"APPWORLD_ROOT is set to: {appworld_root}")
     
     # Ensure the directory exists
     os.makedirs(appworld_root, exist_ok=True)
     update_root(appworld_root)
     
-    # Run appworld install if not already installed
-    try:
-        from appworld.cli import verify_fully_installed
-        try:
-            verify_fully_installed()
-            print("appworld is already fully installed")
-        except Exception as e:
-            # Installation needed - run it
-            print(f"appworld not fully installed: {e}")
-            print("Running appworld install...")
-            subprocess.run(
-                ["appworld", "install"],
-                check=True,
-                env={**os.environ, "APPWORLD_ROOT": appworld_root}
-            )
-            print("appworld install completed successfully")
-    except Exception as e:
-        print(f"Error during installation check: {e}")
-        raise
+    # Monkey-patch the verify function BEFORE any imports that use it
+    # This prevents the exception from being raised during module imports
+    import appworld.cli
+    original_verify = appworld.cli.verify_fully_installed
+    
+    # Track if we've already checked/installed
+    installation_checked = False
+    
+    def patched_verify():
+        """Patched version that doesn't raise during imports."""
+        nonlocal installation_checked
+        if not installation_checked:
+            # First time - do the actual check and install if needed
+            installation_checked = True
+            try:
+                original_verify()
+                print("✓ appworld is fully installed")
+            except Exception as e:
+                print(f"✗ appworld not fully installed: {e}")
+                print("Running appworld install...")
+                try:
+                    result = subprocess.run(
+                        ["appworld", "install"],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        env={**os.environ, "APPWORLD_ROOT": appworld_root}
+                    )
+                    print(result.stdout)
+                    print("✓ appworld install completed successfully")
+                    # Verify it worked
+                    original_verify()
+                except subprocess.CalledProcessError as install_error:
+                    print(f"✗ Installation failed: {install_error}")
+                    print(f"stdout: {install_error.stdout}")
+                    print(f"stderr: {install_error.stderr}")
+                    raise
+        # After first check, always succeed (don't raise)
+    
+    # Replace the function globally
+    appworld.cli.verify_fully_installed = patched_verify
+    
+    # Trigger the check now
+    patched_verify()
 
 
 def run_apis() -> None:
