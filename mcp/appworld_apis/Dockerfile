@@ -9,7 +9,10 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 # Create non-root user early
-RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser
+RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser \
+    && mkdir /home/appuser \
+    && chown -R appuser:appuser /home/appuser \
+    && chown -R appuser:appuser /app
 
 COPY entrypoint.py /app/entrypoint.py
 
@@ -18,22 +21,28 @@ RUN apt-get update \
     && git lfs install \
     && pip install "typer<0.13.0" "click<8.2.0"
 
+# Switch to non-root user
+USER appuser
+
+# Add .local/bin to PATH for the appuser
+ENV PATH="/home/appuser/.local/bin:${PATH}"
+
 RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && cd /tmp/appworld \
     && git lfs pull \
-    && pip install ".[mcp]"\
+    && pip install ".[mcp]" \
     && cd /app \
     && appworld install \
     && appworld download data
+
+# Switch back to root to clean up
+USER root
 
 # Clean up only build tools, keep git and git-lfs
 RUN apt-get purge -y --auto-remove build-essential python3-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Set ownership of /app directory to non-root user
-RUN chown -R appuser:appuser /app
-
-# Switch to non-root user
+# Switch back to non-root user for runtime
 USER appuser
 
 EXPOSE 8000 8001
