@@ -24,14 +24,9 @@ RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && appworld install \
     && appworld download data
 
-# Keep git and source files for runtime - needed by appworld in Kubernetes
-# RUN apt-get purge -y --auto-remove build-essential python3-dev git \
-#     && rm -rf /var/lib/apt/lists/*
-
 # Clean up only build tools, keep git and git-lfs
 RUN apt-get purge -y --auto-remove build-essential python3-dev \
     && rm -rf /var/lib/apt/lists/*
-
 
 EXPOSE 8000 8001
 

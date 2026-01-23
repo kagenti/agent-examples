@@ -46,6 +46,7 @@ def main() -> None:
     appworld_root = os.environ.get("APPWORLD_ROOT")
     if appworld_root:
         update_root(appworld_root)
+    print(appworld_root, os.environ.get("APPWORLD_CACHE"))
 
     apis_process = Process(target=run_apis)
     mcp_process = Process(target=run_mcp)
