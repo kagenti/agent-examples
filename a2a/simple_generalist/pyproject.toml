@@ -1,0 +1,32 @@
+[project]
+name = "simple-generalist"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+description = "A generalist AG2 agent exposed via A2A, powered by MCP tools"
+dependencies = [
+    "python-dotenv>=1.1.0",
+    "a2a-sdk[http-server]>=0.3.22",
+    "ag2[openai,mcp]>=0.8.0",
+    "httpx>=0.28.1",
+    "pydantic>=2.10.6",
+    "pydantic-settings>=2.7.1",
+    "uvicorn>=0.34.0",
+    "openlit"
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.3.4",
+    "pytest-asyncio>=0.24.0",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[project.scripts]
+server = "simple_generalist.main:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
