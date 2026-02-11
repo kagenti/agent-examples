@@ -85,13 +85,24 @@ class Settings(BaseSettings):
         os.getenv("JWKS_URI", None),
         description="Endpoint to obtain JWKS from auth server"
     )
+    AUDIENCE: Optional[str] = Field(
+        os.getenv("AUDIENCE", get_client_id_from_svid()),
+        description="Expected audience value during resource validation"
+    )
 
     # auth variables for token exchange
     TOKEN_URL: Optional[str] = Field(
         os.getenv("TOKEN_URL", None),
         description="Token endpoint to obtain new access tokens"
     )
-
+    CLIENT_ID: Optional[str] = Field(
+        get_client_id_from_svid(),
+        description="Client ID to authenticate to OAuth server"
+    )
+    CLIENT_SECRET: Optional[str] = Field(
+        get_client_secret_from_svid(secret_file_path),
+        description="Client secret to authenticate to OAuth server"
+    )
     TARGET_SCOPES: Optional[str] = Field(
         os.getenv("TARGET_SCOPES", None),
         description="Target scopes to request during token exchange"
