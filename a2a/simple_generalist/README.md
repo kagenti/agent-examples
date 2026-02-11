@@ -2,6 +2,8 @@
 
 This service exposes an A2A-compatible agent server that runs an AG2 agent and can optionally use MCP tools.
 
+It was created to test the AppWorld MCP server. The agent prompt in `src/simple_generalist/agent/prompts.py` is geared toward using AppWorld as the MCP server.
+
 ## What It Actually Does
 
 - Runs a Starlette A2A app via `a2a-sdk`.
@@ -45,6 +47,23 @@ Key variables from `.env.template`:
 - `LLM_TEMPERATURE`
 - `MAX_ITERATIONS` (used)
 
+## Run
+
+Local:
+
+1. Copy `.env.template` to `.env`.
+2. Edit the environment variables in `.env`.
+3. Start the server:
+   ```bash
+   uv run server
+   ```
+
+Kagenti:
+
+1. Import `.env.template` in the UI as environment variables.
+2. Customize the values as needed for your deployment.
+
 ## Notes
 
 - OpenTelemetry/OpenLIT initialization is enabled when `OTEL_EXPORTER_OTLP_ENDPOINT` is present.
+- If you use AppWorld MCP, expect a very large tool list (around 500 tools) to be injected into the prompt. Use a frontier model or a very large open-source model. This setup was tested successfully with `Qwen3 235B`.
