@@ -11,15 +11,12 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
 
 from weather_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-LangChainInstrumentor().instrument()
 
 
 def get_agent_card(host: str, port: int):
