@@ -21,6 +21,9 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     # GenAI semantic convention instrumentation for token metrics
     "opentelemetry-instrumentation-openai>=0.34b0",
+    # Starlette instrumentation - extracts traceparent from incoming HTTP headers
+    # Required for AuthBridge trace context propagation (Approach A)
+    "opentelemetry-instrumentation-starlette",
 ]
 
 [project.scripts]

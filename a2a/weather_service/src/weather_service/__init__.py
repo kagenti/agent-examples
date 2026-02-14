@@ -59,6 +59,17 @@ def setup_tracing():
     except ImportError:
         logger.warning("opentelemetry-instrumentation-openai not available")
 
+    # Auto-instrument Starlette to extract traceparent from incoming requests.
+    # This is CRITICAL for Approach A: the AuthBridge ext_proc injects a traceparent
+    # header, and the Starlette instrumentor extracts it so all agent spans become
+    # children of the ext_proc root span (same trace_id).
+    try:
+        from opentelemetry.instrumentation.starlette import StarletteInstrumentor
+        StarletteInstrumentor().instrument()
+        logger.info("Starlette auto-instrumented (traceparent extraction enabled)")
+    except ImportError:
+        logger.warning("opentelemetry-instrumentation-starlette not available - traces may be disconnected")
+
     logger.info(f"OTEL tracing initialized: service={service_name}")
 
 setup_tracing()
