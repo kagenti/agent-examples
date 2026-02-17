@@ -196,18 +196,21 @@ class WeatherExecutor(AgentExecutor):
         try:
             await event_emitter.emit_event(str(output), final=True)
         except Exception:
-            logger.info(f"Final event emission failed (client disconnected), updating task store directly")
-            # Update task store directly so tasks/get and tasks/resubscribe
-            # can return the completed result even after SSE disconnect
-            if self._task_store and task:
-                try:
-                    from a2a.types import TaskStatus, TaskState as TS, Artifact, TextPart as TP
-                    task.status = TaskStatus(state=TS.completed)
-                    task.artifacts = [Artifact(parts=[TP(text=str(output))])]
-                    await self._task_store.save(task)
-                    logger.info(f"Task {task.id} saved to store with output ({len(str(output))} chars)")
-                except Exception as e:
-                    logger.error(f"Failed to save task to store: {e}")
+            logger.info(f"Final event emission failed (client disconnected)")
+
+        # Always save completed task with artifact to the store.
+        # The emit_event may succeed (enqueue) but the SSE consumer may be
+        # gone, so the task store never gets the artifact via the normal path.
+        # This ensures tasks/get can return the result for trace recovery.
+        if self._task_store and task and output:
+            try:
+                from a2a.types import TaskStatus, TaskState as TS, Artifact, TextPart as TP
+                task.status = TaskStatus(state=TS.completed)
+                task.artifacts = [Artifact(parts=[TP(text=str(output))])]
+                await self._task_store.save(task)
+                logger.info(f"Task {task.id} saved to store with output ({len(str(output))} chars)")
+            except Exception as e:
+                logger.error(f"Failed to save task to store: {e}")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Cancel the agent execution."""
