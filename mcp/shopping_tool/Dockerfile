@@ -1,4 +1,4 @@
-FROM docker.io/library/python:3.11-slim
+FROM ghcr.io/astral-sh/uv:python3.11-bookworm-slim
 
 WORKDIR /app
 
