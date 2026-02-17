@@ -11,31 +11,67 @@ from simple_generalist.agent.prompts import GENERAL_AGENT_PROMPT
 logger = logging.getLogger(__name__)
 
 
-# OTEL Tracing config
-project_name = "simple_generalist_agent"
+# OTEL Tracing config via AG2's native instrumentation
+_tracer_provider = None
+_SERVICE_NAME = "simple_generalist_agent"
+
+
+from opentelemetry import trace
+from opentelemetry.sdk.resources import Resource
+from opentelemetry.sdk.trace import TracerProvider, ReadableSpan, SpanProcessor
+from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter
+from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
+from autogen.opentelemetry import instrument_llm_wrapper
+
+
+class AgentIdSpanProcessor(SpanProcessor):
+    """Injects gen_ai.agent.id on any span that carries gen_ai.agent.name.
+
+    AG2's instrumentation sets gen_ai.agent.name but not gen_ai.agent.id.
+    This processor maps agent names to stable IDs so downstream consumers
+    (e.g. kagenti-compatible backends) see the field they expect.
+    """
+
+    def __init__(self, agent_ids: dict[str, str]) -> None:
+        self._agent_ids = agent_ids
+
+    def on_start(self, span: ReadableSpan, parent_context=None) -> None:
+        agent_name = span.attributes.get("gen_ai.agent.name") if span.attributes else None
+        if agent_name and agent_name in self._agent_ids:
+            span.set_attribute("gen_ai.agent.id", self._agent_ids[agent_name])
+
+    def on_end(self, span: ReadableSpan) -> None:
+        pass
+
+    def shutdown(self) -> None:
+        pass
+
+    def force_flush(self, timeout_millis: int = 30000) -> bool:
+        return True
+
+
+# Map agent names → stable IDs
+_AGENT_IDS: dict[str, str] = {
+    "generalist_agent": "generalist-agent-001",
+    "user_proxy": "user-proxy-001",
+}
+
+resource = Resource.create(attributes={"service.name": _SERVICE_NAME})
+_tracer_provider = TracerProvider(resource=resource)
+_tracer_provider.add_span_processor(AgentIdSpanProcessor(_AGENT_IDS))
 if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
-    # OTLP is configured → enable tracing only
-    os.environ.setdefault("OTEL_TRACES_EXPORTER", "otlp")
-    os.environ.setdefault("OTEL_METRICS_EXPORTER", "none")
-    os.environ.setdefault("OTEL_LOGS_EXPORTER", "none")
-
-    # service identity
-    project_name = "simple_generalist_agent"
-    resource_parts = [
-        f"service.name={project_name}",
-        f"openinference.project.name={project_name}",
-    ]
-    os.environ["OTEL_RESOURCE_ATTRIBUTES"] = ",".join(resource_parts)
-
-    # Disable OpenLIT metrics explicitly
-    os.environ.setdefault("OPENLIT_DISABLE_METRICS", "true")
-
-    import openlit
-
-    openlit.init(
-        application_name=project_name,
-        disable_metrics=True,
+    _tracer_provider.add_span_processor(
+        BatchSpanProcessor(OTLPSpanExporter(endpoint=os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]))
     )
+    logger.info("AG2 OpenTelemetry tracing enabled (OTLP endpoint: %s)", os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"])
+elif os.environ.get("OTEL_CONSOLE_TRACING", "").lower() in ("true", "1", "yes"):
+    _tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+    logger.info("AG2 OpenTelemetry tracing enabled (console exporter)")
+trace.set_tracer_provider(_tracer_provider)
+
+# Instrument all LLM calls globally
+instrument_llm_wrapper(tracer_provider=_tracer_provider)
+
 
 
 
@@ -116,6 +152,13 @@ class GeneralistAgent:
             logger.info(f"Initialized AG2 agent with {tool_count} MCP tools")
         else:
             logger.warning("Initialized AG2 agent without MCP tools")
+
+        # Instrument agents for tracing if OTEL is configured
+        if _tracer_provider is not None:
+            from autogen.opentelemetry import instrument_agent
+            instrument_agent(self.agent, tracer_provider=_tracer_provider)
+            instrument_agent(self.user_proxy, tracer_provider=_tracer_provider)
+            logger.info("AG2 agents instrumented for tracing")
     
     
     async def _emit_event(self, message: str, final: bool = False):

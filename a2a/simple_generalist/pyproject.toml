@@ -6,12 +6,12 @@ description = "A generalist AG2 agent exposed via A2A, powered by MCP tools"
 dependencies = [
     "python-dotenv>=1.1.0",
     "a2a-sdk[http-server]>=0.3.22",
-    "ag2[openai,mcp]>=0.8.0",
+    "ag2[openai,mcp,tracing]>=0.11.0",
     "httpx>=0.28.1",
     "pydantic>=2.10.6",
     "pydantic-settings>=2.7.1",
     "uvicorn>=0.34.0",
-    "openlit"
+    "opentelemetry-exporter-otlp-proto-grpc>=1.20.0"
 ]
 
 [project.optional-dependencies]

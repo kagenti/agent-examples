@@ -63,6 +63,10 @@ class Settings(BaseSettings):
         description="Publicly routable A2A base URL for agent discovery",
     )
     EXTRA_HEADERS: dict = Field({}, description="Extra headers for the OpenAI API")
+    OTEL_CONSOLE_TRACING: bool = Field(
+        default=False,
+        description="Print OpenTelemetry traces to console when no OTLP endpoint is configured",
+    )
     
     model_config = SettingsConfigDict(
         env_file=".env",
