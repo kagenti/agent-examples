@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 import uvicorn
@@ -18,6 +19,23 @@ from weather_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+
+def _serialize_event(value):
+    """Serialize a LangGraph event value to JSON-compatible dict.
+
+    Converts LangChain message objects to dicts via model_dump() so the
+    ext_proc can parse structured GenAI attributes (token counts, model, etc).
+    """
+    if isinstance(value, dict) and "messages" in value:
+        msgs = []
+        for msg in value["messages"]:
+            if hasattr(msg, "model_dump"):
+                msgs.append(msg.model_dump())
+            else:
+                msgs.append(str(msg))
+        return {"messages": msgs}
+    return value
 
 
 def get_agent_card(host: str, port: int):
@@ -163,7 +181,7 @@ class WeatherExecutor(AgentExecutor):
             try:
                 await event_emitter.emit_event(
                     "\n".join(
-                        f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
+                        f"🚶‍♂️{key}: {json.dumps(_serialize_event(value), default=str)}"
                         for key, value in event.items()
                     )
                     + "\n"
