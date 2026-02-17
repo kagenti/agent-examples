@@ -89,6 +89,9 @@ class WeatherExecutor(AgentExecutor):
     """
     A class to handle weather assistant execution for A2A Agent.
     """
+    def __init__(self):
+        self._cancelled = False
+
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         Shield the agent execution from SSE client disconnects.
@@ -97,11 +100,22 @@ class WeatherExecutor(AgentExecutor):
         shielding the actual work, the LangGraph execution runs to completion
         and the result is stored in the task store regardless of whether
         anyone is listening to the stream.
+
+        Explicit cancellation via tasks/cancel still works — it sets the
+        _cancelled flag which the shielded execution checks.
         """
+        self._cancelled = False
+        task = asyncio.ensure_future(self._do_execute(context, event_queue))
         try:
-            await asyncio.shield(self._do_execute(context, event_queue))
+            await asyncio.shield(task)
         except asyncio.CancelledError:
-            logger.info("Client disconnected, but agent execution continues in background")
+            if self._cancelled:
+                # Explicit cancel via tasks/cancel — propagate to the task
+                task.cancel()
+                logger.info("Agent execution cancelled via tasks/cancel")
+            else:
+                # SSE disconnect — let the task continue in the background
+                logger.info("Client disconnected, agent execution continues in background")
 
     async def _do_execute(self, context: RequestContext, event_queue: EventQueue):
         """
@@ -166,10 +180,9 @@ class WeatherExecutor(AgentExecutor):
             logger.info(f"Final event emission failed (client disconnected), output: {str(output)[:100]}")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        """
-        Not implemented
-        """
-        raise Exception("cancel not supported")
+        """Cancel the agent execution."""
+        self._cancelled = True
+        logger.info("Cancel requested for agent execution")
 
 def run():
     """
