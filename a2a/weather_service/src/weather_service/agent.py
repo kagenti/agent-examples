@@ -204,9 +204,10 @@ class WeatherExecutor(AgentExecutor):
         # This ensures tasks/get can return the result for trace recovery.
         if self._task_store and task and output:
             try:
+                import uuid
                 from a2a.types import TaskStatus, TaskState as TS, Artifact, TextPart as TP
                 task.status = TaskStatus(state=TS.completed)
-                task.artifacts = [Artifact(parts=[TP(text=str(output))])]
+                task.artifacts = [Artifact(artifactId=str(uuid.uuid4()), parts=[TP(text=str(output))])]
                 await self._task_store.save(task)
                 logger.info(f"Task {task.id} saved to store with output ({len(str(output))} chars)")
             except Exception as e:
