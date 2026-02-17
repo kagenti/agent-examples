@@ -13,10 +13,7 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextP
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from weather_service.graph import get_graph, get_mcpclient
-from weather_service.observability import create_tracing_middleware, set_span_output, get_root_span
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -112,8 +109,6 @@ class WeatherExecutor(AgentExecutor):
         input = {"messages": messages}
         logger.info(f'Processing messages: {input}')
 
-        # Note: Root span with MLflow attributes is created by tracing middleware
-        # Here we just run the agent logic - spans from LangChain are auto-captured
         output = None
 
         # Test MCP connection first
@@ -142,15 +137,6 @@ class WeatherExecutor(AgentExecutor):
             output = event
             logger.info(f'event: {event}')
         output = output.get("assistant", {}).get("final_answer")
-
-        # Set span output BEFORE emitting final event (for streaming response capture)
-        # This populates mlflow.spanOutputs, output.value, gen_ai.completion
-        # Use get_root_span() to get the middleware-created root span, not the
-        # current A2A span (trace.get_current_span() would return wrong span)
-        if output:
-            root_span = get_root_span()
-            if root_span and root_span.is_recording():
-                set_span_output(root_span, str(output))
 
         await event_emitter.emit_event(str(output), final=True)
 
@@ -186,16 +172,5 @@ def run():
         methods=['GET'],
         name='agent_card_new',
     ))
-
-    # Add tracing middleware - creates root span with MLflow/GenAI attributes
-    app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-
-    # Add logging middleware
-    @app.middleware("http")
-    async def log_authorization_header(request, call_next):
-        auth_header = request.headers.get("authorization", "No Authorization header")
-        logger.info(f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}")
-        response = await call_next(request)
-        return response
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
