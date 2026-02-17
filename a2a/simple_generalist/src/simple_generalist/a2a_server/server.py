@@ -108,17 +108,6 @@ class SimpleGeneralistExecutor(AgentExecutor):
         
         # Send final result
         final_message = result.get("answer", "Task completed")
-        
-        # Add tool trace information if available
-        tool_trace = result.get("tool_trace", [])
-        if tool_trace:
-            trace_summary = f"\n\nTools used: {len(tool_trace)}"
-            for i, trace in enumerate(tool_trace[:5], 1):  # Show first 5
-                trace_summary += f"\n{i}. {trace['name']} - {trace['status']}"
-            if len(tool_trace) > 5:
-                trace_summary += f"\n... and {len(tool_trace) - 5} more"
-            final_message += trace_summary
-        
         await event_callback(final_message, final=True)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue):

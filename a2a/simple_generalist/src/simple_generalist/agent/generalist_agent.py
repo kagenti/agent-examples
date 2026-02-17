@@ -8,20 +8,22 @@ from autogen.mcp.mcp_client import Toolkit
 from simple_generalist.config import Settings
 from simple_generalist.agent.prompts import GENERAL_AGENT_PROMPT
 
-logger = logging.getLogger(__name__)
-
-
-# OTEL Tracing config via AG2's native instrumentation
-_tracer_provider = None
-_SERVICE_NAME = "simple_generalist_agent"
-
-
 from opentelemetry import trace
 from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace import TracerProvider, ReadableSpan, SpanProcessor
 from opentelemetry.sdk.trace.export import BatchSpanProcessor, SimpleSpanProcessor, ConsoleSpanExporter
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
-from autogen.opentelemetry import instrument_llm_wrapper
+from autogen.opentelemetry import instrument_llm_wrapper, instrument_agent
+
+logger = logging.getLogger(__name__)
+
+_SERVICE_NAME = "simple_generalist_agent"
+
+# Map agent names → stable IDs
+_AGENT_IDS: dict[str, str] = {
+    "generalist_agent": "generalist-agent-001",
+    "user_proxy": "user-proxy-001",
+}
 
 
 class AgentIdSpanProcessor(SpanProcessor):
@@ -50,27 +52,37 @@ class AgentIdSpanProcessor(SpanProcessor):
         return True
 
 
-# Map agent names → stable IDs
-_AGENT_IDS: dict[str, str] = {
-    "generalist_agent": "generalist-agent-001",
-    "user_proxy": "user-proxy-001",
-}
+_tracer_provider: TracerProvider | None = None
+_tracing_initialized = False
 
-resource = Resource.create(attributes={"service.name": _SERVICE_NAME})
-_tracer_provider = TracerProvider(resource=resource)
-_tracer_provider.add_span_processor(AgentIdSpanProcessor(_AGENT_IDS))
-if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
-    _tracer_provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]))
-    )
-    logger.info("AG2 OpenTelemetry tracing enabled (OTLP endpoint: %s)", os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"])
-elif os.environ.get("OTEL_CONSOLE_TRACING", "").lower() in ("true", "1", "yes"):
-    _tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
-    logger.info("AG2 OpenTelemetry tracing enabled (console exporter)")
-trace.set_tracer_provider(_tracer_provider)
 
-# Instrument all LLM calls globally
-instrument_llm_wrapper(tracer_provider=_tracer_provider)
+def _init_tracing() -> TracerProvider:
+    """Initialize the OpenTelemetry TracerProvider and instrument LLM calls.
+
+    Safe to call multiple times — only the first call has any effect.
+    """
+    global _tracer_provider, _tracing_initialized
+    if _tracing_initialized:
+        return _tracer_provider  # type: ignore[return-value]
+
+    resource = Resource.create(attributes={"service.name": _SERVICE_NAME})
+    _tracer_provider = TracerProvider(resource=resource)
+    _tracer_provider.add_span_processor(AgentIdSpanProcessor(_AGENT_IDS))
+
+    if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
+        _tracer_provider.add_span_processor(
+            BatchSpanProcessor(OTLPSpanExporter(endpoint=os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+        )
+        logger.info("AG2 OpenTelemetry tracing enabled (OTLP endpoint: %s)", os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"])
+    elif os.environ.get("OTEL_CONSOLE_TRACING", "").lower() in ("true", "1", "yes"):
+        _tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
+        logger.info("AG2 OpenTelemetry tracing enabled (console exporter)")
+
+    trace.set_tracer_provider(_tracer_provider)
+    instrument_llm_wrapper(tracer_provider=_tracer_provider)
+
+    _tracing_initialized = True
+    return _tracer_provider
 
 
 
@@ -102,8 +114,9 @@ class GeneralistAgent:
         self.settings = settings
         self.mcp_toolkit = mcp_toolkit
         self.event_callback = event_callback
-        
-        # Initialize AG2 agent 
+        self._tracer_provider = _init_tracing()
+
+        # Initialize AG2 agent
         self._init_ag2_agent()
     
     def _init_ag2_agent(self):
@@ -153,12 +166,9 @@ class GeneralistAgent:
         else:
             logger.warning("Initialized AG2 agent without MCP tools")
 
-        # Instrument agents for tracing if OTEL is configured
-        if _tracer_provider is not None:
-            from autogen.opentelemetry import instrument_agent
-            instrument_agent(self.agent, tracer_provider=_tracer_provider)
-            instrument_agent(self.user_proxy, tracer_provider=_tracer_provider)
-            logger.info("AG2 agents instrumented for tracing")
+        # Instrument agents for tracing
+        instrument_agent(self.agent, tracer_provider=self._tracer_provider)
+        instrument_agent(self.user_proxy, tracer_provider=self._tracer_provider)
     
     
     async def _emit_event(self, message: str, final: bool = False):

@@ -1,8 +1,9 @@
 """Configuration settings for Simple Generalist Agent."""
 
+import json
 import os
-from typing import Literal, Optional
-from pydantic import AliasChoices, Field
+from typing import Any, Literal, Optional
+from pydantic import AliasChoices, Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from dotenv import load_dotenv
 
@@ -62,9 +63,25 @@ class Settings(BaseSettings):
         default=os.getenv("A2A_PUBLIC_URL"),
         description="Publicly routable A2A base URL for agent discovery",
     )
-    EXTRA_HEADERS: dict = Field({}, description="Extra headers for the OpenAI API")
+    EXTRA_HEADERS: dict[str, str] = Field(
+        default_factory=dict,
+        description="Extra headers for the OpenAI API (JSON string, e.g. '{\"key\": \"value\"}')",
+    )
+
+    @field_validator("EXTRA_HEADERS", mode="before")
+    @classmethod
+    def _parse_extra_headers(cls, v: Any) -> dict[str, str]:
+        if isinstance(v, str):
+            v = v.strip()
+            if not v:
+                return {}
+            return json.loads(v)
+        if v is None:
+            return {}
+        return v
+
     OTEL_CONSOLE_TRACING: bool = Field(
-        default=False,
+        default=os.getenv("OTEL_CONSOLE_TRACING", "false").lower() in ("true", "1", "yes"),
         description="Print OpenTelemetry traces to console when no OTLP endpoint is configured",
     )
     
