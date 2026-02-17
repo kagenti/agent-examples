@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uvicorn
@@ -126,13 +127,22 @@ class WeatherExecutor(AgentExecutor):
 
             graph = await get_graph(mcpclient)
             async for event in graph.astream(input, stream_mode="updates"):
-                await event_emitter.emit_event(
-                    "\n".join(
-                        f"🚶‍♂️{key}: {str(value)}"
-                        for key, value in event.items()
-                    )
-                    + "\n"
-                )
+                # Serialize LangGraph events as valid JSON for ext_proc parsing.
+                # Each event is a dict like {"assistant": {"messages": [AIMessage(...)]}}
+                # Convert LangChain messages to dicts via model_dump().
+                serialized_parts = []
+                for key, value in event.items():
+                    if isinstance(value, dict) and "messages" in value:
+                        msgs = []
+                        for msg in value["messages"]:
+                            if hasattr(msg, "model_dump"):
+                                msgs.append(msg.model_dump())
+                            else:
+                                msgs.append(str(msg))
+                        serialized_parts.append(f"🚶‍♂️{key}: {json.dumps({'messages': msgs}, default=str)}")
+                    else:
+                        serialized_parts.append(f"🚶‍♂️{key}: {json.dumps(value, default=str)}")
+                await event_emitter.emit_event("\n".join(serialized_parts) + "\n")
                 output = event
                 logger.info(f'event: {event}')
             output =  output.get("assistant", {}).get("final_answer")
