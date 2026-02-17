@@ -79,6 +79,36 @@ class SourcesConfig:
         return any(fnmatch(url, pattern) for pattern in patterns)
 
     # ------------------------------------------------------------------
+    # Web-access queries
+    # ------------------------------------------------------------------
+
+    def is_web_access_enabled(self) -> bool:
+        """Return *True* if web access is enabled."""
+        return bool(self._data.get("web_access", {}).get("enabled", False))
+
+    def is_domain_allowed(self, domain: str) -> bool:
+        """Return *True* if *domain* matches the allowed_domains list.
+
+        Uses :func:`fnmatch.fnmatch` for pattern matching (e.g. ``*.github.com``).
+        Returns *False* if web access is disabled.
+        """
+        web: dict[str, Any] = self._data.get("web_access", {})
+        if not web.get("enabled", False):
+            return False
+
+        # Check blocked first
+        for pattern in web.get("blocked_domains", []):
+            if fnmatch(domain, pattern):
+                return False
+
+        # Check allowed
+        for pattern in web.get("allowed_domains", []):
+            if fnmatch(domain, pattern):
+                return True
+
+        return False
+
+    # ------------------------------------------------------------------
     # Runtime-limit properties
     # ------------------------------------------------------------------
 
