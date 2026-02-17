@@ -32,12 +32,13 @@ ENV PATH="/home/appuser/.local/bin:${PATH}"
 
 RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && cd /tmp/appworld \
+    && git checkout 3f2d53c1a096805adc86bd05227463683cdc5154 \
     && git lfs pull \
     && pip install ".[mcp]" \
     && cd /run \
     && appworld install \
     && appworld download data \
-    && chmod -R 755 /run/.cache/appworld
+    && chmod -R 700 /run/.cache/appworld
 
 # Switch back to root to clean up and verify cache
 USER root

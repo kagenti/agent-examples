@@ -1,6 +1,7 @@
 import os
 import signal
 import sys
+import threading
 from inspect import signature
 from importlib import import_module
 from multiprocessing import Process
@@ -23,7 +24,7 @@ def _ensure_under(base_dir: str, path: str) -> bool:
 def _coerce_db_path_for_docker_mode(path: str | None, appworld_root: str) -> str | None:
     if path is None:
         return None
-    if path.startswith(":memory:"):
+    if path.lower() == ":memory:":
         return path
 
     data_root = os.path.join(appworld_root, "data")
@@ -96,16 +97,23 @@ def _enable_docker_mode_db_guard() -> None:
         app_names: list[str] | None = None,
         create: bool = False,
     ) -> None:
+        # Coerce paths into allowed roots; fall back to the default disk base
+        # when a path can't be mapped (e.g. AppWorld's own default that lives
+        # outside the container's APPWORLD_ROOT).
         try:
             to_db_home_path = _coerce_db_path_for_docker_mode(to_db_home_path, appworld_root)
+        except ValueError:
+            print(f"[docker-mode] to_db_home_path {to_db_home_path!r} outside allowed roots, remapping to default")
+            to_db_home_path = None
+        try:
             from_db_home_path = _coerce_db_path_for_docker_mode(from_db_home_path, appworld_root)
-        except ValueError as error:
-            if callable(raise_http_exception):
-                raise_http_exception(str(error), status_code=422)
-            raise
+        except ValueError:
+            print(f"[docker-mode] from_db_home_path {from_db_home_path!r} outside allowed roots, remapping to default")
+            from_db_home_path = None
 
-        if to_db_home_path is None and from_db_home_path is None:
+        if to_db_home_path is None:
             to_db_home_path = default_disk_base
+        if from_db_home_path is None:
             from_db_home_path = default_disk_base
 
         try:
@@ -158,7 +166,6 @@ def run_apis() -> None:
 def run_mcp() -> None:
     from appworld.serve import _mcp
 
-    #transport = os.environ.get("MCP_TRANSPORT", "http")
     transport = "http"
     port = int(os.environ.get("MCP_PORT", "8001"))
     remote_apis_url = os.environ.get("REMOTE_APIS_URL", "http://localhost:8000")
@@ -180,7 +187,6 @@ def main() -> None:
     appworld_root = os.environ.get("APPWORLD_ROOT")
     if appworld_root:
         update_root(appworld_root)
-    print(appworld_root, os.environ.get("APPWORLD_CACHE"))
 
     apis_process = Process(target=run_apis)
     mcp_process = Process(target=run_mcp)
@@ -194,10 +200,26 @@ def main() -> None:
                 process.terminate()
         for process in (apis_process, mcp_process):
             process.join(timeout=5)
+            if process.is_alive():
+                process.kill()
+                process.join(timeout=2)
         sys.exit(0)
 
     signal.signal(signal.SIGTERM, shutdown)
     signal.signal(signal.SIGINT, shutdown)
+
+    # Event is set by the signal handler to wake the loop immediately on
+    # SIGTERM/SIGINT; otherwise we poll child processes every 5 seconds.
+    # This replaces signal.pause() which is not available on Windows.
+    _shutdown_event = threading.Event()
+
+    _orig_shutdown = shutdown
+    def _shutdown_and_wake(signum, frame):
+        _orig_shutdown(signum, frame)
+        _shutdown_event.set()
+
+    signal.signal(signal.SIGTERM, _shutdown_and_wake)
+    signal.signal(signal.SIGINT, _shutdown_and_wake)
 
     exit_code = 0
     try:
@@ -208,9 +230,11 @@ def main() -> None:
             if not mcp_process.is_alive():
                 exit_code = mcp_process.exitcode or 1
                 break
-            signal.pause()
+            _shutdown_event.wait(timeout=5)
+            if _shutdown_event.is_set():
+                break
     finally:
-        shutdown(signal.SIGTERM, None)
+        _orig_shutdown(signal.SIGTERM, None)
 
     sys.exit(exit_code)
 
