@@ -15,7 +15,7 @@
   },
   "web_access": {
     "enabled": true,
-    "allowed_domains": ["api.github.com", "raw.githubusercontent.com", "pypi.org", "huggingface.co"],
+    "allowed_domains": ["github.com", "api.github.com", "raw.githubusercontent.com", "pypi.org", "huggingface.co", "docs.python.org"],
     "blocked_domains": ["*.internal", "metadata.google.internal"]
   },
   "git": {

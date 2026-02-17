@@ -66,6 +66,9 @@ or require human approval (HITL).
 the workspace root.
 - **file_write**: Write content to a file in the workspace.  Provide a \
 relative path and the content.  Parent directories are created automatically.
+- **web_fetch**: Fetch content from a URL.  Only allowed domains (configured \
+in sources.json) can be accessed.  Use this to read GitHub issues, PRs, \
+documentation, and other web resources.
 
 Always prefer using the provided tools rather than raw shell I/O for file \
 operations when possible, as they have built-in path-safety checks.
@@ -176,6 +179,73 @@ def _make_file_write_tool(workspace_path: str) -> Any:
     return file_write
 
 
+def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
+    """Return a LangChain tool that fetches web content from allowed domains.
+
+    The tool checks the URL's domain against ``sources.json`` allowed_domains
+    before making the request.
+    """
+
+    @tool
+    async def web_fetch(url: str) -> str:
+        """Fetch content from a URL.
+
+        Only URLs whose domain is in the allowed_domains list (sources.json)
+        can be accessed. Use this to read GitHub issues, pull requests,
+        documentation pages, and other web resources.
+
+        Args:
+            url: The full URL to fetch (e.g. https://github.com/org/repo/issues/1).
+
+        Returns:
+            The page content as text, or an error message.
+        """
+        import httpx
+        from urllib.parse import urlparse
+
+        parsed = urlparse(url)
+        domain = parsed.hostname or ""
+
+        if not sources_config.is_web_access_enabled():
+            return "Error: web access is disabled in sources.json."
+
+        if not sources_config.is_domain_allowed(domain):
+            return (
+                f"Error: domain '{domain}' is not in the allowed domains list. "
+                f"Check sources.json web_access.allowed_domains."
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
+                resp = await client.get(url, headers={"User-Agent": "kagenti-sandbox-agent/1.0"})
+                resp.raise_for_status()
+
+                content_type = resp.headers.get("content-type", "")
+                text = resp.text
+
+                # For HTML, try to extract readable text
+                if "text/html" in content_type:
+                    # Simple HTML tag stripping for readability
+                    import re
+                    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
+                    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
+                    text = re.sub(r'<[^>]+>', ' ', text)
+                    text = re.sub(r'\s+', ' ', text).strip()
+
+                # Truncate very long responses
+                if len(text) > 50000:
+                    text = text[:50000] + "\n\n[Content truncated at 50000 characters]"
+
+                return text
+
+        except httpx.HTTPStatusError as exc:
+            return f"Error: HTTP {exc.response.status_code} fetching {url}"
+        except httpx.RequestError as exc:
+            return f"Error: could not fetch {url}: {exc}"
+
+    return web_fetch
+
+
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
@@ -218,6 +288,7 @@ def build_graph(
         _make_shell_tool(executor),
         _make_file_read_tool(workspace_path),
         _make_file_write_tool(workspace_path),
+        _make_web_fetch_tool(sources_config),
     ]
 
     # -- LLM ----------------------------------------------------------------
