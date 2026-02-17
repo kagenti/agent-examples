@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 import uvicorn
@@ -90,6 +91,20 @@ class WeatherExecutor(AgentExecutor):
     """
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
+        Shield the agent execution from SSE client disconnects.
+
+        The A2A SDK cancels execute() when the SSE connection drops. By
+        shielding the actual work, the LangGraph execution runs to completion
+        and the result is stored in the task store regardless of whether
+        anyone is listening to the stream.
+        """
+        try:
+            await asyncio.shield(self._do_execute(context, event_queue))
+        except asyncio.CancelledError:
+            logger.info("Client disconnected, but agent execution continues in background")
+
+    async def _do_execute(self, context: RequestContext, event_queue: EventQueue):
+        """
         The agent allows to retrieve weather info through a natural language conversational interface
         """
 
@@ -122,23 +137,33 @@ class WeatherExecutor(AgentExecutor):
             logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
         except Exception as tool_error:
             logger.error(f'Failed to connect to MCP server: {tool_error}')
-            await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+            try:
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+            except Exception:
+                pass
             return
 
         graph = await get_graph(mcpclient)
         async for event in graph.astream(input, stream_mode="updates"):
-            await event_emitter.emit_event(
-                "\n".join(
-                    f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
-                    for key, value in event.items()
+            try:
+                await event_emitter.emit_event(
+                    "\n".join(
+                        f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
+                        for key, value in event.items()
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+            except Exception:
+                # SSE connection dropped — continue processing, skip event emission
+                logger.debug("Event emission failed (client likely disconnected), continuing execution")
             output = event
             logger.info(f'event: {event}')
         output = output.get("assistant", {}).get("final_answer")
 
-        await event_emitter.emit_event(str(output), final=True)
+        try:
+            await event_emitter.emit_event(str(output), final=True)
+        except Exception:
+            logger.info(f"Final event emission failed (client disconnected), output: {str(output)[:100]}")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
