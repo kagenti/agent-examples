@@ -89,8 +89,9 @@ class WeatherExecutor(AgentExecutor):
     """
     A class to handle weather assistant execution for A2A Agent.
     """
-    def __init__(self):
+    def __init__(self, task_store=None):
         self._cancelled = False
+        self._task_store = task_store
 
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
@@ -177,7 +178,18 @@ class WeatherExecutor(AgentExecutor):
         try:
             await event_emitter.emit_event(str(output), final=True)
         except Exception:
-            logger.info(f"Final event emission failed (client disconnected), output: {str(output)[:100]}")
+            logger.info(f"Final event emission failed (client disconnected), updating task store directly")
+            # Update task store directly so tasks/get and tasks/resubscribe
+            # can return the completed result even after SSE disconnect
+            if self._task_store and task:
+                try:
+                    from a2a.types import TaskStatus, TaskState as TS, Artifact, TextPart as TP
+                    task.status = TaskStatus(state=TS.completed)
+                    task.artifacts = [Artifact(parts=[TP(text=str(output))])]
+                    await self._task_store.save(task)
+                    logger.info(f"Task {task.id} saved to store with output ({len(str(output))} chars)")
+                except Exception as e:
+                    logger.error(f"Failed to save task to store: {e}")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Cancel the agent execution."""
@@ -190,9 +202,10 @@ def run():
     """
     agent_card = get_agent_card(host="0.0.0.0", port=8000)
 
+    task_store = InMemoryTaskStore()
     request_handler = DefaultRequestHandler(
-        agent_executor=WeatherExecutor(),
-        task_store=InMemoryTaskStore(),
+        agent_executor=WeatherExecutor(task_store=task_store),
+        task_store=task_store,
     )
 
     server = A2AStarletteApplication(
