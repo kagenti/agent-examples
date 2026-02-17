@@ -1,4 +1,4 @@
-FROM golang:1.24.9-bookworm
+FROM docker.io/library/golang:1.24.9-bookworm
 
 WORKDIR /app
 EXPOSE 8080
