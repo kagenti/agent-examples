@@ -5,6 +5,10 @@ import os
 import uvicorn
 from textwrap import dedent
 
+# Initialize OTEL before importing instrumented libraries
+from weather_service.observability import setup_observability
+setup_observability()
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
