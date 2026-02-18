@@ -6,7 +6,7 @@ import uvicorn
 from textwrap import dedent
 
 # Initialize OTEL before importing instrumented libraries
-from weather_service.observability import setup_observability
+from weather_service.observability import setup_observability, wrap_asgi_app
 setup_observability()
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -249,5 +249,8 @@ def run():
         methods=['GET'],
         name='agent_card_new',
     ))
+
+    # Wrap with OTEL ASGI middleware to extract traceparent from ext_proc
+    app = wrap_asgi_app(app)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

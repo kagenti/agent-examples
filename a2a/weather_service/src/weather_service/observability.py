@@ -7,7 +7,8 @@ Controlled by OTEL_INSTRUMENT env var:
   - "openai"         — OpenAIInstrumentor (gen_ai.* conventions)
 
 The ext_proc sidecar creates the root span and injects traceparent.
-Auto-instrumentation here creates child spans under that root.
+ASGI middleware here extracts that traceparent so auto-instrumented
+spans become children of the ext_proc root span.
 """
 
 import logging
@@ -17,9 +18,14 @@ logger = logging.getLogger(__name__)
 
 OTEL_INSTRUMENT = os.getenv("OTEL_INSTRUMENT", "none").lower()
 
+# Stash the provider so wrap_asgi_app can use it
+_tracer_provider = None
+
 
 def setup_observability():
     """Initialize OTEL tracing and auto-instrumentation based on OTEL_INSTRUMENT env var."""
+    global _tracer_provider
+
     if OTEL_INSTRUMENT == "none":
         logger.info("[OTEL] Instrumentation disabled (OTEL_INSTRUMENT=none)")
         return
@@ -47,9 +53,9 @@ def setup_observability():
         SERVICE_NAME: service_name,
         SERVICE_VERSION: "1.0.0",
     })
-    provider = TracerProvider(resource=resource)
-    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
-    trace.set_tracer_provider(provider)
+    _tracer_provider = TracerProvider(resource=resource)
+    _tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
+    trace.set_tracer_provider(_tracer_provider)
 
     # W3C Trace Context propagation so auto-instrumented spans
     # become children of the ext_proc root span (via traceparent header)
@@ -79,3 +85,26 @@ def setup_observability():
 
     else:
         logger.warning(f"[OTEL] Unknown OTEL_INSTRUMENT value: {OTEL_INSTRUMENT}")
+
+
+def wrap_asgi_app(app):
+    """Wrap a Starlette/ASGI app with OpenTelemetry ASGI middleware.
+
+    This extracts the traceparent header from incoming requests (injected
+    by the ext_proc sidecar) and sets it as the active trace context.
+    All auto-instrumented spans (LangChain, OpenAI) then become children
+    of the ext_proc root span.
+
+    Call this after app = server.build() and before uvicorn.run(app).
+    """
+    if OTEL_INSTRUMENT == "none" or _tracer_provider is None:
+        return app
+
+    try:
+        from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
+        wrapped = OpenTelemetryMiddleware(app, tracer_provider=_tracer_provider)
+        logger.info("[OTEL] ASGI middleware installed (traceparent extraction enabled)")
+        return wrapped
+    except ImportError:
+        logger.warning("[OTEL] opentelemetry-instrumentation-asgi not installed, traceparent will not be extracted")
+        return app
