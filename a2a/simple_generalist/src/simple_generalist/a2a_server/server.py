@@ -95,6 +95,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
         user_input: str,
         settings: Settings,
         event_callback: Any,
+        error_callback: Any,
         toolkit: Toolkit | None,
     ):
         """Run the agent with the given toolkit."""
@@ -103,12 +104,15 @@ class SimpleGeneralistExecutor(AgentExecutor):
             mcp_toolkit=toolkit,
             event_callback=event_callback,
         )
-        
+
         result = await agent.run_task(user_input)
-        
-        # Send final result
+
+        # Send final result, using error_callback if the agent reported an error
         final_message = result.get("answer", "Task completed")
-        await event_callback(final_message, final=True)
+        if result.get("error"):
+            await error_callback(final_message)
+        else:
+            await event_callback(final_message, final=True)
 
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
@@ -131,7 +135,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
         async def event_callback(message: str, final: bool = False):
             """Send progress events to the client."""
             logger.info(f"Event: {message} (final={final})")
-            
+
             if final:
                 # Final message with artifact
                 parts = [Part(root=TextPart(text=message))]
@@ -147,6 +151,13 @@ class SimpleGeneralistExecutor(AgentExecutor):
                         task_updater.task_id,
                     ),
                 )
+
+        async def error_callback(message: str):
+            """Send error event and mark task as failed."""
+            logger.info(f"Error event: {message}")
+            parts = [Part(root=TextPart(text=message))]
+            await task_updater.add_artifact(parts)
+            await task_updater.failed()
         
         # Extract user input
         user_input = context.get_user_input()
@@ -161,6 +172,8 @@ class SimpleGeneralistExecutor(AgentExecutor):
 
                 async with streamablehttp_client(
                     url=mcp_url,
+                    timeout=30,
+                    sse_read_timeout=300,
                 ) as (
                     read_stream,
                     write_stream,
@@ -174,6 +187,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
                         user_input,
                         self.settings,
                         event_callback,
+                        error_callback,
                         toolkit,
                     )
             else:
@@ -181,6 +195,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
                     user_input,
                     self.settings,
                     event_callback,
+                    error_callback,
                     toolkit,
                 )
                 
@@ -188,7 +203,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
             traceback.print_exc()
             logger.error(f"Error executing task: {exc}", exc_info=True)
             error_message = f"I encountered an error while processing your request: {str(exc)}"
-            await event_callback(error_message, final=True)
+            await error_callback(error_message)
     
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """

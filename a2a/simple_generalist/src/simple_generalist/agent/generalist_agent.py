@@ -192,6 +192,7 @@ class GeneralistAgent:
             Dictionary with:
                 - answer: Final answer text
                 - iterations: Number of iterations
+                - error: True if the task failed
         """
         logger.info(f"Starting task: {instruction}")
         await self._emit_event("🤖 Starting task execution...")
@@ -221,15 +222,17 @@ class GeneralistAgent:
             result = {
                 "answer": final_answer,
                 "iterations": len(chat_history),
+                "error": False,
             }
-            
+
             return result
-            
+
         except Exception as exc:
             logger.error(f"Error during task execution: {exc}", exc_info=True)
             return {
                 "answer": f"Error: {str(exc)}",
                 "iterations": 0,
+                "error": True,
             }
 
 # Made with Bob
