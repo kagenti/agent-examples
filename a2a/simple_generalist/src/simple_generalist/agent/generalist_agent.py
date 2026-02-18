@@ -71,7 +71,7 @@ def _init_tracing() -> TracerProvider:
 
     if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
         _tracer_provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter(endpoint=os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"]))
+            BatchSpanProcessor(OTLPSpanExporter())
         )
         logger.info("AG2 OpenTelemetry tracing enabled (OTLP endpoint: %s)", os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"])
     elif os.environ.get("OTEL_CONSOLE_TRACING", "").lower() in ("true", "1", "yes"):
