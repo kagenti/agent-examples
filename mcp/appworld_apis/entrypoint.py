@@ -24,7 +24,7 @@ def _ensure_under(base_dir: str, path: str) -> bool:
 def _coerce_db_path_for_docker_mode(path: str | None, appworld_root: str) -> str | None:
     if path is None:
         return None
-    if path.lower() == ":memory:":
+    if path.lower().startswith(":memory:"):
         return path
 
     data_root = os.path.join(appworld_root, "data")
@@ -166,6 +166,10 @@ def run_apis() -> None:
 def run_mcp() -> None:
     from appworld.serve import _mcp
 
+    docker_mode = _str_is_true(os.environ.get("APIS_DOCKER_MODE", "1"))
+    if docker_mode:
+        _enable_docker_mode_db_guard()
+
     transport = "http"
     port = int(os.environ.get("MCP_PORT", "8001"))
     remote_apis_url = os.environ.get("REMOTE_APIS_URL", "http://localhost:8000")
@@ -194,7 +198,8 @@ def main() -> None:
     apis_process.start()
     mcp_process.start()
 
-    def shutdown(signum: int, _frame: object | None) -> None:
+    def shutdown() -> None:
+        """Terminate child processes gracefully, then forcefully if needed."""
         for process in (apis_process, mcp_process):
             if process.is_alive():
                 process.terminate()
@@ -203,23 +208,16 @@ def main() -> None:
             if process.is_alive():
                 process.kill()
                 process.join(timeout=2)
-        sys.exit(0)
-
-    signal.signal(signal.SIGTERM, shutdown)
-    signal.signal(signal.SIGINT, shutdown)
 
     # Event is set by the signal handler to wake the loop immediately on
     # SIGTERM/SIGINT; otherwise we poll child processes every 5 seconds.
-    # This replaces signal.pause() which is not available on Windows.
     _shutdown_event = threading.Event()
 
-    _orig_shutdown = shutdown
-    def _shutdown_and_wake(signum, frame):
-        _orig_shutdown(signum, frame)
+    def _signal_handler(signum: int, _frame: object | None) -> None:
         _shutdown_event.set()
 
-    signal.signal(signal.SIGTERM, _shutdown_and_wake)
-    signal.signal(signal.SIGINT, _shutdown_and_wake)
+    signal.signal(signal.SIGTERM, _signal_handler)
+    signal.signal(signal.SIGINT, _signal_handler)
 
     exit_code = 0
     try:
@@ -234,7 +232,7 @@ def main() -> None:
             if _shutdown_event.is_set():
                 break
     finally:
-        _orig_shutdown(signal.SIGTERM, None)
+        shutdown()
 
     sys.exit(exit_code)
 

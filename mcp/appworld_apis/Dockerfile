@@ -12,12 +12,7 @@ WORKDIR /run
 RUN groupadd -r appuser && useradd -r -g appuser -u 1000 appuser \
     && mkdir -p /home/appuser \
     && mkdir -p /run/.cache/appworld \
-    && chown -R appuser:appuser /home/appuser
-
-COPY entrypoint.py /run/entrypoint.py
-
-# Set ownership after COPY
-RUN chown -R appuser:appuser /run
+    && chown -R appuser:appuser /home/appuser /run
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends build-essential python3-dev git git-lfs curl \
@@ -39,6 +34,9 @@ RUN git clone https://github.com/StonyBrookNLP/appworld.git /tmp/appworld \
     && appworld install \
     && appworld download data \
     && chmod -R 700 /run/.cache/appworld
+
+# Copy entrypoint after expensive build steps to preserve Docker layer cache
+COPY --chown=appuser:appuser entrypoint.py /run/entrypoint.py
 
 # Switch back to root to clean up and verify cache
 USER root
