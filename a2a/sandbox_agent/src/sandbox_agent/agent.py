@@ -22,6 +22,8 @@ from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 from starlette.routing import Route
 
+from langgraph.checkpoint.memory import MemorySaver
+
 from sandbox_agent.configuration import Configuration
 from sandbox_agent.graph import build_graph
 from sandbox_agent.permissions import PermissionChecker
@@ -124,6 +126,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
         self._permission_checker = PermissionChecker(settings)
         self._sources_config = SourcesConfig.from_dict(sources)
+        self._checkpointer = MemorySaver()
 
         config = Configuration()  # type: ignore[call-arg]
         self._workspace_manager = WorkspaceManager(
@@ -162,22 +165,23 @@ class SandboxAgentExecutor(AgentExecutor):
             Path(workspace_path).mkdir(parents=True, exist_ok=True)
             logger.info("No context_id; using stateless workspace: %s", workspace_path)
 
-        # 3. Build graph
+        # 3. Build graph with shared checkpointer for multi-turn memory
         graph = build_graph(
             workspace_path=workspace_path,
             permission_checker=self._permission_checker,
             sources_config=self._sources_config,
-            checkpointer=None,
+            checkpointer=self._checkpointer,
         )
 
-        # 4. Stream graph execution
+        # 4. Stream graph execution with thread_id for checkpointer routing
         messages = [HumanMessage(content=context.get_user_input())]
         input_state = {"messages": messages}
-        logger.info("Processing messages: %s", input_state)
+        graph_config = {"configurable": {"thread_id": context_id or "stateless"}}
+        logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 
         try:
             output = None
-            async for event in graph.astream(input_state, stream_mode="updates"):
+            async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
                 # Send intermediate status updates
                 await task_updater.update_status(
                     TaskState.working,
