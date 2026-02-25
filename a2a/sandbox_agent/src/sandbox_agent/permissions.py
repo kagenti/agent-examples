@@ -84,6 +84,14 @@ class PermissionChecker:
         if self._matches_any(operation_type, operation, self._deny_rules):
             return PermissionResult.DENY
 
+        # For shell operations, also check for interpreter bypass:
+        # e.g. bash -c "curl ..." should be denied if curl is denied.
+        if operation_type == "shell":
+            embedded_commands = self.check_interpreter_bypass(operation)
+            for embedded in embedded_commands:
+                if self._matches_any("shell", embedded, self._deny_rules):
+                    return PermissionResult.DENY
+
         if self._matches_any(operation_type, operation, self._allow_rules):
             return PermissionResult.ALLOW
 
@@ -162,6 +170,12 @@ class PermissionChecker:
 
     # -- shell matching ---------------------------------------------------
 
+    # Interpreters that can execute arbitrary code via -c / -e flags.
+    _INTERPRETERS = frozenset({"bash", "sh", "python", "python3", "perl", "ruby", "node"})
+
+    # Flags that take an inline command string as the next argument.
+    _EXEC_FLAGS = frozenset({"-c", "-e", "--eval"})
+
     @staticmethod
     def _match_shell(pattern: str, operation: str) -> bool:
         """Match a shell rule pattern against a concrete command string.
@@ -196,6 +210,53 @@ class PermissionChecker:
 
         # Match the remainder against the glob (``*`` matches everything).
         return fnmatch.fnmatch(remainder, glob_part)
+
+    @classmethod
+    def check_interpreter_bypass(cls, operation: str) -> list[str]:
+        """Extract embedded commands from interpreter invocations.
+
+        If *operation* uses an interpreter (bash, sh, python, etc.) with
+        an inline execution flag (``-c``, ``-e``), extract the embedded
+        command string so it can be checked against deny rules separately.
+
+        Returns a list of embedded command strings (empty if none found).
+        """
+        if not operation:
+            return []
+
+        parts = operation.split()
+        if not parts:
+            return []
+
+        # Check if the command starts with a known interpreter.
+        cmd = parts[0].rsplit("/", 1)[-1]  # handle /usr/bin/bash etc.
+        if cmd not in cls._INTERPRETERS:
+            return []
+
+        embedded: list[str] = []
+        i = 1
+        while i < len(parts):
+            if parts[i] in cls._EXEC_FLAGS and i + 1 < len(parts):
+                # Everything after the flag is the inline command.
+                inline = " ".join(parts[i + 1:])
+                # Strip surrounding quotes if present.
+                if len(inline) >= 2 and inline[0] in ('"', "'") and inline[-1] == inline[0]:
+                    inline = inline[1:-1]
+                embedded.append(inline)
+                break
+            i += 1
+
+        # Also check for pipe chains: bash -c "cmd1 | cmd2"
+        # and subprocess patterns in Python: subprocess.run(["cmd", ...])
+        for emb in list(embedded):
+            # Extract individual commands from pipes.
+            if "|" in emb:
+                for segment in emb.split("|"):
+                    segment = segment.strip()
+                    if segment:
+                        embedded.append(segment)
+
+        return embedded
 
     # -- structured (file / network) matching ----------------------------
 

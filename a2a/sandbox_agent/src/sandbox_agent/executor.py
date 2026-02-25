@@ -85,7 +85,7 @@ class SandboxExecutor:
     # ------------------------------------------------------------------
 
     async def run_shell(self, command: str) -> ExecutionResult:
-        """Run a shell command after checking permissions.
+        """Run a shell command after checking permissions and sources.json.
 
         Parameters
         ----------
@@ -121,7 +121,17 @@ class SandboxExecutor:
         if permission is PermissionResult.HITL:
             raise HitlRequired(command)
 
-        # 3. ALLOW -- execute the command.
+        # 3. Check sources.json enforcement (package blocking, git remote
+        #    allowlist) as a second layer of defense-in-depth.
+        sources_denial = self._check_sources(operation)
+        if sources_denial:
+            return ExecutionResult(
+                stdout="",
+                stderr=sources_denial,
+                exit_code=1,
+            )
+
+        # 4. ALLOW -- execute the command.
         return await self._execute(command)
 
     # ------------------------------------------------------------------
@@ -136,6 +146,63 @@ class SandboxExecutor:
         "grep -r foo" against the rule ``shell(grep:*)``).
         """
         return self._permission_checker.check("shell", operation)
+
+    def _check_sources(self, operation: str) -> str | None:
+        """Check sources.json enforcement for package and git operations.
+
+        Returns an error message string if the operation is blocked by
+        sources.json, or None if it is allowed.
+        """
+        import re
+
+        parts = operation.split()
+        if not parts:
+            return None
+
+        # --- Package manager checks ---
+        # pip install <package>
+        if len(parts) >= 3 and parts[0] == "pip" and parts[1] == "install":
+            if not self._sources_config.is_package_manager_enabled("pip"):
+                return "Blocked by sources.json: pip is not enabled."
+            for pkg in parts[2:]:
+                if pkg.startswith("-"):
+                    continue  # skip flags
+                # Strip version specifiers (e.g. "requests>=2.0")
+                pkg_name = re.split(r"[><=!~]", pkg)[0]
+                if pkg_name and self._sources_config.is_package_blocked("pip", pkg_name):
+                    return f"Blocked by sources.json: package '{pkg_name}' is on the blocked list."
+
+        # npm install <package>
+        if len(parts) >= 3 and parts[0] == "npm" and parts[1] == "install":
+            if not self._sources_config.is_package_manager_enabled("npm"):
+                return "Blocked by sources.json: npm is not enabled."
+            for pkg in parts[2:]:
+                if pkg.startswith("-"):
+                    continue
+                pkg_name = re.split(r"[@><=!~]", pkg)[0]
+                if pkg_name and self._sources_config.is_package_blocked("npm", pkg_name):
+                    return f"Blocked by sources.json: package '{pkg_name}' is on the blocked list."
+
+        # --- Git remote checks ---
+        # git clone <url>
+        if len(parts) >= 3 and parts[0] == "git" and parts[1] == "clone":
+            # Find the URL argument (skip flags like --depth, --branch)
+            url = None
+            i = 2
+            while i < len(parts):
+                if parts[i].startswith("-"):
+                    # Skip flag and its value if it takes one
+                    if parts[i] in ("--depth", "--branch", "-b"):
+                        i += 2
+                        continue
+                    i += 1
+                    continue
+                url = parts[i]
+                break
+            if url and not self._sources_config.is_git_remote_allowed(url):
+                return f"Blocked by sources.json: git remote '{url}' is not in allowed_remotes."
+
+        return None
 
     async def _execute(self, command: str) -> ExecutionResult:
         """Execute *command* in the workspace directory with a timeout."""

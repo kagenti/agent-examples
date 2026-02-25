@@ -111,6 +111,63 @@ class WorkspaceManager:
                 contexts.append(entry.name)
         return contexts
 
+    def cleanup_expired(self) -> list[str]:
+        """Remove workspace directories whose TTL has expired.
+
+        Reads ``created_at`` and ``ttl_days`` from each context's
+        ``.context.json``.  If ``created_at + ttl_days`` is in the past,
+        the workspace directory is deleted.
+
+        Returns a list of context_ids that were cleaned up.
+        """
+        import shutil
+
+        root = Path(self.workspace_root)
+        if not root.is_dir():
+            return []
+
+        now = datetime.now(timezone.utc)
+        cleaned: list[str] = []
+
+        for entry in root.iterdir():
+            context_file = entry / ".context.json"
+            if not entry.is_dir() or not context_file.exists():
+                continue
+
+            try:
+                data = json.loads(context_file.read_text())
+            except (json.JSONDecodeError, OSError):
+                continue
+
+            created_str = data.get("created_at")
+            ttl = data.get("ttl_days", self.ttl_days)
+
+            if not created_str:
+                continue
+
+            try:
+                created_at = datetime.fromisoformat(created_str)
+            except ValueError:
+                continue
+
+            from datetime import timedelta
+
+            if now > created_at + timedelta(days=ttl):
+                try:
+                    shutil.rmtree(entry)
+                    cleaned.append(entry.name)
+                except OSError:
+                    pass  # best-effort cleanup
+
+        return cleaned
+
+    def get_total_disk_usage(self) -> int:
+        """Return total disk usage in bytes across all workspaces."""
+        root = Path(self.workspace_root)
+        if not root.is_dir():
+            return 0
+        return self._disk_usage(str(root))
+
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------

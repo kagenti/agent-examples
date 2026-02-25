@@ -23,6 +23,7 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
+from langgraph.types import interrupt
 
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
@@ -78,9 +79,9 @@ operations when possible, as they have built-in path-safety checks.
 def _make_shell_tool(executor: SandboxExecutor) -> Any:
     """Return a LangChain tool that delegates to *executor.run_shell*.
 
-    On :class:`HitlRequired`, the tool returns a string starting with
-    ``APPROVAL_REQUIRED:`` instead of raising, so the LLM can communicate
-    the situation to the user.
+    On :class:`HitlRequired`, the tool calls LangGraph ``interrupt()`` to
+    pause the graph and require explicit human approval before resuming.
+    The graph will not continue until the human responds.
     """
 
     @tool
@@ -91,12 +92,25 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
             command: The shell command to run.
 
         Returns:
-            Command output (stdout + stderr) or an approval-required message.
+            Command output (stdout + stderr), or pauses for human approval.
         """
         try:
             result = await executor.run_shell(command)
         except HitlRequired as exc:
-            return f"APPROVAL_REQUIRED: command '{exc.command}' needs human approval."
+            # Pause graph execution — requires human approval to resume.
+            # The interrupt() call suspends the graph state. The A2A task
+            # transitions to input_required. Only an explicit human
+            # approval (via the HITLManager channel) resumes execution.
+            approval = interrupt({
+                "type": "approval_required",
+                "command": exc.command,
+                "message": f"Command '{exc.command}' requires human approval.",
+            })
+            # If we reach here, the human approved — execute the command.
+            if approval and approval.get("approved"):
+                result = await executor._execute(command)
+            else:
+                return f"DENIED: command '{exc.command}' was rejected by human review."
 
         parts: list[str] = []
         if result.stdout:
