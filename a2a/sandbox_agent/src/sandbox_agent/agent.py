@@ -126,9 +126,19 @@ class SandboxAgentExecutor(AgentExecutor):
 
         self._permission_checker = PermissionChecker(settings)
         self._sources_config = SourcesConfig.from_dict(sources)
-        self._checkpointer = MemorySaver()
 
         config = Configuration()  # type: ignore[call-arg]
+
+        # Use PostgreSQL checkpointer if configured, else in-memory
+        if config.checkpoint_db_url and config.checkpoint_db_url != "memory":
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+            self._checkpointer = AsyncPostgresSaver.from_conn_string(
+                config.checkpoint_db_url
+            )
+            logger.info("Using PostgreSQL checkpointer: %s", config.checkpoint_db_url.split("@")[-1])
+        else:
+            self._checkpointer = MemorySaver()
+            logger.info("Using in-memory checkpointer (set CHECKPOINT_DB_URL for persistence)")
         self._workspace_manager = WorkspaceManager(
             workspace_root=config.workspace_root,
             agent_name="sandbox-assistant",
