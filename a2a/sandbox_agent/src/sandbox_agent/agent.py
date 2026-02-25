@@ -190,12 +190,13 @@ class SandboxAgentExecutor(AgentExecutor):
 
         # Lazy-init PostgreSQL checkpointer on first execute()
         if not self._checkpointer_initialized and self._checkpoint_db_url:
-            from psycopg_pool import AsyncConnectionPool
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-            pool = AsyncConnectionPool(conninfo=self._checkpoint_db_url)
-            await pool.open()
-            self._checkpointer = AsyncPostgresSaver(pool)
+            # from_conn_string returns a context manager; enter it and keep
+            # the saver alive for the process lifetime.
+            cm = AsyncPostgresSaver.from_conn_string(self._checkpoint_db_url)
+            self._checkpointer = await cm.__aenter__()
+            self._checkpointer_cm = cm  # prevent GC
             await self._checkpointer.setup()
             self._checkpointer_initialized = True
             logger.info("PostgreSQL checkpointer initialized")
