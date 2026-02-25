@@ -17,6 +17,13 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
+
+try:
+    from a2a.server.tasks.sql_store import DatabaseTaskStore
+
+    _HAS_SQL_STORE = True
+except ImportError:
+    _HAS_SQL_STORE = False
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
@@ -252,13 +259,36 @@ class SandboxAgentExecutor(AgentExecutor):
 # ---------------------------------------------------------------------------
 
 
+def _create_task_store():
+    """Create the appropriate TaskStore based on configuration.
+
+    Uses A2A SDK's DatabaseTaskStore (PostgreSQL) when TASK_STORE_DB_URL
+    is set. Falls back to InMemoryTaskStore for dev/test.
+
+    This is A2A-generic — works for any agent framework, not just LangGraph.
+    """
+    import os
+
+    db_url = os.environ.get("TASK_STORE_DB_URL", "")
+    if db_url and _HAS_SQL_STORE:
+        from sqlalchemy.ext.asyncio import create_async_engine
+
+        engine = create_async_engine(db_url, pool_size=10, max_overflow=5)
+        store = DatabaseTaskStore(engine)
+        logger.info("Using PostgreSQL TaskStore: %s", db_url.split("@")[-1])
+        return store
+
+    logger.info("Using InMemoryTaskStore (set TASK_STORE_DB_URL for persistence)")
+    return InMemoryTaskStore()
+
+
 def run() -> None:
     """Create the A2A server application and run it with uvicorn."""
     agent_card = get_agent_card(host="0.0.0.0", port=8000)
 
     request_handler = DefaultRequestHandler(
         agent_executor=SandboxAgentExecutor(),
-        task_store=InMemoryTaskStore(),
+        task_store=_create_task_store(),
     )
 
     server = A2AStarletteApplication(
