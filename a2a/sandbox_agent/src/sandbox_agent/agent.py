@@ -193,7 +193,9 @@ class SandboxAgentExecutor(AgentExecutor):
             import asyncpg
             from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 
-            pool = await asyncpg.create_pool(self._checkpoint_db_url)
+            # Strip sslmode param from DSN (asyncpg uses ssl kwarg)
+            dsn = self._checkpoint_db_url.split("?")[0]
+            pool = await asyncpg.create_pool(dsn, ssl=False)
             self._checkpointer = AsyncPostgresSaver(pool)
             await self._checkpointer.setup()
             self._checkpointer_initialized = True
@@ -284,7 +286,12 @@ def _create_task_store():
     if db_url and _HAS_SQL_STORE:
         from sqlalchemy.ext.asyncio import create_async_engine
 
-        engine = create_async_engine(db_url, pool_size=10, max_overflow=5)
+        engine = create_async_engine(
+            db_url,
+            pool_size=10,
+            max_overflow=5,
+            connect_args={"ssl": False},
+        )
         store = DatabaseTaskStore(engine)
         logger.info("Using PostgreSQL TaskStore: %s", db_url.split("@")[-1])
         return store
