@@ -1,4 +1,4 @@
-"""A2A agent server for the Sandbox Assistant.
+"""A2A agent server for the Sandbox Legion.
 
 Wires together the workspace manager, permission checker, sources config,
 and LangGraph graph to serve the A2A protocol over HTTP.
@@ -73,7 +73,7 @@ def _load_json(filename: str) -> dict:
 
 
 def get_agent_card(host: str, port: int) -> AgentCard:
-    """Return an A2A AgentCard for the Sandbox Assistant.
+    """Return an A2A AgentCard for the Sandbox Legion.
 
     Parameters
     ----------
@@ -84,10 +84,10 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     """
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
-        id="sandbox_assistant",
-        name="Sandbox Assistant",
+        id="sandbox_legion",
+        name="Sandbox Legion",
         description=(
-            "**Sandbox Assistant** -- Executes shell commands, reads and writes "
+            "**Sandbox Legion** -- Executes shell commands, reads and writes "
             "files in an isolated per-context workspace with permission checks."
         ),
         tags=["shell", "file", "workspace", "sandbox"],
@@ -98,7 +98,7 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         ],
     )
     return AgentCard(
-        name="Sandbox Assistant",
+        name="Sandbox Legion",
         description=dedent(
             """\
             A sandboxed coding assistant that can execute shell commands, \
@@ -148,7 +148,7 @@ class SandboxAgentExecutor(AgentExecutor):
             logger.info("Using in-memory checkpointer (set CHECKPOINT_DB_URL for persistence)")
         self._workspace_manager = WorkspaceManager(
             workspace_root=config.workspace_root,
-            agent_name="sandbox-assistant",
+            agent_name="sandbox-legion",
             ttl_days=config.context_ttl_days,
         )
 
