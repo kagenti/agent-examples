@@ -132,7 +132,13 @@ class SandboxAgentExecutor(AgentExecutor):
         self._workspace_manager = WorkspaceManager(
             workspace_root=config.workspace_root,
             agent_name="sandbox-assistant",
+            ttl_days=config.context_ttl_days,
         )
+
+        # C19: Clean up expired workspaces on startup.
+        cleaned = self._workspace_manager.cleanup_expired()
+        if cleaned:
+            logger.info("Cleaned up %d expired workspaces: %s", len(cleaned), cleaned)
 
     # ------------------------------------------------------------------
 

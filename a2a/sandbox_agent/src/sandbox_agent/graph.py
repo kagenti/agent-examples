@@ -28,6 +28,7 @@ from langgraph.types import interrupt
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
+from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
 
 # ---------------------------------------------------------------------------
 # State
@@ -70,6 +71,12 @@ relative path and the content.  Parent directories are created automatically.
 - **web_fetch**: Fetch content from a URL.  Only allowed domains (configured \
 in sources.json) can be accessed.  Use this to read GitHub issues, PRs, \
 documentation, and other web resources.
+- **explore**: Spawn a read-only sub-agent for codebase research. The \
+sub-agent can grep, read files, and list files but cannot write or execute \
+commands.  Use this for searching definitions, analyzing code, or gathering \
+information across multiple files.
+- **delegate**: Spawn a separate sandbox pod for isolated, long-running, or \
+untrusted tasks.  Requires a Kubernetes cluster with agent-sandbox CRDs.
 
 Always prefer using the provided tools rather than raw shell I/O for file \
 operations when possible, as they have built-in path-safety checks.
@@ -297,14 +304,6 @@ def build_graph(
         sources_config=sources_config,
     )
 
-    # -- Tools --------------------------------------------------------------
-    tools = [
-        _make_shell_tool(executor),
-        _make_file_read_tool(workspace_path),
-        _make_file_write_tool(workspace_path),
-        _make_web_fetch_tool(sources_config),
-    ]
-
     # -- LLM ----------------------------------------------------------------
     from sandbox_agent.configuration import Configuration
 
@@ -314,6 +313,17 @@ def build_graph(
         base_url=config.llm_api_base,
         api_key=config.llm_api_key,
     )
+
+    # -- Tools --------------------------------------------------------------
+    tools = [
+        _make_shell_tool(executor),
+        _make_file_read_tool(workspace_path),
+        _make_file_write_tool(workspace_path),
+        _make_web_fetch_tool(sources_config),
+        make_explore_tool(workspace_path, llm),   # C20: in-process sub-agent
+        make_delegate_tool(),                      # C20: out-of-process sub-agent
+    ]
+
     llm_with_tools = llm.bind_tools(tools)
 
     # -- Graph nodes --------------------------------------------------------
