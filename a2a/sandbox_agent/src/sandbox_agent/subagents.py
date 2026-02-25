@@ -55,7 +55,7 @@ def _make_explore_tools(workspace: str) -> list[Any]:
             Matching lines with file paths and line numbers.
         """
         target = (ws_root / path).resolve()
-        if not str(target).startswith(str(ws_root)):
+        if not target.is_relative_to(ws_root):
             return "Error: path resolves outside the workspace."
 
         try:
@@ -111,7 +111,7 @@ def _make_explore_tools(workspace: str) -> list[Any]:
             Newline-separated list of matching file paths.
         """
         target = (ws_root / path).resolve()
-        if not str(target).startswith(str(ws_root)):
+        if not target.is_relative_to(ws_root):
             return "Error: path resolves outside the workspace."
         if not target.is_dir():
             return f"Error: directory not found at '{path}'."

