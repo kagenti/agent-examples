@@ -137,15 +137,15 @@ class SandboxAgentExecutor(AgentExecutor):
         config = Configuration()  # type: ignore[call-arg]
 
         # Use PostgreSQL checkpointer if configured, else in-memory
-        if config.checkpoint_db_url and config.checkpoint_db_url != "memory":
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-            self._checkpointer = AsyncPostgresSaver.from_conn_string(
-                config.checkpoint_db_url
-            )
-            logger.info("Using PostgreSQL checkpointer: %s", config.checkpoint_db_url.split("@")[-1])
-        else:
+        self._checkpoint_db_url = config.checkpoint_db_url
+        self._checkpointer = None  # Lazy-initialized in execute()
+        self._checkpointer_initialized = False
+        if not self._checkpoint_db_url or self._checkpoint_db_url == "memory":
             self._checkpointer = MemorySaver()
+            self._checkpointer_initialized = True
             logger.info("Using in-memory checkpointer (set CHECKPOINT_DB_URL for persistence)")
+        else:
+            logger.info("PostgreSQL checkpointer configured: %s", self._checkpoint_db_url.split("@")[-1])
         self._workspace_manager = WorkspaceManager(
             workspace_root=config.workspace_root,
             agent_name="sandbox-legion",
@@ -187,6 +187,17 @@ class SandboxAgentExecutor(AgentExecutor):
             workspace_path = "/tmp/sandbox-stateless"
             Path(workspace_path).mkdir(parents=True, exist_ok=True)
             logger.info("No context_id; using stateless workspace: %s", workspace_path)
+
+        # Lazy-init PostgreSQL checkpointer on first execute()
+        if not self._checkpointer_initialized and self._checkpoint_db_url:
+            import asyncpg
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+            pool = await asyncpg.create_pool(self._checkpoint_db_url)
+            self._checkpointer = AsyncPostgresSaver(pool)
+            await self._checkpointer.setup()
+            self._checkpointer_initialized = True
+            logger.info("PostgreSQL checkpointer initialized")
 
         # 3. Build graph with shared checkpointer for multi-turn memory
         graph = build_graph(
