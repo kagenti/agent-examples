@@ -19,7 +19,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 
 try:
-    from a2a.server.tasks.sql_store import DatabaseTaskStore
+    from a2a.server.tasks import DatabaseTaskStore
 
     _HAS_SQL_STORE = True
 except ImportError:
