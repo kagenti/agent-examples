@@ -126,9 +126,8 @@ def setup_observability() -> None:
     ]))
 
     # Instrument httpx for automatic traceparent propagation on outgoing requests.
-    # This is critical for distributed tracing: langchain-mcp-adapters uses httpx
-    # for streamable_http transport, so each MCP tool call will automatically carry
-    # the current span's traceparent header to the MCP gateway (Envoy).
+    # langchain-mcp-adapters uses httpx for streamable_http transport, so each MCP
+    # tool call will automatically carry the current span's traceparent header
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
         HTTPXClientInstrumentor().instrument()
@@ -408,7 +407,7 @@ def create_tracing_middleware():
 
     async def tracing_middleware(request: Request, call_next):
         # Skip non-API paths (health checks, agent card, etc.)
-        if request.url.path in ["/health", "/ready", "/.well-known/agent-card.json"]:
+        if request.url.path in ["/health", "/ready", "/.well-known/agent-card.json", "/.well-known/agent.json"]:
             return await call_next(request)
 
         tracer = get_tracer()
@@ -433,10 +432,8 @@ def create_tracing_middleware():
         except Exception as e:
             logger.debug(f"Could not parse request body: {e}")
 
-        # Extract incoming W3C Trace Context from request headers.
-        # If the request carries a traceparent (e.g., from Envoy/MCP gateway or
-        # an upstream orchestrator), the root span becomes a child of that trace.
-        # This is what connects the agent's spans to the MCP gateway's spans.
+        # Extract incoming W3C Trace Context from request headers to connect
+        # agent spans to MCP gateway spans
         incoming_ctx = extract(dict(request.headers))
         detach_token = context.attach(incoming_ctx)
 

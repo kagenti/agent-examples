@@ -119,9 +119,6 @@ class WeatherExecutor(AgentExecutor):
         # Test MCP connection first
         logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
 
-        # Trace context propagation to MCP gateway is handled automatically
-        # by opentelemetry-instrumentation-httpx, which injects the current
-        # span's traceparent header on every outgoing httpx request.
         mcpclient = get_mcpclient()
 
         # Try to get tools to verify connection
