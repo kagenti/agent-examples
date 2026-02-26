@@ -241,13 +241,23 @@ class SandboxAgentExecutor(AgentExecutor):
                 if isinstance(assistant_output, dict):
                     msgs = assistant_output.get("messages", [])
                     if msgs:
-                        final_answer = msgs[-1].content if hasattr(msgs[-1], "content") else str(msgs[-1])
+                        content = getattr(msgs[-1], "content", None)
+                        if isinstance(content, list):
+                            # Tool-calling models return a list of content blocks;
+                            # extract only the text portions.
+                            final_answer = "\n".join(
+                                block.get("text", "") if isinstance(block, dict) else str(block)
+                                for block in content
+                                if isinstance(block, dict) and block.get("type") == "text"
+                            ) or None
+                        elif content:
+                            final_answer = str(content)
 
             if final_answer is None:
                 final_answer = "No response generated."
 
             # Add artifact with final answer and complete
-            parts = [TextPart(text=str(final_answer))]
+            parts = [TextPart(text=final_answer)]
             await task_updater.add_artifact(parts)
             await task_updater.complete()
 
