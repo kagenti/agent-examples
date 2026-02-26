@@ -125,6 +125,18 @@ def setup_observability() -> None:
         W3CBaggagePropagator(),
     ]))
 
+    # Instrument httpx for automatic traceparent propagation on outgoing requests.
+    # This is critical for distributed tracing: langchain-mcp-adapters uses httpx
+    # for streamable_http transport, so each MCP tool call will automatically carry
+    # the current span's traceparent header to the MCP gateway (Envoy).
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        HTTPXClientInstrumentor().instrument()
+        logger.info("httpx instrumented for automatic trace context propagation")
+    except ImportError:
+        logger.warning("opentelemetry-instrumentation-httpx not available - "
+                       "MCP tool calls will not propagate trace context")
+
     # Instrument OpenAI for GenAI semantic conventions
     try:
         from opentelemetry.instrumentation.openai import OpenAIInstrumentor
@@ -421,10 +433,12 @@ def create_tracing_middleware():
         except Exception as e:
             logger.debug(f"Could not parse request body: {e}")
 
-        # Break parent chain to make this a true root span
-        # Without this, the span would inherit parent from W3C Trace Context headers
-        empty_ctx = context.Context()
-        detach_token = context.attach(empty_ctx)
+        # Extract incoming W3C Trace Context from request headers.
+        # If the request carries a traceparent (e.g., from Envoy/MCP gateway or
+        # an upstream orchestrator), the root span becomes a child of that trace.
+        # This is what connects the agent's spans to the MCP gateway's spans.
+        incoming_ctx = extract(dict(request.headers))
+        detach_token = context.attach(incoming_ctx)
 
         try:
             # Create root span with correct GenAI naming convention

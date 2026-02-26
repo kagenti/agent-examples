@@ -18,6 +18,8 @@ dependencies = [
     "langchain-mcp-adapters>=0.1.0",
     "python-keycloak>=5.5.1",
     "opentelemetry-exporter-otlp",
+    # Auto-instrument httpx so outgoing MCP tool calls propagate traceparent
+    "opentelemetry-instrumentation-httpx>=0.49b0",
     # OpenTelemetry GenAI semantic convention instrumentation
     # Emits spans with gen_ai.* attributes for MLflow compatibility
     "opentelemetry-instrumentation-openai>=0.34b0",
