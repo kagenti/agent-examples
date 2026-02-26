@@ -6,6 +6,8 @@ and LangGraph graph to serve the A2A protocol over HTTP.
 
 from __future__ import annotations
 
+import asyncio
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -68,6 +70,93 @@ def _load_json(filename: str) -> dict:
 
 
 # ---------------------------------------------------------------------------
+# TOFU (Trust-On-First-Use) verification
+# ---------------------------------------------------------------------------
+
+_TOFU_HASH_FILE = ".tofu-hashes.json"
+
+# Files in the workspace root to track for TOFU verification.
+_TOFU_TRACKED_FILES = ("CLAUDE.md", "sources.json", "settings.json")
+
+
+def _hash_file(path: Path) -> str | None:
+    """Return the SHA-256 hex digest of a file, or None if it doesn't exist."""
+    if not path.is_file():
+        return None
+    h = hashlib.sha256()
+    h.update(path.read_bytes())
+    return h.hexdigest()
+
+
+def _compute_tofu_hashes(root: Path) -> dict[str, str]:
+    """Compute SHA-256 hashes for tracked files under *root*.
+
+    Returns a dict mapping filename -> hex digest (only for files that exist).
+    """
+    hashes: dict[str, str] = {}
+    for name in _TOFU_TRACKED_FILES:
+        digest = _hash_file(root / name)
+        if digest is not None:
+            hashes[name] = digest
+    return hashes
+
+
+def _tofu_verify(root: Path) -> None:
+    """Run TOFU verification on startup.
+
+    On first run, computes and stores hashes of tracked files.  On subsequent
+    runs, compares current hashes against the stored ones and logs a WARNING
+    if any file has changed (possible tampering).  Does NOT block startup.
+    """
+    hash_file = root / _TOFU_HASH_FILE
+    current_hashes = _compute_tofu_hashes(root)
+
+    if not current_hashes:
+        logger.info("TOFU: no tracked files found in %s; skipping.", root)
+        return
+
+    if hash_file.is_file():
+        try:
+            with open(hash_file, encoding="utf-8") as fh:
+                stored_hashes = json.load(fh)
+        except (json.JSONDecodeError, OSError) as exc:
+            logger.warning("TOFU: could not read %s: %s", hash_file, exc)
+            stored_hashes = {}
+
+        # Compare each tracked file.
+        changed: list[str] = []
+        added: list[str] = []
+        removed: list[str] = []
+        for name, digest in current_hashes.items():
+            stored = stored_hashes.get(name)
+            if stored is None:
+                added.append(name)
+            elif stored != digest:
+                changed.append(name)
+        for name in stored_hashes:
+            if name not in current_hashes:
+                removed.append(name)
+
+        if changed or added or removed:
+            logger.warning(
+                "TOFU: workspace file integrity mismatch! "
+                "changed=%s, added=%s, removed=%s. "
+                "This may indicate tampering. Updating stored hashes.",
+                changed, added, removed,
+            )
+            # Update stored hashes (trust the new state).
+            with open(hash_file, "w", encoding="utf-8") as fh:
+                json.dump(current_hashes, fh, indent=2)
+        else:
+            logger.info("TOFU: all tracked files match stored hashes.")
+    else:
+        # First run: store hashes.
+        logger.info("TOFU: first run -- storing hashes for %s", list(current_hashes.keys()))
+        with open(hash_file, "w", encoding="utf-8") as fh:
+            json.dump(current_hashes, fh, indent=2)
+
+
+# ---------------------------------------------------------------------------
 # Agent Card
 # ---------------------------------------------------------------------------
 
@@ -127,6 +216,25 @@ def get_agent_card(host: str, port: int) -> AgentCard:
 class SandboxAgentExecutor(AgentExecutor):
     """A2A executor that delegates to the LangGraph sandbox graph."""
 
+    # Per-context_id locks to serialize concurrent graph executions for the
+    # same conversation.  A simple dict + mutex approach with periodic cleanup
+    # of unused entries.
+    _context_locks: dict[str, asyncio.Lock] = {}
+    _context_locks_mutex: asyncio.Lock = asyncio.Lock()
+
+    async def _get_context_lock(self, context_id: str) -> asyncio.Lock:
+        """Return (and lazily create) the asyncio.Lock for *context_id*.
+
+        A class-level mutex guards the dict so that two concurrent requests
+        for the same new context_id don't each create their own Lock.
+        """
+        async with self._context_locks_mutex:
+            lock = self._context_locks.get(context_id)
+            if lock is None:
+                lock = asyncio.Lock()
+                self._context_locks[context_id] = lock
+            return lock
+
     def __init__(self) -> None:
         settings = _load_json("settings.json")
         sources = _load_json("sources.json")
@@ -156,6 +264,10 @@ class SandboxAgentExecutor(AgentExecutor):
         cleaned = self._workspace_manager.cleanup_expired()
         if cleaned:
             logger.info("Cleaned up %d expired workspaces: %s", len(cleaned), cleaned)
+
+        # TOFU: verify workspace config file integrity on startup.
+        # Logs warnings on mismatch but does not block the agent from starting.
+        _tofu_verify(_PACKAGE_ROOT)
 
     # ------------------------------------------------------------------
 
@@ -209,64 +321,87 @@ class SandboxAgentExecutor(AgentExecutor):
             checkpointer=self._checkpointer,
         )
 
-        # 4. Stream graph execution with thread_id for checkpointer routing
-        messages = [HumanMessage(content=context.get_user_input())]
-        input_state = {"messages": messages}
-        graph_config = {"configurable": {"thread_id": context_id or "stateless"}}
-        logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
+        # 4. Stream graph execution with thread_id for checkpointer routing.
+        #    Acquire a per-context_id lock so that two concurrent requests for
+        #    the same conversation are serialized (the LangGraph checkpointer
+        #    is not safe for parallel writes to the same thread_id).
+        lock = await self._get_context_lock(context_id or "stateless")
+        logger.info(
+            "Acquiring context lock for context_id=%s (already locked: %s)",
+            context_id,
+            lock.locked(),
+        )
 
-        try:
-            output = None
-            async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
-                # Send intermediate status updates
-                await task_updater.update_status(
-                    TaskState.working,
-                    new_agent_text_message(
-                        "\n".join(
-                            f"{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
-                            for key, value in event.items()
-                        )
-                        + "\n",
-                        task_updater.context_id,
-                        task_updater.task_id,
-                    ),
-                )
-                output = event
+        async with lock:
+            messages = [HumanMessage(content=context.get_user_input())]
+            input_state = {"messages": messages}
+            graph_config = {"configurable": {"thread_id": context_id or "stateless"}}
+            logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 
-            # Extract final answer from the last event
-            final_answer = None
-            if output:
-                # The assistant node returns {"messages": [AIMessage(...)]}
-                assistant_output = output.get("assistant", {})
-                if isinstance(assistant_output, dict):
-                    msgs = assistant_output.get("messages", [])
-                    if msgs:
-                        content = getattr(msgs[-1], "content", None)
-                        if isinstance(content, list):
-                            # Tool-calling models return a list of content blocks;
-                            # extract only the text portions.
-                            final_answer = "\n".join(
-                                block.get("text", "") if isinstance(block, dict) else str(block)
-                                for block in content
-                                if isinstance(block, dict) and block.get("type") == "text"
-                            ) or None
-                        elif content:
-                            final_answer = str(content)
+            try:
+                output = None
+                async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
+                    # Send intermediate status updates
+                    await task_updater.update_status(
+                        TaskState.working,
+                        new_agent_text_message(
+                            "\n".join(
+                                f"{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
+                                for key, value in event.items()
+                            )
+                            + "\n",
+                            task_updater.context_id,
+                            task_updater.task_id,
+                        ),
+                    )
+                    output = event
 
-            if final_answer is None:
-                final_answer = "No response generated."
+                # Extract final answer from the last event
+                final_answer = None
+                if output:
+                    # The assistant node returns {"messages": [AIMessage(...)]}
+                    assistant_output = output.get("assistant", {})
+                    if isinstance(assistant_output, dict):
+                        msgs = assistant_output.get("messages", [])
+                        if msgs:
+                            content = getattr(msgs[-1], "content", None)
+                            if isinstance(content, list):
+                                # Tool-calling models return a list of content blocks;
+                                # extract only the text portions.
+                                final_answer = "\n".join(
+                                    block.get("text", "") if isinstance(block, dict) else str(block)
+                                    for block in content
+                                    if isinstance(block, dict) and block.get("type") == "text"
+                                ) or None
+                            elif content:
+                                final_answer = str(content)
 
-            # Add artifact with final answer and complete
-            parts = [TextPart(text=final_answer)]
-            await task_updater.add_artifact(parts)
-            await task_updater.complete()
+                if final_answer is None:
+                    final_answer = "No response generated."
 
-        except Exception as e:
-            logger.error("Graph execution error: %s", e)
-            parts = [TextPart(text=f"Error: {e}")]
-            await task_updater.add_artifact(parts)
-            await task_updater.failed()
-            raise
+                # Add artifact with final answer and complete
+                parts = [TextPart(text=final_answer)]
+                await task_updater.add_artifact(parts)
+                await task_updater.complete()
+
+            except Exception as e:
+                logger.error("Graph execution error: %s", e)
+                parts = [TextPart(text=f"Error: {e}")]
+                await task_updater.add_artifact(parts)
+                await task_updater.failed()
+                raise
+
+        # Periodic cleanup: remove locks that are no longer held and whose
+        # context_id has not been seen recently.  We do this opportunistically
+        # after each execution to avoid unbounded growth.
+        async with self._context_locks_mutex:
+            stale = [cid for cid, lk in self._context_locks.items() if not lk.locked()]
+            # Keep the dict from growing without bound, but only drop entries
+            # when there are more than 1000 idle locks.
+            if len(stale) > 1000:
+                for cid in stale:
+                    del self._context_locks[cid]
+                logger.debug("Cleaned up %d idle context locks", len(stale))
 
     # ------------------------------------------------------------------
 

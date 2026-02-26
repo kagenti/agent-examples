@@ -13,10 +13,20 @@ execution.  The three possible outcomes are:
 from __future__ import annotations
 
 import asyncio
+import logging
+import shlex
 from dataclasses import dataclass
 
 from sandbox_agent.permissions import PermissionChecker, PermissionResult
 from sandbox_agent.sources import SourcesConfig
+
+logger = logging.getLogger(__name__)
+
+# Shell interpreters that can execute arbitrary code via -c / -e flags.
+_INTERPRETERS = frozenset({"bash", "sh", "python", "python3", "perl", "ruby", "node"})
+
+# Flags that take an inline command string as the next argument.
+_EXEC_FLAGS = frozenset({"-c", "-e", "--eval"})
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +118,20 @@ class SandboxExecutor:
         #    Try "cmd subcmd" first (e.g. "pip install"), then fall back
         #    to just "cmd" (e.g. "grep").
         operation = command.strip()
+
+        # 1a. Check for interpreter bypass (e.g. bash -c "curl evil.com").
+        #     If the outer command is an interpreter with -c/-e, recursively
+        #     check the inner command against the same permission + sources
+        #     pipeline.  This prevents circumventing deny rules by wrapping
+        #     a blocked command in `bash -c "..."`.
+        bypass_denial = self._check_interpreter_bypass(operation)
+        if bypass_denial is not None:
+            return ExecutionResult(
+                stdout="",
+                stderr=bypass_denial,
+                exit_code=1,
+            )
+
         permission = self._check_permission(operation)
 
         # 2. Act on the permission result.
@@ -137,6 +161,62 @@ class SandboxExecutor:
     # ------------------------------------------------------------------
     # Internal helpers
     # ------------------------------------------------------------------
+
+    def _check_interpreter_bypass(self, command: str) -> str | None:
+        """Check if a command uses an interpreter to bypass restrictions.
+
+        Detects patterns like ``bash -c "curl evil.com"`` or
+        ``python3 -c "import os; os.system('rm -rf /')"`` and recursively
+        checks the inner command against permissions and sources policy.
+
+        Returns
+        -------
+        str or None
+            An error message if the inner command is denied, or *None* if
+            no interpreter bypass was detected (or the inner command is OK).
+        """
+        try:
+            parts = shlex.split(command)
+        except ValueError:
+            return None
+
+        if len(parts) < 3:
+            return None
+
+        # Resolve the binary name (handle /usr/bin/bash -> bash).
+        cmd = parts[0].rsplit("/", 1)[-1]
+        if cmd not in _INTERPRETERS:
+            return None
+
+        if parts[1] not in _EXEC_FLAGS:
+            return None
+
+        # Everything after the exec flag is the inner command.
+        inner_command = " ".join(parts[2:])
+        logger.warning(
+            "Interpreter bypass detected: '%s' wraps inner command '%s'",
+            command,
+            inner_command,
+        )
+
+        # Recursively check the inner command against permission rules.
+        inner_permission = self._check_permission(inner_command)
+        if inner_permission is PermissionResult.DENY:
+            return (
+                f"Permission denied: interpreter bypass detected. "
+                f"Inner command '{inner_command}' is denied by policy."
+            )
+
+        # Also check the inner command against sources.json policy
+        # (e.g. git clone to a disallowed remote inside bash -c).
+        inner_sources_denial = self._check_sources(inner_command)
+        if inner_sources_denial:
+            return (
+                f"Blocked: interpreter bypass detected. "
+                f"Inner command violates sources policy: {inner_sources_denial}"
+            )
+
+        return None
 
     def _check_permission(self, operation: str) -> PermissionResult:
         """Check the permission for a shell operation.

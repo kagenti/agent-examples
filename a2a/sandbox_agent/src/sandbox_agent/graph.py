@@ -341,6 +341,22 @@ def build_graph(
     graph.add_node("tools", ToolNode(tools))
 
     graph.set_entry_point("assistant")
+    # TODO(HITL): To add human-in-the-loop approval for dangerous commands:
+    # 1. Add a "hitl_check" node between assistant and tools
+    # 2. hitl_check inspects tool_calls for commands that need approval
+    # 3. If approval needed, call interrupt({"command": cmd, "reason": reason})
+    # 4. LangGraph pauses the graph until resume() is called with the decision
+    # 5. The A2A task status shows "input-required" state
+    # 6. Frontend shows approval buttons; user clicks approve/deny
+    # 7. Backend calls resume() on the graph, execution continues
+    #
+    # Current implementation: interrupt() is called inside _make_shell_tool
+    # (in the tool itself) when HitlRequired is raised. A graph-level
+    # hitl_check node would give more control (e.g. batch approvals,
+    # richer context) but requires restructuring the conditional edges:
+    #   assistant -> hitl_check -> tools -> assistant
+    # instead of the current:
+    #   assistant -> tools -> assistant
     graph.add_conditional_edges("assistant", tools_condition)
     graph.add_edge("tools", "assistant")
 
