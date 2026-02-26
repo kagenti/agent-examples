@@ -119,7 +119,18 @@ class WeatherExecutor(AgentExecutor):
         # Test MCP connection first
         logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
 
-        mcpclient = get_mcpclient()
+        # Extract current trace context for propagation to Envoy/MCP
+        traceparent = None
+        root_span = get_root_span()
+        if root_span and root_span.is_recording():
+            span_context = root_span.get_span_context()
+            if span_context.is_valid:
+                # Format traceparent according to W3C Trace Context spec
+                # Format: version-trace_id-span_id-trace_flags
+                traceparent = f"00-{format(span_context.trace_id, '032x')}-{format(span_context.span_id, '016x')}-{format(span_context.trace_flags, '02x')}"
+                logger.info(f'Propagating trace context to MCP: {traceparent}')
+
+        mcpclient = get_mcpclient(traceparent=traceparent)
 
         # Try to get tools to verify connection
         try:

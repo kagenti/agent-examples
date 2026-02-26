@@ -12,12 +12,27 @@ config = Configuration()
 class ExtendedMessagesState(MessagesState):
      final_answer: str = ""
 
-def get_mcpclient():
-    return MultiServerMCPClient({
-        "math": {
-            "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
-            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+def get_mcpclient(traceparent: str | None = None):
+    """
+    Create an MCP client with optional trace context propagation.
+
+    Args:
+        traceparent: W3C Trace Context traceparent header value
+                    Format: "00-{trace-id}-{parent-id}-{trace-flags}"
+    """
+    server_config = {
+        "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+        "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+    }
+
+    # Add traceparent header if provided for distributed tracing through Envoy
+    if traceparent:
+        server_config["headers"] = {
+            "traceparent": traceparent
         }
+
+    return MultiServerMCPClient({
+        "math": server_config
     })
 
 async def get_graph(client) -> StateGraph:
