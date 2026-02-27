@@ -1,40 +1,11 @@
 import os
 import sys
 import logging
-import jwt
 from typing import List, Dict, Any
 from fastmcp import FastMCP
 from fastmcp.server.dependencies import get_access_token, AccessToken
-from fastmcp.server.auth.providers.jwt import JWTVerifier
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
-
-def get_client_id() -> str:
-    """
-    Read the SVID JWT from file and extract the client ID from the "sub" claim.
-    """
-    # Read SVID JWT from file to get client ID
-    jwt_file_path = "/opt/jwt_svid.token"
-    
-    content = None
-    try:
-        with open(jwt_file_path, "r") as file:
-            content = file.read()
-    except FileNotFoundError:
-        raise Exception(f"SVID JWT file {jwt_file_path} not found.")
-
-    if content is None or content.strip() == "":
-        raise Exception(f"No content in SVID JWT file {jwt_file_path}.")
-
-    try:
-        decoded = jwt.decode(content, options={"verify_signature": False})
-    except jwt.DecodeError:
-        raise ValueError(f"Failed to decode SVID JWT file {jwt_file_path}.")
-
-    try:
-        return decoded["sub"]
-    except KeyError:
-        raise KeyError('SVID JWT is missing required "sub" claim.')
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=os.getenv("LOG_LEVEL", "DEBUG"), stream=sys.stdout, format='%(levelname)s: %(message)s')
@@ -44,7 +15,7 @@ SLACK_BOT_TOKEN = os.getenv("SLACK_BOT_TOKEN")
 ADMIN_SLACK_BOT_TOKEN = os.getenv("ADMIN_SLACK_BOT_TOKEN")
 
 def slack_client_from_bot_token(bot_token):
-    try: 
+    try:
         slack_client = WebClient(token=bot_token)
         auth_test = slack_client.auth_test()
         logger.info(f"Successfully authenticated as bot '{auth_test['user']}' in workspace '{auth_test['team']}'.")
@@ -65,7 +36,7 @@ def get_slack_client(access_token=None):
     if access_token is None:
         logger.error("ADMIN_SLACK_BOT_TOKEN configured, but no access token passed. ")
         return None
-    
+
     # Access token is now claims dict from FastMCP AccessToken
     access_token_scopes = access_token.get("scope", "").split() if access_token.get("scope") else []
     logger.debug(f"Received scopes: {access_token_scopes}")
@@ -78,18 +49,7 @@ def get_slack_client(access_token=None):
 
 
 # Create FastMCP app
-# Temporary environment variables to manually create verifier
-verifier = None
-JWKS_URI = os.getenv("JWKS_URI")
-ISSUER = os.getenv("ISSUER")
-CLIENT_ID = get_client_id()
-if not JWKS_URI is None:
-    verifier = JWTVerifier(
-        jwks_uri = JWKS_URI,
-        issuer = ISSUER,
-        audience = CLIENT_ID # the CLIENT_ID will be the same as the AUDIENCE
-    )
-mcp = FastMCP("Slack", auth=verifier)
+mcp = FastMCP("Slack")
 
 @mcp.tool()
 def get_channels() -> List[Dict[str, Any]]:
@@ -168,11 +128,6 @@ if __name__ == "__main__":
         logger.info("Starting Slack MCP Server")
         run_server()
     else: # two tokens set -> we validate the JWT and connect to slack based on access token scope
-        # check if other required Auth variables are set
-        auth = os.getenv("JWKS_URI")
-        if auth is None:
-            logger.error("Configured ADMIN_SLACK_BOT_TOKEN but auth is not configured - fine grained authz requires token validation")
-        else: 
-            logger.info("Configured two slack tokens; finer-grained authz enabled")
-            logger.info("Starting Slack MCP Server")
-            run_server()
+        logger.info("Configured two slack tokens; finer-grained authz enabled")
+        logger.info("Starting Slack MCP Server")
+        run_server()

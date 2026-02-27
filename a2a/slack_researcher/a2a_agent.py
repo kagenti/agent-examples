@@ -20,13 +20,11 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, SecurityScheme, HTTPAuthSecurityScheme
 from a2a.utils import new_agent_text_message, new_task
 
-from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Route
 
 from slack_researcher.config import settings, Settings
 from slack_researcher.event import Event
 from slack_researcher.main import SlackAgent
-from slack_researcher.auth import on_auth_error, BearerAuthBackend, auth_headers
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(levelname)s: %(message)s')
@@ -139,7 +137,6 @@ class ResearchExecutor(AgentExecutor):
         Returns:
             None
         """
-        user_token = context.call_context.user._user.access_token
         user_input = [context.get_user_input()]
         task = context.current_task
         if not task:
@@ -160,19 +157,14 @@ class ResearchExecutor(AgentExecutor):
         assistant_tool_map = {}
 
         # Hook up MCP tools
+        # AuthBridge handles auth transparently on outbound MCP calls (envoy injects tokens).
         toolkit = None
         try:
             if settings.MCP_URL:
                 logging.info("Connecting to MCP server at %s", settings.MCP_URL)
 
-                headers = await auth_headers(
-                    user_token, 
-                    target_scopes=settings.TARGET_SCOPES
-                )
-
                 async with streamablehttp_client(
                     url=settings.MCP_URL,
-                    headers=headers
                 )  as (
                     read_stream,
                     write_stream,
@@ -228,11 +220,5 @@ def run():
         methods=['GET'],
         name='agent_card_new',
     ))
-
-    # if one of the auth variables is set, create middleware
-    # if none of them are set, ignore all authorization headers. No token validation will be performed
-    if not settings.JWKS_URI is None:
-        logging.info("JWKS_URI is set - using JWT Validation middleware")
-        app.add_middleware(AuthenticationMiddleware, backend=BearerAuthBackend(), on_error=on_auth_error)
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)

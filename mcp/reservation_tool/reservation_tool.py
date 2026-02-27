@@ -10,7 +10,6 @@ import logging
 import json
 from typing import Optional
 from fastmcp import FastMCP
-from fastmcp.server.auth.providers.jwt import JWTVerifier
 
 from providers import MockProvider, ReservationProvider
 
@@ -27,22 +26,8 @@ logging.basicConfig(
 provider: ReservationProvider = MockProvider()
 logger.info("Initialized MockProvider for reservations")
 
-# Setup JWT authentication if configured
-verifier = None
-JWKS_URI = os.getenv("JWKS_URI")
-ISSUER = os.getenv("ISSUER")
-if JWKS_URI:
-    # Note: In production, CLIENT_ID should be read from SVID or config
-    CLIENT_ID = os.getenv("CLIENT_ID", "reservation-tool")
-    verifier = JWTVerifier(
-        jwks_uri=JWKS_URI,
-        issuer=ISSUER,
-        audience=CLIENT_ID
-    )
-    logger.info("JWT authentication enabled")
-
 # Create FastMCP app
-mcp = FastMCP("Restaurant Reservations", auth=verifier)
+mcp = FastMCP("Restaurant Reservations")
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
