@@ -34,6 +34,7 @@ from starlette.routing import Route
 from langgraph.checkpoint.memory import MemorySaver
 
 from sandbox_agent.configuration import Configuration
+from sandbox_agent.event_serializer import LangGraphSerializer
 from sandbox_agent.graph import build_graph
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
@@ -340,13 +341,14 @@ class SandboxAgentExecutor(AgentExecutor):
 
             try:
                 output = None
+                serializer = LangGraphSerializer()
                 async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
-                    # Send intermediate status updates
+                    # Send intermediate status updates as structured JSON
                     await task_updater.update_status(
                         TaskState.working,
                         new_agent_text_message(
                             "\n".join(
-                                f"{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
+                                serializer.serialize(key, value)
                                 for key, value in event.items()
                             )
                             + "\n",
