@@ -9,7 +9,6 @@ dependencies = [
     "crewai==0.203.1",
     "crewai-tools==0.76.0",
     "crewai-tools[mcp]==0.76.0",
-    "authlib>=1.6.0",
 ]
 
 [tool.ruff]

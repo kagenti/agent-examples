@@ -22,10 +22,8 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, SecurityScheme, HTTPAuthSecurityScheme
 from a2a.utils import new_agent_text_message, new_task
 
-from starlette.middleware.authentication import AuthenticationMiddleware
 from starlette.routing import Route
 
-from git_issue_agent.auth import on_auth_error, BearerAuthBackend, auth_headers
 from git_issue_agent.config import settings, Settings
 from git_issue_agent.event import Event
 from git_issue_agent.main import GitIssueAgent
@@ -139,12 +137,14 @@ class GithubExecutor(AgentExecutor):
         Returns:
             None
         """
-        if settings.GITHUB_TOKEN: 
-            user_token = settings.GITHUB_TOKEN
-        elif settings.JWKS_URI:
-            user_token = context.call_context.user._user.access_token
-        else: 
-            raise Exception("either JWKS_URI or GITHUB_TOKEN env var must be set")
+        # If GITHUB_TOKEN is set, pass it as Bearer header to MCP.
+        # If not set, assume AuthBridge handles auth transparently (envoy injects tokens).
+        headers = {}
+        if settings.GITHUB_TOKEN:
+            headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+        else:
+            logging.warning("GITHUB_TOKEN not set; assuming AuthBridge handles outbound authentication")
+
         user_input = [context.get_user_input()]
         task = context.current_task
         if not task:
@@ -166,12 +166,6 @@ class GithubExecutor(AgentExecutor):
             if settings.MCP_URL:
                 logging.info("Connecting to MCP server at %s", settings.MCP_URL)
 
-                headers = await auth_headers(
-                    user_token, 
-                    target_audience=settings.TARGET_AUDIENCE, 
-                    target_scopes=settings.TARGET_SCOPES
-                )
-
                 server_params = {
                     "url": settings.MCP_URL,
                     "transport": "streamable-http",
@@ -182,7 +176,7 @@ class GithubExecutor(AgentExecutor):
                     issue_tools = [
                         tool
                         for tool in mcp_tools
-                        if ("issue" in tool.name.lower() or "label" in tool.name.lower()) and 
+                        if ("issue" in tool.name.lower() or "label" in tool.name.lower()) and
                         ("search" in tool.name.lower() or "list" in tool.name.lower())
                     ]
 
@@ -227,20 +221,11 @@ def run():
     app = server.build()  # this returns a Starlette app
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    # Only register this route when JWKS-based authentication is not enabled,
-    # to avoid placing a "public" endpoint behind authentication middleware.
-    if not settings.JWKS_URI:
-        app.routes.insert(0, Route(
-            '/.well-known/agent-card.json',
-            server._handle_get_agent_card,
-            methods=['GET'],
-            name='agent_card_new',
-        ))
-
-    if settings.JWKS_URI:
-        logging.info("JWKS_URI is set - using JWT Validation middleware")
-        app.add_middleware(AuthenticationMiddleware, backend=BearerAuthBackend(), on_error=on_auth_error)
-    elif settings.GITHUB_TOKEN is None:
-        logging.error("One of JWKS_URI or GITHUB_TOKEN must be set.")
+    app.routes.insert(0, Route(
+        '/.well-known/agent-card.json',
+        server._handle_get_agent_card,
+        methods=['GET'],
+        name='agent_card_new',
+    ))
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)
