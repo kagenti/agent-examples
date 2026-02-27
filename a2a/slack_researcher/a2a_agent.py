@@ -165,7 +165,7 @@ class ResearchExecutor(AgentExecutor):
 
                 async with streamablehttp_client(
                     url=settings.MCP_URL,
-                )  as (
+                ) as (
                     read_stream,
                     write_stream,
                     _,

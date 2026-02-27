@@ -5,9 +5,7 @@ description = "simple slack tool"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "httpx>=0.28.1",
     "fastmcp>=2.12.1",
     "requests>=2.32.3",
     "slack_sdk>=3.36.0",
-    "PyJWT>=2.10.1",
 ]

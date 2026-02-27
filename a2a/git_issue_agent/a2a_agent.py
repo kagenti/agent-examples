@@ -142,6 +142,8 @@ class GithubExecutor(AgentExecutor):
         headers = {}
         if settings.GITHUB_TOKEN:
             headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
+        else:
+            logging.warning("GITHUB_TOKEN not set; assuming AuthBridge handles outbound authentication")
 
         user_input = [context.get_user_input()]
         task = context.current_task

@@ -3,7 +3,6 @@ import sys
 import logging
 from typing import List, Dict, Any
 from fastmcp import FastMCP
-from fastmcp.server.dependencies import get_access_token, AccessToken
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
@@ -28,22 +27,8 @@ def slack_client_from_bot_token(bot_token):
         logger.exception(f"An unexpected error occurred during Slack client initialization: {e}")
         return None
 
-def get_slack_client(access_token=None):
-    if ADMIN_SLACK_BOT_TOKEN is None:
-        logger.debug("No ADMIN_SLACK_BOT_TOKEN configured - automatically configuring based on SLACK_BOT_TOKEN. ")
-        return slack_client_from_bot_token(SLACK_BOT_TOKEN)
-    # we do fine-grained authz
-    if access_token is None:
-        logger.error("ADMIN_SLACK_BOT_TOKEN configured, but no access token passed. ")
-        return None
-
-    # Access token is now claims dict from FastMCP AccessToken
-    access_token_scopes = access_token.get("scope", "").split() if access_token.get("scope") else []
-    logger.debug(f"Received scopes: {access_token_scopes}")
-    admin_scope = os.getenv("ADMIN_SCOPE_NAME")
-    is_admin = admin_scope in access_token_scopes
-    logger.debug(f"Is admin: {is_admin}")
-    if is_admin:
+def get_slack_client():
+    if ADMIN_SLACK_BOT_TOKEN:
         return slack_client_from_bot_token(ADMIN_SLACK_BOT_TOKEN)
     return slack_client_from_bot_token(SLACK_BOT_TOKEN)
 
@@ -58,9 +43,7 @@ def get_channels() -> List[Dict[str, Any]]:
     """
     logger.debug(f"Called get_channels tool")
 
-    # Get the current authenticated user's token using FastMCP 2.0 dependency
-    access_token: AccessToken | None = get_access_token()
-    slack_client = get_slack_client(access_token=access_token.claims if access_token else None)
+    slack_client = get_slack_client()
     if slack_client is None:
         return [{"error": f"Could not start slack client. Check the configured bot token"}]
 
@@ -93,8 +76,7 @@ def get_channel_history(channel_id: str, limit: int = 20) -> List:
     """
     logger.debug(f"Called get_channel_history tool: {channel_id}")
 
-    access_token: AccessToken | None = get_access_token()
-    slack_client = get_slack_client(access_token=access_token.claims if access_token else None)
+    slack_client = get_slack_client()
     if slack_client is None:
         return [{"error": f"Could not start slack client. Check the configured bot token"}]
 
@@ -121,13 +103,12 @@ def run_server():
     mcp.run(transport=transport, host=host, port=port)
 
 if __name__ == "__main__":
-    if SLACK_BOT_TOKEN is None: # default slack token
+    if SLACK_BOT_TOKEN is None:
         logger.warning("Please configure the SLACK_BOT_TOKEN environment variable before running the server")
-    elif ADMIN_SLACK_BOT_TOKEN is None: # one token set -> we just validate the JWT
-        logger.info("Configured SLACK_BOT_TOKEN environment variable but not ADMIN_SLACK_BOT_TOKEN; all requests will use the `SLACK_BOT_TOKEN` to reach the Slack API")
-        logger.info("Starting Slack MCP Server")
-        run_server()
-    else: # two tokens set -> we validate the JWT and connect to slack based on access token scope
-        logger.info("Configured two slack tokens; finer-grained authz enabled")
+    else:
+        if ADMIN_SLACK_BOT_TOKEN:
+            logger.info("Both SLACK_BOT_TOKEN and ADMIN_SLACK_BOT_TOKEN configured; ADMIN_SLACK_BOT_TOKEN takes precedence")
+        else:
+            logger.info("Using SLACK_BOT_TOKEN for all Slack API calls")
         logger.info("Starting Slack MCP Server")
         run_server()
