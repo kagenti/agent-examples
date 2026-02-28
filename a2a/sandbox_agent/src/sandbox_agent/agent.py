@@ -435,8 +435,10 @@ def _create_task_store():
 
         engine = create_async_engine(
             db_url,
-            pool_size=10,
-            max_overflow=5,
+            pool_size=5,
+            max_overflow=3,
+            pool_recycle=300,  # Recycle connections every 5 min
+            pool_pre_ping=True,  # Verify connection before use
             connect_args={"ssl": False},
         )
         store = DatabaseTaskStore(engine)
