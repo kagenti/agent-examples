@@ -79,11 +79,30 @@ class LangGraphSerializer(FrameworkEventSerializer):
             return json.dumps({"type": "llm_response", "content": text})
 
     def _serialize_assistant(self, msg: Any) -> str:
-        """Serialize an assistant (LLM) node output."""
+        """Serialize an assistant (LLM) node output.
+
+        When the LLM calls tools, it often also produces reasoning text.
+        We emit BOTH the thinking content and the tool call as separate
+        JSON lines so the UI shows the full chain:
+            {"type": "llm_response", "content": "Let me check..."}
+            {"type": "tool_call", "tools": [...]}
+        """
         tool_calls = getattr(msg, "tool_calls", [])
+        content = getattr(msg, "content", "")
+
+        # Extract any text content from the LLM
+        if isinstance(content, list):
+            text = self._extract_text_blocks(content)
+        else:
+            text = str(content)[:2000] if content else ""
 
         if tool_calls:
-            return json.dumps({
+            parts = []
+            # Emit thinking/reasoning text first (if present)
+            if text.strip():
+                parts.append(json.dumps({"type": "llm_response", "content": text}))
+            # Then emit the tool call
+            parts.append(json.dumps({
                 "type": "tool_call",
                 "tools": [
                     {
@@ -92,13 +111,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
                     }
                     for tc in tool_calls
                 ],
-            })
-
-        content = getattr(msg, "content", "")
-        if isinstance(content, list):
-            text = self._extract_text_blocks(content)
-        else:
-            text = str(content)[:2000] if content else ""
+            }))
+            return "\n".join(parts)
 
         return json.dumps({"type": "llm_response", "content": text})
 
