@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN pip install --no-cache-dir uv
 
 WORKDIR /app
+ARG CACHE_BUST
 COPY . .
 RUN uv sync --no-cache --locked --link-mode copy
 
