@@ -439,7 +439,6 @@ def _create_task_store():
             max_overflow=3,
             pool_recycle=300,  # Recycle connections every 5 min
             pool_pre_ping=True,  # Verify connection before use
-            connect_args={"ssl": False},
         )
         store = DatabaseTaskStore(engine)
         logger.info("Using PostgreSQL TaskStore: %s", db_url.split("@")[-1])
