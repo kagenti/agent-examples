@@ -342,21 +342,70 @@ class SandboxAgentExecutor(AgentExecutor):
             try:
                 output = None
                 serializer = LangGraphSerializer()
-                async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
-                    # Send intermediate status updates as structured JSON
-                    await task_updater.update_status(
-                        TaskState.working,
-                        new_agent_text_message(
-                            "\n".join(
-                                serializer.serialize(key, value)
-                                for key, value in event.items()
+
+                # Retry loop for transient LLM API errors (429 rate limits)
+                max_retries = 3
+                for attempt in range(max_retries + 1):
+                    try:
+                        async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
+                            # Send intermediate status updates as structured JSON
+                            await task_updater.update_status(
+                                TaskState.working,
+                                new_agent_text_message(
+                                    "\n".join(
+                                        serializer.serialize(key, value)
+                                        for key, value in event.items()
+                                    )
+                                    + "\n",
+                                    task_updater.context_id,
+                                    task_updater.task_id,
+                                ),
                             )
-                            + "\n",
-                            task_updater.context_id,
-                            task_updater.task_id,
-                        ),
-                    )
-                    output = event
+                            output = event
+                        break  # Success — exit retry loop
+                    except Exception as retry_err:
+                        err_str = str(retry_err).lower()
+                        is_quota = "insufficient_quota" in err_str
+                        is_rate_limit = "rate_limit" in err_str or "429" in err_str
+
+                        if is_quota:
+                            # Permanent — no retry
+                            logger.error("LLM quota exceeded: %s", retry_err)
+                            error_msg = (
+                                "LLM API quota exceeded. Please check your API billing "
+                                "at https://platform.openai.com/account/billing/overview"
+                            )
+                            await task_updater.update_status(
+                                TaskState.working,
+                                new_agent_text_message(
+                                    json.dumps({"type": "error", "message": error_msg}),
+                                    task_updater.context_id,
+                                    task_updater.task_id,
+                                ),
+                            )
+                            parts = [TextPart(text=error_msg)]
+                            await task_updater.add_artifact(parts)
+                            await task_updater.failed()
+                            return
+                        elif is_rate_limit and attempt < max_retries:
+                            # Transient — retry with backoff
+                            delay = 2 ** (attempt + 1)
+                            logger.warning(
+                                "Rate limited (attempt %d/%d), retrying in %ds: %s",
+                                attempt + 1, max_retries, delay, retry_err,
+                            )
+                            await task_updater.update_status(
+                                TaskState.working,
+                                new_agent_text_message(
+                                    json.dumps({"type": "error", "message": f"Rate limited, retrying in {delay}s..."}),
+                                    task_updater.context_id,
+                                    task_updater.task_id,
+                                ),
+                            )
+                            await asyncio.sleep(delay)
+                            continue
+                        else:
+                            raise  # Not a retryable error
 
                 # Extract final answer from the last event
                 final_answer = None
@@ -388,10 +437,18 @@ class SandboxAgentExecutor(AgentExecutor):
 
             except Exception as e:
                 logger.error("Graph execution error: %s", e)
+                error_msg = json.dumps({"type": "error", "message": str(e)})
+                await task_updater.update_status(
+                    TaskState.working,
+                    new_agent_text_message(
+                        error_msg,
+                        task_updater.context_id,
+                        task_updater.task_id,
+                    ),
+                )
                 parts = [TextPart(text=f"Error: {e}")]
                 await task_updater.add_artifact(parts)
                 await task_updater.failed()
-                raise
 
         # Periodic cleanup: remove locks that are no longer held and whose
         # context_id has not been seen recently.  We do this opportunistically
