@@ -109,7 +109,9 @@ def _tofu_verify(root: Path) -> None:
     runs, compares current hashes against the stored ones and logs a WARNING
     if any file has changed (possible tampering).  Does NOT block startup.
     """
-    hash_file = root / _TOFU_HASH_FILE
+    # Write to /tmp to avoid PermissionError when OCP assigns arbitrary UID
+    # (the /app directory is owned by UID 1001 but OCP may run as a different UID)
+    hash_file = Path("/tmp") / _TOFU_HASH_FILE
     current_hashes = _compute_tofu_hashes(root)
 
     if not current_hashes:
