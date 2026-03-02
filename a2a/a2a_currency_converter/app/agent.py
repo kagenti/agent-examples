@@ -20,9 +20,12 @@ from langchain_openai import ChatOpenAI
 memory = MemorySaver()
 
 class Configuration(BaseSettings):
+    """The configuration of the Agent"""
+
     llm_model: str = "gpt-4o"
     llm_api_base: str = ""
-    # We don't want the pod to crash without a valid key.  Report authentication error to A2A user instead.
+    # We don't want the pod to crash without a valid key.
+    # Report authentication error to A2A user instead.
     llm_api_key: str = os.getenv("OPENAI_API_KEY", "Failed to load env var OPENAI_API_KEY")
 
 

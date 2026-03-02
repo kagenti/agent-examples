@@ -97,8 +97,10 @@ This can happen if the agent's LLM_API_BASE environment variable does not point 
 
 LLM_API_BASE is {os.getenv("LLM_API_BASE", "undefined")}
 
-Error: {e}"""
+Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
+"""
             logger.error(msg=msg)
+            logger.error(msg=f"Raw InternalServerError: {e}")
             updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
@@ -115,12 +117,13 @@ Error: {e}"""
 When importing this agent into Kagenti, expand Environment Variables and Add Variable,
 or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_converter/.env.openai
 
+Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
+
 Also check
 `kubectl -n <namespace> get secret openai-secret -o jsonpath="{'{'}.data.apikey{'}'}" | base64 -d`
-The key should match your OpenAI key.
-
-{e}"""
+The key should match your OpenAI key."""
             logger.error(msg=msg)
+            logger.error(msg=f"Raw AuthenticationError {e}")
             updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
