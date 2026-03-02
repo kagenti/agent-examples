@@ -75,8 +75,10 @@ documentation, and other web resources.
 sub-agent can grep, read files, and list files but cannot write or execute \
 commands.  Use this for searching definitions, analyzing code, or gathering \
 information across multiple files.
-- **delegate**: Spawn a separate sandbox pod for isolated, long-running, or \
-untrusted tasks.  Requires a Kubernetes cluster with agent-sandbox CRDs.
+- **delegate**: Spawn a child agent session for a delegated task.  Supports \
+4 modes: in-process (fast, shared fs), shared-pvc (parent's PVC visible), \
+isolated (own workspace via SandboxClaim), sidecar (same pod).  Mode is \
+auto-selected based on the task, or you can specify explicitly.
 
 Always prefer using the provided tools rather than raw shell I/O for file \
 operations when possible, as they have built-in path-safety checks.
@@ -277,6 +279,8 @@ def build_graph(
     permission_checker: PermissionChecker,
     sources_config: SourcesConfig,
     checkpointer: Optional[Any] = None,
+    context_id: str = "",
+    namespace: str = "team1",
 ) -> Any:
     """Build and compile the LangGraph agent graph.
 
@@ -315,13 +319,15 @@ def build_graph(
     )
 
     # -- Tools --------------------------------------------------------------
-    tools = [
+    core_tools = [
         _make_shell_tool(executor),
         _make_file_read_tool(workspace_path),
         _make_file_write_tool(workspace_path),
         _make_web_fetch_tool(sources_config),
-        make_explore_tool(workspace_path, llm),   # C20: in-process sub-agent
-        make_delegate_tool(),                      # C20: out-of-process sub-agent
+    ]
+    tools = core_tools + [
+        make_explore_tool(workspace_path, llm),
+        make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
     llm_with_tools = llm.bind_tools(tools)

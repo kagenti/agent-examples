@@ -1,16 +1,17 @@
-"""Sub-agent spawning tools for the sandbox agent (C20).
+"""Sub-agent spawning tools for the sandbox agent.
 
-Provides two spawning modes:
+Provides three tools:
 
-1. **In-process** (``explore``): A lightweight LangGraph sub-graph that
-   runs as an asyncio task in the same process.  It has a scoped,
-   read-only tool set (grep, file_read, glob) and a bounded iteration
-   limit.  Good for codebase research and analysis.
+1. **explore**: Read-only in-process sub-graph (grep, read_file, list_files).
+   Good for codebase research and analysis.
 
-2. **Out-of-process** (``delegate``): Creates a Kubernetes SandboxClaim
-   that spawns a separate pod with full sandbox isolation.  The parent
-   polls the sub-agent's A2A endpoint until it returns results.  Good
-   for untrusted or long-running tasks.
+2. **delegate**: Multi-mode delegation with 4 strategies:
+   - in-process: LangGraph subgraph, shared filesystem (fast)
+   - shared-pvc: Separate pod with parent's PVC mounted
+   - isolated: Separate pod via SandboxClaim (full isolation)
+   - sidecar: New container in parent pod
+
+   The LLM auto-selects the best mode, or the caller can specify.
 """
 
 from __future__ import annotations
@@ -19,16 +20,25 @@ import asyncio
 import logging
 import os
 import subprocess
+import uuid
 from pathlib import Path
-from typing import Any
+from typing import Any, Optional
 
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
-from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 
 logger = logging.getLogger(__name__)
+
+# Maximum iterations for in-process sub-agents
+_MAX_SUB_AGENT_ITERATIONS = 15
+
+# Delegation mode configuration
+_DELEGATION_MODES = os.environ.get(
+    "DELEGATION_MODES", "in-process,shared-pvc,isolated,sidecar"
+).split(",")
+_DEFAULT_MODE = os.environ.get("DEFAULT_DELEGATION_MODE", "in-process")
 
 # Maximum iterations for in-process sub-agents to prevent runaway loops.
 _MAX_SUB_AGENT_ITERATIONS = 15
@@ -197,53 +207,169 @@ def make_explore_tool(workspace: str, llm: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
-# Out-of-process sub-agent: delegate (C20, mode 2)
+# Multi-mode delegation (Session E)
 # ---------------------------------------------------------------------------
 
 
-def make_delegate_tool() -> Any:
-    """Return a LangChain tool that spawns a sandbox sub-agent via SandboxClaim.
+async def _run_in_process(
+    task: str,
+    workspace: str,
+    llm: Any,
+    child_context_id: str,
+    tools_list: list[Any] | None = None,
+    timeout: int = 120,
+) -> str:
+    """Execute a task as an in-process LangGraph subgraph."""
+    if tools_list is None:
+        tools_list = _make_explore_tools(workspace)
 
-    This tool creates a Kubernetes SandboxClaim, which the agent-sandbox
-    controller provisions as a separate pod. The parent agent polls the
-    sub-agent's A2A endpoint until it returns results.
+    llm_with_tools = llm.bind_tools(tools_list)
 
-    Requires: KUBECONFIG environment variable and agent-sandbox CRDs installed.
+    async def assistant(state: MessagesState) -> dict[str, Any]:
+        system = SystemMessage(
+            content=(
+                "You are a sub-agent working on a delegated task. Complete the task "
+                "efficiently using the available tools. Return a clear summary of "
+                "what you did and the results."
+            )
+        )
+        messages = [system] + state["messages"]
+        response = await llm_with_tools.ainvoke(messages)
+        return {"messages": [response]}
+
+    graph = StateGraph(MessagesState)
+    graph.add_node("assistant", assistant)
+    graph.add_node("tools", ToolNode(tools_list))
+    graph.set_entry_point("assistant")
+    graph.add_conditional_edges("assistant", tools_condition)
+    graph.add_edge("tools", "assistant")
+    sub_graph = graph.compile()
+
+    try:
+        result = await asyncio.wait_for(
+            sub_graph.ainvoke(
+                {"messages": [HumanMessage(content=task)]},
+                config={
+                    "recursion_limit": _MAX_SUB_AGENT_ITERATIONS,
+                    "configurable": {"thread_id": child_context_id},
+                },
+            ),
+            timeout=timeout,
+        )
+        messages = result.get("messages", [])
+        if messages:
+            last = messages[-1]
+            return last.content if hasattr(last, "content") else str(last)
+        return "No results from in-process sub-agent."
+    except asyncio.TimeoutError:
+        return f"In-process sub-agent timed out after {timeout} seconds."
+    except Exception as exc:
+        logger.exception("In-process delegation failed for %s", child_context_id)
+        return f"In-process sub-agent error: {exc}"
+
+
+async def _run_shared_pvc(
+    task: str, child_context_id: str, namespace: str = "team1",
+    variant: str = "sandbox-legion", timeout_minutes: int = 30,
+) -> str:
+    """Spawn a pod that mounts the parent's PVC (placeholder)."""
+    logger.info("shared-pvc delegation: child=%s task=%s", child_context_id, task)
+    return (
+        f"Shared-PVC delegation requested for '{task}' "
+        f"(child={child_context_id}, namespace={namespace}). "
+        "Requires RWX StorageClass. Not yet implemented."
+    )
+
+
+async def _run_isolated(
+    task: str, child_context_id: str, namespace: str = "team1",
+    variant: str = "sandbox-legion", timeout_minutes: int = 30,
+) -> str:
+    """Spawn an isolated pod via SandboxClaim CRD (placeholder)."""
+    logger.info("isolated delegation: child=%s task=%s", child_context_id, task)
+    return (
+        f"Isolated delegation requested for '{task}' "
+        f"(child={child_context_id}, namespace={namespace}). "
+        "Requires SandboxClaim CRD + controller. Not yet implemented."
+    )
+
+
+async def _run_sidecar(
+    task: str, child_context_id: str, variant: str = "sandbox-legion",
+) -> str:
+    """Inject a sidecar container (placeholder)."""
+    logger.info("sidecar delegation: child=%s task=%s", child_context_id, task)
+    return (
+        f"Sidecar delegation requested for '{task}' "
+        f"(child={child_context_id}). Not yet implemented."
+    )
+
+
+def make_delegate_tool(
+    workspace: str,
+    llm: Any,
+    parent_context_id: str = "",
+    tools_list: list[Any] | None = None,
+    namespace: str = "team1",
+) -> Any:
+    """Return a LangChain tool for multi-mode delegation.
+
+    Args:
+        workspace: Path to the parent's workspace.
+        llm: The LLM instance for in-process subgraphs.
+        parent_context_id: The parent session's context_id.
+        tools_list: Optional tools for in-process subgraphs.
+        namespace: Kubernetes namespace for out-of-process modes.
     """
 
     @tool
-    async def delegate(task: str, namespace: str = "team1") -> str:
-        """Spawn a separate sandbox agent pod for a delegated task.
+    async def delegate(
+        task: str,
+        mode: str = "auto",
+        variant: str = "sandbox-legion",
+        timeout_minutes: int = 30,
+    ) -> str:
+        """Delegate a task to a child session.
 
-        Creates a Kubernetes SandboxClaim that provisions an isolated
-        sandbox pod with its own workspace, permissions, and identity.
-        Use this for untrusted, long-running, or resource-intensive tasks
-        that need full isolation from the parent agent.
+        Spawns a child agent to work on the task independently.
 
         Args:
-            task: Description of the task for the sub-agent to perform.
-            namespace: Kubernetes namespace for the sub-agent (default: team1).
+            task: Description of the task for the child session.
+            mode: Delegation mode — "auto" (LLM picks), "in-process",
+                "shared-pvc", "isolated", or "sidecar".
+            variant: Agent variant for out-of-process modes.
+            timeout_minutes: Timeout for the child session.
 
         Returns:
-            The sub-agent's response, or a status message if still running.
+            The child session's result or status message.
         """
-        # This is a placeholder implementation. In production, this would:
-        # 1. Create a SandboxClaim via kubernetes-client
-        # 2. Wait for the pod to be provisioned
-        # 3. Send an A2A message to the sub-agent
-        # 4. Poll for results
-        #
-        # For now, return a message indicating the feature is available
-        # but requires cluster resources.
-        logger.info(
-            "delegate tool called: task=%s, namespace=%s", task, namespace
-        )
-        return (
-            f"Delegation requested: '{task}' in namespace '{namespace}'. "
-            "SandboxClaim-based delegation requires a running Kubernetes "
-            "cluster with agent-sandbox CRDs installed. This feature is "
-            "designed for production deployments where tasks need full "
-            "pod-level isolation."
-        )
+        child_context_id = f"child-{uuid.uuid4().hex[:12]}"
+
+        selected_mode = mode
+        if mode == "auto":
+            task_lower = task.lower()
+            if any(w in task_lower for w in ("explore", "read", "analyze", "check", "find")):
+                selected_mode = "in-process"
+            elif any(w in task_lower for w in ("pr", "branch", "build", "deploy", "implement")):
+                selected_mode = "isolated"
+            elif any(w in task_lower for w in ("test", "verify", "validate", "run")):
+                selected_mode = "shared-pvc"
+            else:
+                selected_mode = _DEFAULT_MODE
+
+        if selected_mode not in _DELEGATION_MODES:
+            return f"Mode '{selected_mode}' not enabled. Available: {', '.join(_DELEGATION_MODES)}"
+
+        logger.info("Delegating: child=%s mode=%s parent=%s", child_context_id, selected_mode, parent_context_id)
+
+        if selected_mode == "in-process":
+            return await _run_in_process(task, workspace, llm, child_context_id, tools_list, timeout_minutes * 60)
+        elif selected_mode == "shared-pvc":
+            return await _run_shared_pvc(task, child_context_id, namespace, variant, timeout_minutes)
+        elif selected_mode == "isolated":
+            return await _run_isolated(task, child_context_id, namespace, variant, timeout_minutes)
+        elif selected_mode == "sidecar":
+            return await _run_sidecar(task, child_context_id, variant)
+        return f"Unknown mode: {selected_mode}"
 
     return delegate

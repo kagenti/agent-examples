@@ -322,6 +322,7 @@ class SandboxAgentExecutor(AgentExecutor):
             permission_checker=self._permission_checker,
             sources_config=self._sources_config,
             checkpointer=self._checkpointer,
+            context_id=context_id or "stateless",
         )
 
         # 4. Stream graph execution with thread_id for checkpointer routing.
