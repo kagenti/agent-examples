@@ -12,7 +12,9 @@ RUN pip install --no-cache-dir uv
 WORKDIR /app
 ARG CACHE_BUST
 COPY . .
+RUN echo "=== DEBUG: agent.py lines after COPY ===" && wc -l src/sandbox_agent/agent.py && grep -c "insufficient_quota" src/sandbox_agent/agent.py || echo "insufficient_quota NOT found"
 RUN uv sync --no-cache --locked --link-mode copy
+RUN echo "=== DEBUG: agent.py lines after uv sync ===" && wc -l src/sandbox_agent/agent.py && grep -c "insufficient_quota" src/sandbox_agent/agent.py || echo "insufficient_quota NOT found after sync"
 
 ENV PRODUCTION_MODE=True \
     RELEASE_VERSION=${RELEASE_VERSION}
