@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import uvicorn
@@ -13,10 +14,7 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextP
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from weather_service.graph import get_graph, get_mcpclient
-from weather_service.observability import create_tracing_middleware, set_span_output, get_root_span
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -104,55 +102,55 @@ class WeatherExecutor(AgentExecutor):
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
 
-        # Get user input for the agent
-        user_input = context.get_user_input()
-
         # Parse Messages
-        messages = [HumanMessage(content=user_input)]
+        messages = [HumanMessage(content=context.get_user_input())]
         input = {"messages": messages}
         logger.info(f'Processing messages: {input}')
 
-        # Note: Root span with MLflow attributes is created by tracing middleware
-        # Here we just run the agent logic - spans from LangChain are auto-captured
-        output = None
+        task_updater = TaskUpdater(event_queue, task.id, task.context_id)
 
-        # Test MCP connection first
-        logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
-
-        mcpclient = get_mcpclient()
-
-        # Try to get tools to verify connection
         try:
-            tools = await mcpclient.get_tools()
-            logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
-        except Exception as tool_error:
-            logger.error(f'Failed to connect to MCP server: {tool_error}')
-            await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
-            return
+            output = None
+            # Test MCP connection first
+            logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
 
-        graph = await get_graph(mcpclient)
-        async for event in graph.astream(input, stream_mode="updates"):
-            await event_emitter.emit_event(
-                "\n".join(
-                    f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
-                    for key, value in event.items()
-                )
-                + "\n"
-            )
-            output = event
-            logger.info(f'event: {event}')
-        output = output.get("assistant", {}).get("final_answer")
+            mcpclient = get_mcpclient()
 
-        # Set span output BEFORE emitting final event (for streaming response capture)
-        # This populates mlflow.spanOutputs, output.value, gen_ai.completion
-        # Use get_root_span() to get the middleware-created root span, not the
-        # current A2A span (trace.get_current_span() would return wrong span)
-        if output:
-            root_span = get_root_span()
-            if root_span and root_span.is_recording():
-                set_span_output(root_span, str(output))
+            # Try to get tools to verify connection
+            try:
+                tools = await mcpclient.get_tools()
+                logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+            except Exception as tool_error:
+                logger.error(f'Failed to connect to MCP server: {tool_error}')
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+                return
 
-        await event_emitter.emit_event(str(output), final=True)
+            graph = await get_graph(mcpclient)
+            async for event in graph.astream(input, stream_mode="updates"):
+                # Serialize LangGraph events as valid JSON for ext_proc parsing.
+                # Each event is a dict like {"assistant": {"messages": [AIMessage(...)]}}
+                # Convert LangChain messages to dicts via model_dump().
+                serialized_parts = []
+                for key, value in event.items():
+                    if isinstance(value, dict) and "messages" in value:
+                        msgs = []
+                        for msg in value["messages"]:
+                            if hasattr(msg, "model_dump"):
+                                msgs.append(msg.model_dump())
+                            else:
+                                msgs.append(str(msg))
+                        serialized_parts.append(f"🚶‍♂️{key}: {json.dumps({'messages': msgs}, default=str)}")
+                    else:
+                        serialized_parts.append(f"🚶‍♂️{key}: {json.dumps(value, default=str)}")
+                await event_emitter.emit_event("\n".join(serialized_parts) + "\n")
+                output = event
+                logger.info(f'event: {event}')
+            output =  output.get("assistant", {}).get("final_answer")
+            await event_emitter.emit_event(str(output), final=True)
+        except Exception as e:
+            logger.error(f'Graph execution error: {e}')
+            await event_emitter.emit_event(f"Error: Failed to process weather request. {str(e)}", failed=True)
+            raise Exception(str(e))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
@@ -175,7 +173,7 @@ def run():
         agent_card=agent_card,
         http_handler=request_handler,
     )
-
+    
     # Build the Starlette app
     app = server.build()
 
@@ -187,10 +185,8 @@ def run():
         name='agent_card_new',
     ))
 
-    # Add tracing middleware - creates root span with MLflow/GenAI attributes
-    app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-
-    # Add logging middleware
+    # Add middleware to log all incoming requests with headers
+    
     @app.middleware("http")
     async def log_authorization_header(request, call_next):
         auth_header = request.headers.get("authorization", "No Authorization header")
