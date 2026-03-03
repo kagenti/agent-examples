@@ -1,7 +1,13 @@
+import asyncio
+import json
 import logging
 import os
 import uvicorn
 from textwrap import dedent
+
+# Initialize OTEL before importing instrumented libraries
+from weather_service.observability import setup_observability, wrap_asgi_app
+setup_observability()
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -13,13 +19,27 @@ from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextP
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from weather_service.graph import get_graph, get_mcpclient
-from weather_service.observability import create_tracing_middleware, set_span_output, get_root_span
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
+
+
+def _serialize_event(value):
+    """Serialize a LangGraph event value to JSON-compatible dict.
+
+    Converts LangChain message objects to dicts via model_dump() so the
+    ext_proc can parse structured GenAI attributes (token counts, model, etc).
+    """
+    if isinstance(value, dict) and "messages" in value:
+        msgs = []
+        for msg in value["messages"]:
+            if hasattr(msg, "model_dump"):
+                msgs.append(msg.model_dump())
+            else:
+                msgs.append(str(msg))
+        return {"messages": msgs}
+    return value
 
 
 def get_agent_card(host: str, port: int):
@@ -91,7 +111,36 @@ class WeatherExecutor(AgentExecutor):
     """
     A class to handle weather assistant execution for A2A Agent.
     """
+    def __init__(self, task_store=None):
+        self._cancelled = False
+        self._task_store = task_store
+
     async def execute(self, context: RequestContext, event_queue: EventQueue):
+        """
+        Shield the agent execution from SSE client disconnects.
+
+        The A2A SDK cancels execute() when the SSE connection drops. By
+        shielding the actual work, the LangGraph execution runs to completion
+        and the result is stored in the task store regardless of whether
+        anyone is listening to the stream.
+
+        Explicit cancellation via tasks/cancel still works — it sets the
+        _cancelled flag which the shielded execution checks.
+        """
+        self._cancelled = False
+        task = asyncio.ensure_future(self._do_execute(context, event_queue))
+        try:
+            await asyncio.shield(task)
+        except asyncio.CancelledError:
+            if self._cancelled:
+                # Explicit cancel via tasks/cancel — propagate to the task
+                task.cancel()
+                logger.info("Agent execution cancelled via tasks/cancel")
+            else:
+                # SSE disconnect — let the task continue in the background
+                logger.info("Client disconnected, agent execution continues in background")
+
+    async def _do_execute(self, context: RequestContext, event_queue: EventQueue):
         """
         The agent allows to retrieve weather info through a natural language conversational interface
         """
@@ -112,8 +161,6 @@ class WeatherExecutor(AgentExecutor):
         input = {"messages": messages}
         logger.info(f'Processing messages: {input}')
 
-        # Note: Root span with MLflow attributes is created by tracing middleware
-        # Here we just run the agent logic - spans from LangChain are auto-captured
         output = None
 
         # Test MCP connection first
@@ -127,38 +174,53 @@ class WeatherExecutor(AgentExecutor):
             logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
         except Exception as tool_error:
             logger.error(f'Failed to connect to MCP server: {tool_error}')
-            await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+            try:
+                await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+            except Exception:
+                pass
             return
 
         graph = await get_graph(mcpclient)
         async for event in graph.astream(input, stream_mode="updates"):
-            await event_emitter.emit_event(
-                "\n".join(
-                    f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
-                    for key, value in event.items()
+            try:
+                await event_emitter.emit_event(
+                    "\n".join(
+                        f"🚶‍♂️{key}: {json.dumps(_serialize_event(value), default=str)}"
+                        for key, value in event.items()
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
+            except Exception:
+                # SSE connection dropped — continue processing, skip event emission
+                logger.debug("Event emission failed (client likely disconnected), continuing execution")
             output = event
             logger.info(f'event: {event}')
         output = output.get("assistant", {}).get("final_answer")
 
-        # Set span output BEFORE emitting final event (for streaming response capture)
-        # This populates mlflow.spanOutputs, output.value, gen_ai.completion
-        # Use get_root_span() to get the middleware-created root span, not the
-        # current A2A span (trace.get_current_span() would return wrong span)
-        if output:
-            root_span = get_root_span()
-            if root_span and root_span.is_recording():
-                set_span_output(root_span, str(output))
+        try:
+            await event_emitter.emit_event(str(output), final=True)
+        except Exception:
+            logger.info(f"Final event emission failed (client disconnected)")
 
-        await event_emitter.emit_event(str(output), final=True)
+        # Always save completed task with artifact to the store.
+        # The emit_event may succeed (enqueue) but the SSE consumer may be
+        # gone, so the task store never gets the artifact via the normal path.
+        # This ensures tasks/get can return the result for trace recovery.
+        if self._task_store and task and output:
+            try:
+                import uuid
+                from a2a.types import TaskStatus, TaskState as TS, Artifact, TextPart as TP
+                task.status = TaskStatus(state=TS.completed)
+                task.artifacts = [Artifact(artifactId=str(uuid.uuid4()), parts=[TP(text=str(output))])]
+                await self._task_store.save(task)
+                logger.info(f"Task {task.id} saved to store with output ({len(str(output))} chars)")
+            except Exception as e:
+                logger.error(f"Failed to save task to store: {e}")
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        """
-        Not implemented
-        """
-        raise Exception("cancel not supported")
+        """Cancel the agent execution."""
+        self._cancelled = True
+        logger.info("Cancel requested for agent execution")
 
 def run():
     """
@@ -166,9 +228,10 @@ def run():
     """
     agent_card = get_agent_card(host="0.0.0.0", port=8000)
 
+    task_store = InMemoryTaskStore()
     request_handler = DefaultRequestHandler(
-        agent_executor=WeatherExecutor(),
-        task_store=InMemoryTaskStore(),
+        agent_executor=WeatherExecutor(task_store=task_store),
+        task_store=task_store,
     )
 
     server = A2AStarletteApplication(
@@ -187,15 +250,7 @@ def run():
         name='agent_card_new',
     ))
 
-    # Add tracing middleware - creates root span with MLflow/GenAI attributes
-    app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-
-    # Add logging middleware
-    @app.middleware("http")
-    async def log_authorization_header(request, call_next):
-        auth_header = request.headers.get("authorization", "No Authorization header")
-        logger.info(f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}")
-        response = await call_next(request)
-        return response
+    # Wrap with OTEL ASGI middleware to extract traceparent from ext_proc
+    app = wrap_asgi_app(app)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

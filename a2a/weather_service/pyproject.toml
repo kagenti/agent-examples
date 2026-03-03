@@ -17,13 +17,11 @@ dependencies = [
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
     "python-keycloak>=5.5.1",
-    "opentelemetry-exporter-otlp",
-    # OpenTelemetry GenAI semantic convention instrumentation
-    # Emits spans with gen_ai.* attributes for MLflow compatibility
-    "opentelemetry-instrumentation-openai>=0.34b0",
-    # OpenInference for LangChain instrumentation and AGENT span semantics
-    "openinference-semantic-conventions>=0.1.12",
-    "openinference-instrumentation-langchain>=0.1.27",
+    "opentelemetry-sdk>=1.25.0",
+    "opentelemetry-exporter-otlp-proto-http>=1.25.0",
+    "openinference-instrumentation-langchain>=0.1.36",
+    "opentelemetry-instrumentation-openai>=0.42.0",
+    "opentelemetry-instrumentation-asgi>=0.46b0",
 ]
 
 [project.scripts]
