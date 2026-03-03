@@ -130,18 +130,30 @@ class WeatherExecutor(AgentExecutor):
             await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
             return
 
-        graph = await get_graph(mcpclient)
-        async for event in graph.astream(input, stream_mode="updates"):
-            await event_emitter.emit_event(
-                "\n".join(
-                    f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
-                    for key, value in event.items()
+        try:
+            graph = await get_graph(mcpclient)
+        except Exception as graph_error:
+            logger.error(f'Failed to create LLM graph: {graph_error}')
+            await event_emitter.emit_event(f"Error: Failed to initialize LLM graph: {graph_error}", failed=True)
+            return
+
+        try:
+            async for event in graph.astream(input, stream_mode="updates"):
+                await event_emitter.emit_event(
+                    "\n".join(
+                        f"🚶‍♂️{key}: {str(value)[:256] + '...' if len(str(value)) > 256 else str(value)}"
+                        for key, value in event.items()
+                    )
+                    + "\n"
                 )
-                + "\n"
-            )
-            output = event
-            logger.info(f'event: {event}')
-        output = output.get("assistant", {}).get("final_answer")
+                output = event
+                logger.info(f'event: {event}')
+        except Exception as llm_error:
+            logger.error(f'LLM execution failed: {llm_error}')
+            await event_emitter.emit_event(f"Error: LLM execution failed: {llm_error}", failed=True)
+            return
+
+        output = output.get("assistant", {}).get("final_answer") if output else None
 
         # Set span output BEFORE emitting final event (for streaming response capture)
         # This populates mlflow.spanOutputs, output.value, gen_ai.completion
