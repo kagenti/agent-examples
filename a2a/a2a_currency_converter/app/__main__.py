@@ -50,7 +50,8 @@ def main(host, port):
         agent_card = AgentCard(
             name='Currency Agent',
             description='Helps with exchange rates for currencies',
-            url=f'http://{host}:{port}/',
+            # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+            url=os.getenv("AGENT_ENDPOINT", f'http://{host}:{port}/'),
             version='1.0.0',
             defaultInputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
             defaultOutputModes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
