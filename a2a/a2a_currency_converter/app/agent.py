@@ -1,3 +1,7 @@
+"""Currency conversion logic for A2A example"""
+
+import os
+
 from collections.abc import AsyncIterable
 from typing import Any, Literal
 
@@ -10,16 +14,19 @@ from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-import os
 from langchain_openai import ChatOpenAI
 
 
 memory = MemorySaver()
 
 class Configuration(BaseSettings):
+    """The configuration of the Agent"""
+
     llm_model: str = "gpt-4o"
     llm_api_base: str = ""
-    llm_api_key: str = os.getenv("OPENAI_API_KEY")
+    # We don't want the pod to crash without a valid key.
+    # Report authentication error to A2A user instead.
+    llm_api_key: str = os.getenv("OPENAI_API_KEY", "Failed to load env var OPENAI_API_KEY")
 
 
 config = Configuration()

@@ -37,10 +37,7 @@ class MissingAPIKeyError(Exception):
 def main(host, port):
     """Starts the Currency Agent server."""
     try:
-        if not os.getenv('OPENAI_API_KEY'):
-            raise MissingAPIKeyError(
-                'OPENAI_API_KEY environment variable not set.'
-            )
+        # We don't check OPENAI_API_KEY here.  We want the agent pod to run even if OPENAI_API_KEY isn't defined.
 
         capabilities = AgentCapabilities(streaming=True, pushNotifications=True)
         skill = AgentSkill(
