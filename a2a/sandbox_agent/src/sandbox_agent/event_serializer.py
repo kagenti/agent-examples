@@ -8,6 +8,9 @@ Event types:
     tool_call     — LLM decided to call one or more tools
     tool_result   — A tool returned output
     llm_response  — LLM generated text (no tool calls)
+    plan          — Planner produced a numbered plan
+    plan_step     — Executor is working on a specific plan step
+    reflection    — Reflector reviewed step output
     error         — An error occurred during execution
     hitl_request  — Human-in-the-loop approval is needed
 """
@@ -59,13 +62,21 @@ class LangGraphSerializer(FrameworkEventSerializer):
     """
 
     def serialize(self, key: str, value: dict) -> str:
+        # Reasoning-loop nodes may emit state fields instead of messages
+        if key == "planner":
+            return self._serialize_planner(value)
+        elif key == "reflector":
+            return self._serialize_reflector(value)
+        elif key == "reporter":
+            return self._serialize_reporter(value)
+
         msgs = value.get("messages", [])
         if not msgs:
             return json.dumps({"type": "llm_response", "content": f"[{key}]"})
 
         msg = msgs[-1]
 
-        if key == "assistant":
+        if key == "executor":
             return self._serialize_assistant(msg)
         elif key == "tools":
             return self._serialize_tool_result(msg)
@@ -124,6 +135,70 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "type": "tool_result",
             "name": str(name),
             "output": str(content)[:2000],
+        })
+
+    def _serialize_planner(self, value: dict) -> str:
+        """Serialize a planner node output — emits the plan steps."""
+        plan = value.get("plan", [])
+        iteration = value.get("iteration", 1)
+
+        # Also include any LLM text from the planner's message
+        msgs = value.get("messages", [])
+        text = ""
+        if msgs:
+            content = getattr(msgs[-1], "content", "")
+            if isinstance(content, list):
+                text = self._extract_text_blocks(content)
+            else:
+                text = str(content)[:2000] if content else ""
+
+        return json.dumps({
+            "type": "plan",
+            "plan": plan,
+            "iteration": iteration,
+            "content": text,
+        })
+
+    def _serialize_reflector(self, value: dict) -> str:
+        """Serialize a reflector node output — emits the decision."""
+        done = value.get("done", False)
+        current_step = value.get("current_step", 0)
+        step_results = value.get("step_results", [])
+
+        # Extract decision text from message if present
+        msgs = value.get("messages", [])
+        text = ""
+        if msgs:
+            content = getattr(msgs[-1], "content", "")
+            if isinstance(content, list):
+                text = self._extract_text_blocks(content)
+            else:
+                text = str(content)[:500] if content else ""
+
+        return json.dumps({
+            "type": "reflection",
+            "done": done,
+            "current_step": current_step,
+            "content": text,
+        })
+
+    def _serialize_reporter(self, value: dict) -> str:
+        """Serialize a reporter node output — emits the final answer."""
+        final_answer = value.get("final_answer", "")
+
+        # Also check messages for the reporter's LLM response
+        if not final_answer:
+            msgs = value.get("messages", [])
+            if msgs:
+                content = getattr(msgs[-1], "content", "")
+                if isinstance(content, list):
+                    final_answer = self._extract_text_blocks(content)
+                else:
+                    final_answer = str(content)[:2000] if content else ""
+
+        return json.dumps({
+            "type": "llm_response",
+            "content": final_answer[:2000],
         })
 
     @staticmethod

@@ -1,32 +1,43 @@
-"""LangGraph agent graph with sandboxed shell, file_read, and file_write tools.
+"""LangGraph agent graph with plan-execute-reflect reasoning loop.
 
-The graph binds three tools to an LLM:
+The graph binds six tools to an LLM and uses a structured reasoning loop:
 
 - **shell**: runs commands via :class:`SandboxExecutor` (with permission checks)
 - **file_read**: reads files relative to the workspace (prevents path traversal)
 - **file_write**: writes files relative to the workspace (prevents path traversal)
+- **web_fetch**: fetches web content from allowed domains
+- **explore**: spawns a read-only sub-agent for codebase research
+- **delegate**: spawns a child agent session for delegated tasks
 
-The graph follows the standard LangGraph react-agent pattern:
+Graph architecture (plan-execute-reflect):
 
-    assistant  -->  tools  -->  assistant  -->  END
-                  (conditional)
+    planner → executor ⇄ tools → reflector → [done?] → reporter → END
+                                               [no]  → planner (loop)
+
+Simple (single-step) requests skip the reflection LLM call for fast responses.
 """
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Optional
 
-from langchain_core.messages import SystemMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.types import interrupt
 
+from sandbox_agent.budget import AgentBudget
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
+from sandbox_agent.reasoning import (
+    executor_node,
+    planner_node,
+    reflector_node,
+    reporter_node,
+    route_reflector,
+)
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
 
@@ -46,43 +57,31 @@ class SandboxState(MessagesState):
         Absolute path to the per-context workspace directory.
     final_answer:
         The agent's final answer (set when the graph completes).
+    plan:
+        Numbered plan steps produced by the planner node.
+    current_step:
+        Index of the plan step currently being executed (0-based).
+    step_results:
+        Summary of each completed step's output.
+    iteration:
+        Outer-loop iteration counter (planner → executor → reflector).
+    done:
+        Flag set by reflector when the task is complete.
     """
 
     context_id: str
     workspace_path: str
     final_answer: str
+    plan: list[str]
+    current_step: int
+    step_results: list[str]
+    iteration: int
+    done: bool
 
 
 # ---------------------------------------------------------------------------
 # Tool factories
 # ---------------------------------------------------------------------------
-
-_SYSTEM_PROMPT = """\
-You are a sandboxed coding assistant.  You can execute shell commands, \
-read files, and write files inside the user's workspace directory.
-
-Available tools:
-- **shell**: Execute a shell command.  Some commands may be denied by policy \
-or require human approval (HITL).
-- **file_read**: Read a file from the workspace.  Provide a path relative to \
-the workspace root.
-- **file_write**: Write content to a file in the workspace.  Provide a \
-relative path and the content.  Parent directories are created automatically.
-- **web_fetch**: Fetch content from a URL.  Only allowed domains (configured \
-in sources.json) can be accessed.  Use this to read GitHub issues, PRs, \
-documentation, and other web resources.
-- **explore**: Spawn a read-only sub-agent for codebase research. The \
-sub-agent can grep, read files, and list files but cannot write or execute \
-commands.  Use this for searching definitions, analyzing code, or gathering \
-information across multiple files.
-- **delegate**: Spawn a child agent session for a delegated task.  Supports \
-4 modes: in-process (fast, shared fs), shared-pvc (parent's PVC visible), \
-isolated (own workspace via SandboxClaim), sidecar (same pod).  Mode is \
-auto-selected based on the task, or you can specify explicitly.
-
-Always prefer using the provided tools rather than raw shell I/O for file \
-operations when possible, as they have built-in path-safety checks.
-"""
 
 
 def _make_shell_tool(executor: SandboxExecutor) -> Any:
@@ -332,38 +331,51 @@ def build_graph(
 
     llm_with_tools = llm.bind_tools(tools)
 
-    # -- Graph nodes --------------------------------------------------------
+    # -- Budget -------------------------------------------------------------
+    budget = AgentBudget()
 
-    async def assistant(state: SandboxState) -> dict[str, Any]:
-        """Invoke the LLM with the current messages."""
-        system = SystemMessage(content=_SYSTEM_PROMPT)
-        messages = [system] + state["messages"]
-        response = await llm_with_tools.ainvoke(messages)
-        return {"messages": [response]}
+    # -- Graph nodes (plan-execute-reflect) ---------------------------------
+    # Each node function from reasoning.py takes (state, llm) — we wrap them
+    # in closures that capture the appropriate LLM instance.
+
+    async def _planner(state: SandboxState) -> dict[str, Any]:
+        return await planner_node(state, llm)
+
+    async def _executor(state: SandboxState) -> dict[str, Any]:
+        return await executor_node(state, llm_with_tools)
+
+    async def _reflector(state: SandboxState) -> dict[str, Any]:
+        return await reflector_node(state, llm, budget=budget)
+
+    async def _reporter(state: SandboxState) -> dict[str, Any]:
+        return await reporter_node(state, llm)
 
     # -- Assemble graph -----------------------------------------------------
     graph = StateGraph(SandboxState)
-    graph.add_node("assistant", assistant)
+    graph.add_node("planner", _planner)
+    graph.add_node("executor", _executor)
     graph.add_node("tools", ToolNode(tools))
+    graph.add_node("reflector", _reflector)
+    graph.add_node("reporter", _reporter)
 
-    graph.set_entry_point("assistant")
-    # TODO(HITL): To add human-in-the-loop approval for dangerous commands:
-    # 1. Add a "hitl_check" node between assistant and tools
-    # 2. hitl_check inspects tool_calls for commands that need approval
-    # 3. If approval needed, call interrupt({"command": cmd, "reason": reason})
-    # 4. LangGraph pauses the graph until resume() is called with the decision
-    # 5. The A2A task status shows "input-required" state
-    # 6. Frontend shows approval buttons; user clicks approve/deny
-    # 7. Backend calls resume() on the graph, execution continues
-    #
-    # Current implementation: interrupt() is called inside _make_shell_tool
-    # (in the tool itself) when HitlRequired is raised. A graph-level
-    # hitl_check node would give more control (e.g. batch approvals,
-    # richer context) but requires restructuring the conditional edges:
-    #   assistant -> hitl_check -> tools -> assistant
-    # instead of the current:
-    #   assistant -> tools -> assistant
-    graph.add_conditional_edges("assistant", tools_condition)
-    graph.add_edge("tools", "assistant")
+    # Entry: planner decomposes the request into steps
+    graph.set_entry_point("planner")
+    graph.add_edge("planner", "executor")
+
+    # Executor → tools (if tool_calls) or → reflector (if no tool_calls)
+    graph.add_conditional_edges(
+        "executor",
+        tools_condition,
+        {"tools": "tools", "__end__": "reflector"},
+    )
+    graph.add_edge("tools", "executor")
+
+    # Reflector → reporter (done) or → planner (continue/replan)
+    graph.add_conditional_edges(
+        "reflector",
+        route_reflector,
+        {"done": "reporter", "continue": "planner"},
+    )
+    graph.add_edge("reporter", "__end__")
 
     return graph.compile(checkpointer=checkpointer)

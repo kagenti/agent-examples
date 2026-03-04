@@ -1,7 +1,8 @@
 """Tests for the LangGraph agent graph.
 
 Validates that:
-  - SandboxState has required fields (context_id, workspace_path, final_answer)
+  - SandboxState has required fields (context_id, workspace_path, final_answer,
+    plan, current_step, step_results, iteration, done)
   - build_graph returns a compiled graph with an ainvoke method
   - _make_shell_tool returns a tool that delegates to executor.run_shell
   - _make_file_read_tool reads files relative to workspace and blocks traversal
@@ -87,6 +88,26 @@ class TestSandboxState:
     def test_has_final_answer_annotation(self) -> None:
         annotations = SandboxState.__annotations__
         assert "final_answer" in annotations
+
+    def test_has_plan_annotation(self) -> None:
+        annotations = SandboxState.__annotations__
+        assert "plan" in annotations
+
+    def test_has_current_step_annotation(self) -> None:
+        annotations = SandboxState.__annotations__
+        assert "current_step" in annotations
+
+    def test_has_step_results_annotation(self) -> None:
+        annotations = SandboxState.__annotations__
+        assert "step_results" in annotations
+
+    def test_has_iteration_annotation(self) -> None:
+        annotations = SandboxState.__annotations__
+        assert "iteration" in annotations
+
+    def test_has_done_annotation(self) -> None:
+        annotations = SandboxState.__annotations__
+        assert "done" in annotations
 
 
 # ---------------------------------------------------------------------------

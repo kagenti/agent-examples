@@ -410,25 +410,34 @@ class SandboxAgentExecutor(AgentExecutor):
                         else:
                             raise  # Not a retryable error
 
-                # Extract final answer from the last event
+                # Extract final answer from the last event.
+                # The reporter node sets {"final_answer": "..."}.
+                # Fall back to checking messages from reporter or executor.
                 final_answer = None
                 if output:
-                    # The assistant node returns {"messages": [AIMessage(...)]}
-                    assistant_output = output.get("assistant", {})
-                    if isinstance(assistant_output, dict):
-                        msgs = assistant_output.get("messages", [])
-                        if msgs:
-                            content = getattr(msgs[-1], "content", None)
-                            if isinstance(content, list):
-                                # Tool-calling models return a list of content blocks;
-                                # extract only the text portions.
-                                final_answer = "\n".join(
-                                    block.get("text", "") if isinstance(block, dict) else str(block)
-                                    for block in content
-                                    if isinstance(block, dict) and block.get("type") == "text"
-                                ) or None
-                            elif content:
-                                final_answer = str(content)
+                    # 1. Check reporter node output (plan-execute-reflect)
+                    reporter_output = output.get("reporter", {})
+                    if isinstance(reporter_output, dict):
+                        final_answer = reporter_output.get("final_answer")
+
+                    # 2. Fall back to executor/assistant message content
+                    if not final_answer:
+                        for node_name in ("reporter", "executor", "assistant"):
+                            node_output = output.get(node_name, {})
+                            if isinstance(node_output, dict):
+                                msgs = node_output.get("messages", [])
+                                if msgs:
+                                    content = getattr(msgs[-1], "content", None)
+                                    if isinstance(content, list):
+                                        final_answer = "\n".join(
+                                            block.get("text", "") if isinstance(block, dict) else str(block)
+                                            for block in content
+                                            if isinstance(block, dict) and block.get("type") == "text"
+                                        ) or None
+                                    elif content:
+                                        final_answer = str(content)
+                                    if final_answer:
+                                        break
 
                 if final_answer is None:
                     final_answer = "No response generated."
