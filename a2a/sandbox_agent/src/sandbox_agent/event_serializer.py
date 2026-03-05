@@ -59,7 +59,16 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
     This serializer extracts tool calls, tool results, and LLM
     responses into structured JSON.
+
+    When the graph uses a plan-execute-reflect reasoning loop, all
+    events include a ``loop_id`` so the frontend can group them into
+    an expandable AgentLoopCard.
     """
+
+    def __init__(self, loop_id: str | None = None) -> None:
+        import uuid
+        self._loop_id = loop_id or str(uuid.uuid4())[:8]
+        self._step_index = 0
 
     def serialize(self, key: str, value: dict) -> str:
         # Reasoning-loop nodes may emit state fields instead of messages
@@ -77,7 +86,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         msg = msgs[-1]
 
         if key == "executor":
-            return self._serialize_assistant(msg)
+            return self._serialize_executor(msg)
         elif key == "tools":
             return self._serialize_tool_result(msg)
         else:
@@ -127,12 +136,68 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         return json.dumps({"type": "llm_response", "content": text})
 
+    def _serialize_executor(self, msg: Any) -> str:
+        """Serialize an executor node output with loop_id for AgentLoopCard."""
+        tool_calls = getattr(msg, "tool_calls", [])
+        content = getattr(msg, "content", "")
+
+        if isinstance(content, list):
+            text = self._extract_text_blocks(content)
+        else:
+            text = str(content)[:2000] if content else ""
+
+        parts = []
+
+        # Emit plan_step event so UI shows which step is executing
+        parts.append(json.dumps({
+            "type": "plan_step",
+            "loop_id": self._loop_id,
+            "step": self._step_index,
+            "description": text[:200] if text else "",
+        }))
+
+        if tool_calls:
+            if text.strip():
+                parts.append(json.dumps({
+                    "type": "llm_response",
+                    "loop_id": self._loop_id,
+                    "content": text,
+                }))
+            parts.append(json.dumps({
+                "type": "tool_call",
+                "loop_id": self._loop_id,
+                "step": self._step_index,
+                "tools": [
+                    {
+                        "name": tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown"),
+                        "args": tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {}),
+                    }
+                    for tc in tool_calls
+                ],
+            }))
+            return "\n".join(parts)
+
+        if text:
+            parts.append(json.dumps({
+                "type": "llm_response",
+                "loop_id": self._loop_id,
+                "content": text,
+            }))
+
+        return "\n".join(parts) if parts else json.dumps({
+            "type": "llm_response",
+            "loop_id": self._loop_id,
+            "content": "",
+        })
+
     def _serialize_tool_result(self, msg: Any) -> str:
-        """Serialize a tool node output."""
+        """Serialize a tool node output with loop_id."""
         name = getattr(msg, "name", "unknown")
         content = getattr(msg, "content", "")
         return json.dumps({
             "type": "tool_result",
+            "loop_id": self._loop_id,
+            "step": self._step_index,
             "name": str(name),
             "output": str(content)[:2000],
         })
@@ -154,7 +219,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         return json.dumps({
             "type": "plan",
-            "plan": plan,
+            "loop_id": self._loop_id,
+            "steps": plan,
             "iteration": iteration,
             "content": text,
         })
@@ -175,10 +241,15 @@ class LangGraphSerializer(FrameworkEventSerializer):
             else:
                 text = str(content)[:500] if content else ""
 
+        # Advance step index when reflector completes a step
+        self._step_index = current_step
+
         return json.dumps({
             "type": "reflection",
+            "loop_id": self._loop_id,
             "done": done,
             "current_step": current_step,
+            "assessment": text,
             "content": text,
         })
 
@@ -198,6 +269,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         return json.dumps({
             "type": "llm_response",
+            "loop_id": self._loop_id,
             "content": final_answer[:2000],
         })
 
