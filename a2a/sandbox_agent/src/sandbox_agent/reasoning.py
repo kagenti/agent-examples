@@ -42,6 +42,12 @@ Rules:
 - If the request is simple (a single command, a quick question, or a trivial
   file operation), output EXACTLY one step.
 - Keep steps concrete and tool-oriented — no vague "analyze" or "think" steps.
+- For multi-step analysis, debugging, or investigation tasks, add a final
+  step: "Write findings summary to report.md" with sections: Problem,
+  Investigation, Root Cause, Resolution.
+- For complex investigations that can be parallelized, use the **delegate**
+  tool to spawn child agent sessions for independent research tasks. Each
+  child session runs in its own workspace and reports back results.
 - Number each step starting at 1.
 - Output ONLY the numbered list, nothing else.
 
