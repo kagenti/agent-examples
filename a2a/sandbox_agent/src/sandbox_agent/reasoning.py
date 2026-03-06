@@ -142,6 +142,11 @@ async def planner_node(
     if context_parts:
         system_content += "\n" + "\n".join(context_parts)
 
+    # Prepend skill instructions when a skill was loaded from metadata.
+    skill_instructions = state.get("skill_instructions", "")
+    if skill_instructions:
+        system_content = skill_instructions + "\n\n" + system_content
+
     plan_messages = [SystemMessage(content=system_content)] + messages
     response = await llm.ainvoke(plan_messages)
 
@@ -179,6 +184,11 @@ async def executor_node(
         current_step=current_step + 1,
         step_text=step_text,
     )
+
+    # Prepend skill instructions when a skill was loaded from metadata.
+    skill_instructions = state.get("skill_instructions", "")
+    if skill_instructions:
+        system_content = skill_instructions + "\n\n" + system_content
 
     # Include the conversation history so the executor has full context
     messages = [SystemMessage(content=system_content)] + state["messages"]

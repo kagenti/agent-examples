@@ -12,6 +12,7 @@ import json
 import logging
 from pathlib import Path
 from textwrap import dedent
+from typing import Any
 
 import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -35,7 +36,7 @@ from langgraph.checkpoint.memory import MemorySaver
 
 from sandbox_agent.configuration import Configuration
 from sandbox_agent.event_serializer import LangGraphSerializer
-from sandbox_agent.graph import build_graph
+from sandbox_agent.graph import _load_skill, build_graph
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.workspace import WorkspaceManager
@@ -338,7 +339,27 @@ class SandboxAgentExecutor(AgentExecutor):
 
         async with lock:
             messages = [HumanMessage(content=context.get_user_input())]
-            input_state = {"messages": messages}
+            input_state: dict[str, Any] = {"messages": messages}
+
+            # Extract skill from A2A message metadata and load its content.
+            msg = context.message
+            skill_id = None
+            if msg and msg.metadata:
+                skill_id = msg.metadata.get("skill")
+
+            if skill_id:
+                skill_content = _load_skill(workspace_path, skill_id)
+                if skill_content:
+                    input_state["skill_instructions"] = (
+                        f'<skill name="{skill_id}">\n'
+                        f"{skill_content}\n"
+                        f"</skill>\n\n"
+                        f"Follow the skill instructions above for this task."
+                    )
+                    logger.info("Loaded skill '%s' for context_id=%s", skill_id, context_id)
+                else:
+                    logger.warning("Skill '%s' requested but not found in workspace %s", skill_id, workspace_path)
+
             graph_config = {"configurable": {"thread_id": context_id or "stateless"}}
             logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 

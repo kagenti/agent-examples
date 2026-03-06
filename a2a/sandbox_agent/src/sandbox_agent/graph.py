@@ -19,6 +19,7 @@ Simple (single-step) requests skip the reflection LLM call for fast responses.
 
 from __future__ import annotations
 
+import logging
 from pathlib import Path
 from typing import Any, Optional
 
@@ -40,6 +41,8 @@ from sandbox_agent.reasoning import (
 )
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
+
+logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # State
@@ -67,6 +70,10 @@ class SandboxState(MessagesState):
         Outer-loop iteration counter (planner → executor → reflector).
     done:
         Flag set by reflector when the task is complete.
+    skill_instructions:
+        Optional skill content loaded from a ``.claude/skills/`` file.
+        When present, prepended to all system prompts so the agent
+        follows skill-specific instructions.
     """
 
     context_id: str
@@ -77,6 +84,47 @@ class SandboxState(MessagesState):
     step_results: list[str]
     iteration: int
     done: bool
+    skill_instructions: str
+
+
+# ---------------------------------------------------------------------------
+# Skill loader
+# ---------------------------------------------------------------------------
+
+
+def _load_skill(workspace: str, skill_id: str) -> str | None:
+    """Load a skill file from the workspace's ``.claude/skills/`` directory.
+
+    Parameters
+    ----------
+    workspace:
+        Absolute path to the workspace root (or repo root).
+    skill_id:
+        Skill identifier, e.g. ``"rca:ci"`` or ``"tdd:hypershift"``.
+        Colons are converted to directory separators so ``rca:ci``
+        resolves to ``rca/ci.md``.
+
+    Returns
+    -------
+    str | None
+        The skill file content, or ``None`` if no matching file exists.
+    """
+    skills_dir = Path(workspace) / ".claude" / "skills"
+
+    # Primary path: replace ':' with '/' → rca:ci → rca/ci.md
+    primary = skills_dir / f"{skill_id.replace(':', '/')}.md"
+    if primary.is_file():
+        logger.info("Loaded skill '%s' from %s", skill_id, primary)
+        return primary.read_text(encoding="utf-8", errors="replace")
+
+    # Fallback: literal filename → rca:ci.md (colon in filename)
+    fallback = skills_dir / f"{skill_id}.md"
+    if fallback.is_file():
+        logger.info("Loaded skill '%s' from %s (fallback)", skill_id, fallback)
+        return fallback.read_text(encoding="utf-8", errors="replace")
+
+    logger.warning("Skill '%s' not found in %s", skill_id, skills_dir)
+    return None
 
 
 # ---------------------------------------------------------------------------

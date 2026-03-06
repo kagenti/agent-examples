@@ -17,6 +17,7 @@ Provides three tools:
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import subprocess
@@ -24,6 +25,7 @@ import uuid
 from pathlib import Path
 from typing import Any, Optional
 
+import asyncpg
 from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_core.tools import tool
 from langgraph.graph import MessagesState, StateGraph
@@ -207,6 +209,77 @@ def make_explore_tool(workspace: str, llm: Any) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Child session database helpers
+# ---------------------------------------------------------------------------
+
+
+async def _register_child_session(
+    child_context_id: str,
+    parent_context_id: str,
+    agent_name: str,
+    task: str,
+) -> None:
+    """Register a child session in the tasks database so it appears in the sidebar."""
+    db_url = os.environ.get("TASK_STORE_DB_URL", "")
+    if not db_url:
+        return
+    # Convert async SQLAlchemy URL to asyncpg format
+    pg_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    try:
+        conn = await asyncpg.connect(pg_url)
+        # Check if context already exists
+        existing = await conn.fetchval(
+            "SELECT COUNT(*) FROM tasks WHERE context_id = $1", child_context_id
+        )
+        if existing == 0:
+            metadata = json.dumps({
+                "agent_name": agent_name,
+                "parent_context_id": parent_context_id,
+                "title": task[:80],
+            })
+            status = json.dumps({"state": "working"})
+            await conn.execute(
+                "INSERT INTO tasks (id, context_id, status, metadata, history, artifacts) "
+                "VALUES ($1, $2, $3::jsonb, $4::jsonb, '[]'::jsonb, '[]'::jsonb)",
+                str(uuid.uuid4()),
+                child_context_id,
+                status,
+                metadata,
+            )
+            logger.info(
+                "Registered child session %s (parent=%s) in tasks DB",
+                child_context_id,
+                parent_context_id,
+            )
+        await conn.close()
+    except Exception as e:
+        logger.warning("Failed to register child session %s: %s", child_context_id, e)
+
+
+async def _complete_child_session(child_context_id: str, result: str) -> None:
+    """Mark a child session as completed in the database."""
+    db_url = os.environ.get("TASK_STORE_DB_URL", "")
+    if not db_url:
+        return
+    pg_url = db_url.replace("postgresql+asyncpg://", "postgresql://")
+    try:
+        conn = await asyncpg.connect(pg_url)
+        status = json.dumps({"state": "completed"})
+        # Store result as an artifact
+        artifacts = json.dumps([{"parts": [{"kind": "text", "text": result[:5000]}]}])
+        await conn.execute(
+            "UPDATE tasks SET status = $1::jsonb, artifacts = $2::jsonb WHERE context_id = $3",
+            status,
+            artifacts,
+            child_context_id,
+        )
+        logger.info("Marked child session %s as completed", child_context_id)
+        await conn.close()
+    except Exception as e:
+        logger.warning("Failed to complete child session %s: %s", child_context_id, e)
+
+
+# ---------------------------------------------------------------------------
 # Multi-mode delegation (Session E)
 # ---------------------------------------------------------------------------
 
@@ -362,14 +435,26 @@ def make_delegate_tool(
 
         logger.info("Delegating: child=%s mode=%s parent=%s", child_context_id, selected_mode, parent_context_id)
 
-        if selected_mode == "in-process":
-            return await _run_in_process(task, workspace, llm, child_context_id, tools_list, timeout_minutes * 60)
-        elif selected_mode == "shared-pvc":
-            return await _run_shared_pvc(task, child_context_id, namespace, variant, timeout_minutes)
-        elif selected_mode == "isolated":
-            return await _run_isolated(task, child_context_id, namespace, variant, timeout_minutes)
-        elif selected_mode == "sidecar":
-            return await _run_sidecar(task, child_context_id, variant)
-        return f"Unknown mode: {selected_mode}"
+        # Register the child session in the tasks DB so it appears in the sidebar
+        await _register_child_session(child_context_id, parent_context_id, variant, task)
+
+        try:
+            if selected_mode == "in-process":
+                result = await _run_in_process(task, workspace, llm, child_context_id, tools_list, timeout_minutes * 60)
+            elif selected_mode == "shared-pvc":
+                result = await _run_shared_pvc(task, child_context_id, namespace, variant, timeout_minutes)
+            elif selected_mode == "isolated":
+                result = await _run_isolated(task, child_context_id, namespace, variant, timeout_minutes)
+            elif selected_mode == "sidecar":
+                result = await _run_sidecar(task, child_context_id, variant)
+            else:
+                result = f"Unknown mode: {selected_mode}"
+        except Exception as e:
+            result = f"Delegation failed: {e}"
+
+        # Mark the child session as completed in the tasks DB
+        await _complete_child_session(child_context_id, result)
+
+        return result
 
     return delegate
