@@ -176,20 +176,50 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         Port number the agent is listening on.
     """
     capabilities = AgentCapabilities(streaming=True)
-    skill = AgentSkill(
-        id="sandbox_legion",
-        name="Sandbox Legion",
-        description=(
-            "**Sandbox Legion** -- Executes shell commands, reads and writes "
-            "files in an isolated per-context workspace with permission checks."
+    skills = [
+        AgentSkill(
+            id="shell",
+            name="Shell",
+            description="Execute a shell command in the sandbox",
+            tags=["shell", "exec"],
+            examples=["Run 'ls -la' in my workspace"],
         ),
-        tags=["shell", "file", "workspace", "sandbox"],
-        examples=[
-            "Run 'ls -la' in my workspace",
-            "Create a Python script that prints hello world",
-            "Read the contents of output/results.txt",
-        ],
-    )
+        AgentSkill(
+            id="file_read",
+            name="File Read",
+            description="Read a file from the workspace",
+            tags=["file", "read"],
+            examples=["Read the contents of output/results.txt"],
+        ),
+        AgentSkill(
+            id="file_write",
+            name="File Write",
+            description="Write content to a file in the workspace",
+            tags=["file", "write"],
+            examples=["Create a Python script that prints hello world"],
+        ),
+        AgentSkill(
+            id="web_fetch",
+            name="Web Fetch",
+            description="Fetch content from a URL (allowed domains only)",
+            tags=["web", "fetch"],
+            examples=["Fetch the README from a GitHub repo"],
+        ),
+        AgentSkill(
+            id="explore",
+            name="Explore",
+            description="Spawn a read-only sub-agent for codebase research",
+            tags=["research", "explore"],
+            examples=["Explore the project structure"],
+        ),
+        AgentSkill(
+            id="delegate",
+            name="Delegate",
+            description="Spawn a child agent session for a delegated task",
+            tags=["delegate", "subagent"],
+            examples=["Delegate an RCA investigation to a child session"],
+        ),
+    ]
     return AgentCard(
         name="Sandbox Legion",
         description=dedent(
@@ -208,7 +238,7 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         default_input_modes=["text"],
         default_output_modes=["text"],
         capabilities=capabilities,
-        skills=[skill],
+        skills=skills,
     )
 
 
