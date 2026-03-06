@@ -1,0 +1,21 @@
+# Stale Issue and PR Management
+#
+# Thin caller for the org-wide reusable stale workflow.
+# Configuration and defaults are managed centrally in kagenti/.github.
+#
+# Reference: https://github.com/kagenti/.github/blob/main/.github/workflows/stale.yaml
+#
+name: Close Stale Issues and PRs
+
+on:
+  schedule:
+    - cron: '0 6 * * *'
+  workflow_dispatch:
+
+permissions:
+  issues: write
+  pull-requests: write
+
+jobs:
+  stale:
+    uses: kagenti/.github/.github/workflows/stale.yaml@main
