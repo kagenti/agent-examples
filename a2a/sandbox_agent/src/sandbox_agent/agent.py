@@ -342,6 +342,10 @@ class SandboxAgentExecutor(AgentExecutor):
             input_state: dict[str, Any] = {"messages": messages}
 
             # Extract skill from A2A message metadata and load its content.
+            # TODO(Session N): Once base image moves to kagenti repo, use
+            # skill_pack_loader.py at startup to clone verified skill packs
+            # from skill-packs.yaml into /workspace/.claude/skills/ before
+            # the first message. Currently skills must be pre-populated.
             msg = context.message
             skill_id = None
             if msg and msg.metadata:
