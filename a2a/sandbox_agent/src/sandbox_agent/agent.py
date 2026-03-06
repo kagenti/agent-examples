@@ -184,20 +184,35 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     workspace = os.environ.get("WORKSPACE_DIR", "/workspace")
     skills_dir = Path(workspace) / ".claude" / "skills"
     if skills_dir.is_dir():
-        for md_file in sorted(skills_dir.rglob("*.md")):
-            rel = md_file.relative_to(skills_dir)
-            # Convert path to skill ID: rca/ci.md → rca:ci
-            skill_id = str(rel).removesuffix(".md").replace("/", ":")
-            # Read first line as description
+        seen_ids: set[str] = set()
+        for md_file in sorted(skills_dir.rglob("SKILL.md")):
+            # Directory-based skills: auth:keycloak-confidential-client/SKILL.md
+            # Skill ID = directory name relative to skills_dir
+            rel_dir = md_file.parent.relative_to(skills_dir)
+            skill_id = str(rel_dir).replace("/", ":")
+            if skill_id in seen_ids or skill_id == ".":
+                continue
+            seen_ids.add(skill_id)
+            # Read description from the skill file (skip frontmatter)
             try:
-                first_line = md_file.read_text(errors="replace").split("\n", 1)[0].strip("# ").strip()
+                content = md_file.read_text(errors="replace")
+                desc = ""
+                for line in content.split("\n"):
+                    line = line.strip()
+                    if line.startswith("description:"):
+                        desc = line.split(":", 1)[1].strip().strip("'\"")
+                        break
+                    if line.startswith("# ") and not desc:
+                        desc = line.lstrip("# ").strip()
+                if not desc:
+                    desc = skill_id
             except Exception:
-                first_line = skill_id
+                desc = skill_id
             skills.append(
                 AgentSkill(
                     id=skill_id,
                     name=skill_id,
-                    description=first_line[:200],
+                    description=desc[:200],
                     tags=["skill"],
                 )
             )
