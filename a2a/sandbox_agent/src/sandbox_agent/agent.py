@@ -590,10 +590,10 @@ def _load_skill_packs_at_startup() -> None:
         logger.info("Skills already loaded at %s, skipping clone", skills_dir)
         return
 
-    # Default: clone kagenti repo skills
+    # Default: clone kagenti skills from the upstream public repo
     repos = os.environ.get(
         "SKILL_REPOS",
-        "https://github.com/Ladas/kagenti.git#.claude/skills",
+        "https://github.com/kagenti/kagenti.git#.claude/skills",
     )
 
     for entry in repos.split(","):
@@ -601,18 +601,31 @@ def _load_skill_packs_at_startup() -> None:
         if not entry:
             continue
 
-        # Parse "url#path" format
+        # Parse "url@branch#path" format
+        branch = None
         if "#" in entry:
-            repo_url, skill_path = entry.rsplit("#", 1)
+            url_part, skill_path = entry.rsplit("#", 1)
         else:
-            repo_url, skill_path = entry, ".claude/skills"
+            url_part, skill_path = entry, ".claude/skills"
+        if "@" in url_part and not url_part.startswith("git@"):
+            repo_url, branch = url_part.rsplit("@", 1)
+        else:
+            repo_url = url_part
 
         clone_dir = Path(workspace) / ".skill-repos" / repo_url.split("/")[-1].replace(".git", "")
 
+        # Remove stale clone if exists (pod restart)
+        if clone_dir.exists():
+            subprocess.run(["rm", "-rf", str(clone_dir)], capture_output=True, timeout=10)
+
         try:
-            logger.info("Cloning skills from %s (path: %s)", repo_url, skill_path)
+            cmd = ["git", "clone", "--depth", "1", "--single-branch"]
+            if branch:
+                cmd += ["--branch", branch]
+            cmd += [repo_url, str(clone_dir)]
+            logger.info("Cloning skills from %s branch=%s (path: %s)", repo_url, branch or "default", skill_path)
             subprocess.run(
-                ["git", "clone", "--depth", "1", "--single-branch", repo_url, str(clone_dir)],
+                cmd,
                 capture_output=True,
                 text=True,
                 timeout=120,
