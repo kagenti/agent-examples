@@ -176,25 +176,49 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         Port number the agent is listening on.
     """
     capabilities = AgentCapabilities(streaming=True)
-    # Skills = high-level guided workflows, not built-in tools.
-    # Built-in tools (shell, file_read, file_write, etc.) are used automatically.
-    # Skills are loaded from /workspace/.claude/skills/ at request time.
-    # TODO: Dynamically populate skills list by scanning the workspace at startup.
-    skill = AgentSkill(
-        id="sandbox_legion",
-        name="Sandbox Legion",
-        description=(
-            "Sandboxed coding assistant with shell execution, file read/write, "
-            "web fetch, explore, and delegate capabilities."
-        ),
-        tags=["shell", "file", "workspace", "sandbox"],
-        examples=[
-            "Run 'ls -la' in my workspace",
-            "Create a Python script that prints hello world",
-            "Read the contents of output/results.txt",
-        ],
+    # Scan workspace for loaded skill files (.claude/skills/**/*.md)
+    # Skills found on disk are advertised in the agent card so the UI
+    # can show them in the / autocomplete (SkillWhisperer).
+    skills: list[AgentSkill] = []
+    workspace = os.environ.get("WORKSPACE_DIR", "/workspace")
+    skills_dir = Path(workspace) / ".claude" / "skills"
+    if skills_dir.is_dir():
+        for md_file in sorted(skills_dir.rglob("*.md")):
+            rel = md_file.relative_to(skills_dir)
+            # Convert path to skill ID: rca/ci.md → rca:ci
+            skill_id = str(rel).removesuffix(".md").replace("/", ":")
+            # Read first line as description
+            try:
+                first_line = md_file.read_text(errors="replace").split("\n", 1)[0].strip("# ").strip()
+            except Exception:
+                first_line = skill_id
+            skills.append(
+                AgentSkill(
+                    id=skill_id,
+                    name=skill_id,
+                    description=first_line[:200],
+                    tags=["skill"],
+                )
+            )
+        logger.info("Found %d skills in %s", len(skills), skills_dir)
+
+    # Always include the base sandbox skill
+    skills.append(
+        AgentSkill(
+            id="sandbox_legion",
+            name="Sandbox Legion",
+            description=(
+                "Sandboxed coding assistant with shell execution, file read/write, "
+                "web fetch, explore, and delegate capabilities."
+            ),
+            tags=["shell", "file", "workspace", "sandbox"],
+            examples=[
+                "Run 'ls -la' in my workspace",
+                "Create a Python script that prints hello world",
+                "Read the contents of output/results.txt",
+            ],
+        )
     )
-    skills = [skill]
     return AgentCard(
         name="Sandbox Legion",
         description=dedent(
