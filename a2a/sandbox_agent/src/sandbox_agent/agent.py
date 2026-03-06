@@ -572,8 +572,76 @@ def _create_task_store():
     return InMemoryTaskStore()
 
 
+def _load_skill_packs_at_startup() -> None:
+    """Clone skill repos into /workspace/.claude/skills/ at startup.
+
+    Reads SKILL_REPOS env var (comma-separated git URLs with optional
+    path suffix after #). Falls back to kagenti repo skills.
+
+    TODO(Session N): Replace with skill_pack_loader.py once the base
+    image moves to the kagenti repo.
+    """
+    import subprocess
+
+    workspace = os.environ.get("WORKSPACE_DIR", "/workspace")
+    skills_dir = Path(workspace) / ".claude" / "skills"
+
+    if skills_dir.exists() and any(skills_dir.rglob("*.md")):
+        logger.info("Skills already loaded at %s, skipping clone", skills_dir)
+        return
+
+    # Default: clone kagenti repo skills
+    repos = os.environ.get(
+        "SKILL_REPOS",
+        "https://github.com/Ladas/kagenti.git#.claude/skills",
+    )
+
+    for entry in repos.split(","):
+        entry = entry.strip()
+        if not entry:
+            continue
+
+        # Parse "url#path" format
+        if "#" in entry:
+            repo_url, skill_path = entry.rsplit("#", 1)
+        else:
+            repo_url, skill_path = entry, ".claude/skills"
+
+        clone_dir = Path(workspace) / ".skill-repos" / repo_url.split("/")[-1].replace(".git", "")
+
+        try:
+            logger.info("Cloning skills from %s (path: %s)", repo_url, skill_path)
+            subprocess.run(
+                ["git", "clone", "--depth", "1", "--single-branch", repo_url, str(clone_dir)],
+                capture_output=True,
+                text=True,
+                timeout=120,
+            )
+
+            src = clone_dir / skill_path
+            if src.is_dir():
+                skills_dir.mkdir(parents=True, exist_ok=True)
+                # Copy skill files (preserve directory structure)
+                subprocess.run(
+                    ["cp", "-r"] + [str(p) for p in src.iterdir()] + [str(skills_dir)],
+                    capture_output=True,
+                    timeout=30,
+                )
+                count = len(list(skills_dir.rglob("*.md")))
+                logger.info("Loaded %d skill files from %s", count, repo_url)
+            else:
+                logger.warning("Skill path %s not found in %s", skill_path, repo_url)
+        except subprocess.TimeoutExpired:
+            logger.warning("Timeout cloning %s", repo_url)
+        except Exception as e:
+            logger.warning("Failed to clone skills from %s: %s", repo_url, e)
+
+
 def run() -> None:
     """Create the A2A server application and run it with uvicorn."""
+    # Load skills from git repos before building the agent card
+    _load_skill_packs_at_startup()
+
     agent_card = get_agent_card(host="0.0.0.0", port=8000)
 
     request_handler = DefaultRequestHandler(
