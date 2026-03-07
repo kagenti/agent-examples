@@ -43,12 +43,14 @@ _TOOL_CALL_RE = re.compile(
 )
 
 # Known tool names — only parse calls for tools we actually have
-_KNOWN_TOOLS = {"shell", "file_read", "file_write", "web_fetch", "explore", "delegate"}
+_KNOWN_TOOLS = {"shell", "file_read", "file_write", "grep", "glob", "web_fetch", "explore", "delegate"}
 
 # First-param defaults for tools that accept a positional argument
 _POSITIONAL_PARAM = {
     "shell": "command",
     "file_read": "path",
+    "grep": "pattern",
+    "glob": "pattern",
     "web_fetch": "url",
     "explore": "query",
     "delegate": "task",
@@ -168,8 +170,8 @@ You are a planning module for a sandboxed coding assistant.
 
 Given the user's request and any prior execution results, produce a concise
 numbered plan.  Each step should be a single actionable item that can be
-executed with the available tools (shell, file_read, file_write, web_fetch,
-explore, delegate).
+executed with the available tools (shell, file_read, file_write, grep, glob,
+web_fetch, explore, delegate).
 
 Rules:
 - If the request is simple (a single command, a quick question, or a trivial
@@ -217,6 +219,8 @@ Available tools:
 - **shell**: Execute a shell command. Returns stdout+stderr and exit code.
 - **file_read**: Read a file from the workspace.
 - **file_write**: Write content to a file in the workspace.
+- **grep**: Search file contents with regex. Faster than shell grep, workspace-scoped.
+- **glob**: Find files by pattern (e.g. '**/*.py'). Faster than shell find.
 - **web_fetch**: Fetch content from a URL (allowed domains only).
 - **explore**: Spawn a read-only sub-agent for codebase research.
 - **delegate**: Spawn a child agent session for a delegated task.
@@ -227,6 +231,8 @@ CRITICAL RULES:
 - If a command is not found or permission denied, say so — do not pretend
   it succeeded.
 - Always include the actual tool output in your summary.
+- Call ONE tool at a time. Wait for the result before calling the next tool.
+  Do NOT generate multiple tool calls in a single response.
 
 Execute ONLY this step. When done, summarize what you accomplished and
 include the actual output or error from the tool call.

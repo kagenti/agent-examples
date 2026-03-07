@@ -269,6 +269,80 @@ def _make_file_write_tool(workspace_path: str) -> Any:
     return file_write
 
 
+def _make_grep_tool(workspace_path: str) -> Any:
+    """Return a LangChain tool that searches file contents with regex."""
+    ws_root = Path(workspace_path).resolve()
+
+    @tool
+    async def grep(pattern: str, path: str = ".", include: str = "") -> str:
+        """Search for a regex pattern in file contents under the workspace.
+
+        Args:
+            pattern: Regex pattern to search for (e.g. 'def main', 'ERROR|FAIL').
+            path: Relative directory or file to search in (default: workspace root).
+            include: Glob filter for filenames (e.g. '*.py', '*.ts'). Empty = all files.
+
+        Returns:
+            Matching lines with file paths and line numbers, or an error message.
+        """
+        import asyncio as _aio
+
+        search_path = (ws_root / path).resolve()
+        if not search_path.is_relative_to(ws_root):
+            return f"Error: path '{path}' resolves outside the workspace."
+
+        cmd = ["grep", "-rn", "--color=never"]
+        if include:
+            cmd.extend(["--include", include])
+        cmd.extend([pattern, str(search_path)])
+
+        try:
+            proc = await _aio.create_subprocess_exec(
+                *cmd, stdout=_aio.subprocess.PIPE, stderr=_aio.subprocess.PIPE,
+            )
+            stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=30)
+            out = stdout.decode(errors="replace")[:10000]
+            if proc.returncode == 1:
+                return "No matches found."
+            if proc.returncode != 0:
+                return f"Error: {stderr.decode(errors='replace')[:500]}"
+            # Make paths relative to workspace
+            return out.replace(str(ws_root) + "/", "")
+        except Exception as exc:
+            return f"Error running grep: {exc}"
+
+    return grep
+
+
+def _make_glob_tool(workspace_path: str) -> Any:
+    """Return a LangChain tool that finds files by glob pattern."""
+    ws_root = Path(workspace_path).resolve()
+
+    @tool
+    async def glob(pattern: str) -> str:
+        """Find files matching a glob pattern in the workspace.
+
+        Args:
+            pattern: Glob pattern (e.g. '**/*.py', 'src/**/*.ts', '*.md').
+
+        Returns:
+            Newline-separated list of matching file paths relative to workspace.
+        """
+        import fnmatch
+        matches = []
+        for p in sorted(ws_root.rglob("*")):
+            if p.is_file():
+                rel = str(p.relative_to(ws_root))
+                if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(p.name, pattern):
+                    matches.append(rel)
+                    if len(matches) >= 200:
+                        matches.append(f"... truncated ({len(matches)}+ matches)")
+                        break
+        return "\n".join(matches) if matches else "No files matched."
+
+    return glob
+
+
 def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
     """Return a LangChain tool that fetches web content from allowed domains.
 
@@ -390,6 +464,8 @@ def build_graph(
         _make_shell_tool(executor),
         _make_file_read_tool(workspace_path),
         _make_file_write_tool(workspace_path),
+        _make_grep_tool(workspace_path),
+        _make_glob_tool(workspace_path),
         _make_web_fetch_tool(sources_config),
     ]
     tools = core_tools + [
