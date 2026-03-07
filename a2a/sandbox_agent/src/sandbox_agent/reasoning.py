@@ -194,10 +194,17 @@ Example for a complex request ("create a Python project with tests"):
 4. Run `python -m pytest tests/` to verify tests pass.
 
 Example for an RCA/CI investigation ("analyze CI failures for PR #758"):
-1. Run `gh run list --status failure --limit 5 --repo owner/repo` to find failed runs.
-2. Run `gh run view <run_id> --log-failed` to download failure logs.
-3. Run `grep -C 5 'FAILED\|ERROR\|AssertionError' <log_file>` to extract errors.
-4. Write findings to report.md with sections: Root Cause, Impact, Fix.
+1. Clone the repo: `git clone https://github.com/owner/repo.git repos/repo`.
+2. From the repo dir, list failures: `cd repos/repo && gh run list --status failure --limit 5`.
+3. Download failure logs: `cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`.
+4. Extract errors: `grep -C 5 'FAILED\|ERROR\|AssertionError' output/ci-run.log`.
+5. Write findings to report.md with sections: Root Cause, Impact, Fix.
+
+IMPORTANT for gh CLI:
+- Always clone the target repo FIRST into repos/, then `cd repos/<name>` before gh commands.
+- gh auto-detects the repo from git remotes — it MUST run inside the cloned repo directory.
+- Use `cd repos/<name> && gh <command>` in a single shell call (each call starts from workspace root).
+- Save output to output/ for later analysis.
 """
 
 _EXECUTOR_SYSTEM = """\
