@@ -494,11 +494,46 @@ def build_graph(
     async def _reporter(state: SandboxState) -> dict[str, Any]:
         return await reporter_node(state, llm)
 
+    # -- Safe ToolNode wrapper — never crashes the graph --------------------
+    _tool_node = ToolNode(tools)
+
+    async def _safe_tools(state: SandboxState) -> dict[str, Any]:
+        """Execute tools with error handling.
+
+        If ToolNode crashes, return an error ToolMessage so the agent
+        sees the error and can adapt, instead of crashing the graph.
+        """
+        from langchain_core.messages import ToolMessage
+        try:
+            return await _tool_node.ainvoke(state)
+        except Exception as exc:
+            logger.error("ToolNode error: %s", exc, exc_info=True)
+            # Find tool_calls from the last message to generate error responses
+            messages = state.get("messages", [])
+            error_msgs = []
+            if messages:
+                last = messages[-1]
+                for tc in getattr(last, "tool_calls", []):
+                    tc_id = tc.get("id", "unknown") if isinstance(tc, dict) else getattr(tc, "id", "unknown")
+                    tc_name = tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown")
+                    error_msgs.append(ToolMessage(
+                        content=f"Tool error: {exc}",
+                        tool_call_id=tc_id,
+                        name=tc_name,
+                    ))
+            if not error_msgs:
+                error_msgs.append(ToolMessage(
+                    content=f"Tool execution failed: {exc}",
+                    tool_call_id="error",
+                    name="unknown",
+                ))
+            return {"messages": error_msgs}
+
     # -- Assemble graph -----------------------------------------------------
     graph = StateGraph(SandboxState)
     graph.add_node("planner", _planner)
     graph.add_node("executor", _executor)
-    graph.add_node("tools", ToolNode(tools))
+    graph.add_node("tools", _safe_tools)
     graph.add_node("reflector", _reflector)
     graph.add_node("reporter", _reporter)
 

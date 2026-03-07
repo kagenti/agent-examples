@@ -518,7 +518,7 @@ class SandboxAgentExecutor(AgentExecutor):
                 await task_updater.complete()
 
             except Exception as e:
-                logger.error("Graph execution error: %s", e)
+                logger.error("Graph execution error: %s", e, exc_info=True)
                 error_msg = json.dumps({"type": "error", "message": str(e)})
                 await task_updater.update_status(
                     TaskState.working,
