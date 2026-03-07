@@ -420,15 +420,9 @@ def make_delegate_tool(
 
         selected_mode = mode
         if mode == "auto":
-            task_lower = task.lower()
-            if any(w in task_lower for w in ("explore", "read", "analyze", "check", "find")):
-                selected_mode = "in-process"
-            elif any(w in task_lower for w in ("pr", "branch", "build", "deploy", "implement")):
-                selected_mode = "isolated"
-            elif any(w in task_lower for w in ("test", "verify", "validate", "run")):
-                selected_mode = "shared-pvc"
-            else:
-                selected_mode = _DEFAULT_MODE
+            # Default all auto-mode to in-process until shared-pvc/isolated
+            # are implemented. This prevents placeholder responses.
+            selected_mode = "in-process"
 
         if selected_mode not in _DELEGATION_MODES:
             return f"Mode '{selected_mode}' not enabled. Available: {', '.join(_DELEGATION_MODES)}"

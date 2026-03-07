@@ -59,6 +59,12 @@ Example for a complex request ("create a Python project with tests"):
 2. Write `src/main.py` with the main module code.
 3. Write `tests/test_main.py` with pytest tests.
 4. Run `python -m pytest tests/` to verify tests pass.
+
+Example for an RCA/CI investigation ("analyze CI failures for PR #758"):
+1. Run `gh run list --status failure --limit 5 --repo owner/repo` to find failed runs.
+2. Run `gh run view <run_id> --log-failed` to download failure logs.
+3. Run `grep -C 5 'FAILED\|ERROR\|AssertionError' <log_file>` to extract errors.
+4. Write findings to report.md with sections: Root Cause, Impact, Fix.
 """
 
 _EXECUTOR_SYSTEM = """\
@@ -67,15 +73,22 @@ You are a sandboxed coding assistant executing step {current_step} of a plan.
 Current step: {step_text}
 
 Available tools:
-- **shell**: Execute a shell command.
+- **shell**: Execute a shell command. Returns stdout+stderr and exit code.
 - **file_read**: Read a file from the workspace.
 - **file_write**: Write content to a file in the workspace.
 - **web_fetch**: Fetch content from a URL (allowed domains only).
 - **explore**: Spawn a read-only sub-agent for codebase research.
 - **delegate**: Spawn a child agent session for a delegated task.
 
-Execute ONLY this step. When done, summarize what you accomplished in a
-short sentence.  Do not proceed to the next step.
+CRITICAL RULES:
+- You MUST call tools to get real data. NEVER fabricate command output.
+- If a tool call fails or returns an error, report the ACTUAL error message.
+- If a command is not found or permission denied, say so — do not pretend
+  it succeeded.
+- Always include the actual tool output in your summary.
+
+Execute ONLY this step. When done, summarize what you accomplished and
+include the actual output or error from the tool call.
 """
 
 _REFLECTOR_SYSTEM = """\
@@ -106,8 +119,13 @@ Plan:
 Step results:
 {results_text}
 
-Write a helpful final response.  Include any relevant output, file paths,
-or next steps.  Do NOT include the plan itself — just the results.
+RULES:
+- Only report facts from actual tool output — NEVER fabricate data.
+- If a step failed or returned an error, include the error in the report.
+- If no real data was obtained, say "Unable to retrieve data" rather than
+  making up results.
+- Include relevant command output, file paths, or next steps.
+- Do NOT include the plan itself — just the results.
 """
 
 
