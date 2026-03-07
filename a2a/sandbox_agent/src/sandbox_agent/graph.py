@@ -20,6 +20,7 @@ Simple (single-step) requests skip the reflection LLM call for fast responses.
 from __future__ import annotations
 
 import logging
+import os
 from pathlib import Path
 from typing import Any, Optional
 
@@ -109,21 +110,40 @@ def _load_skill(workspace: str, skill_id: str) -> str | None:
     str | None
         The skill file content, or ``None`` if no matching file exists.
     """
-    skills_dir = Path(workspace) / ".claude" / "skills"
+    # Search in multiple locations:
+    # 1. Per-session workspace: /workspace/{contextId}/.claude/skills/
+    # 2. Shared workspace root: /workspace/.claude/skills/ (cloned at startup)
+    workspace_root = os.environ.get("WORKSPACE_DIR", "/workspace")
+    search_dirs = [
+        Path(workspace) / ".claude" / "skills",
+        Path(workspace_root) / ".claude" / "skills",
+    ]
 
-    # Primary path: replace ':' with '/' → rca:ci → rca/ci.md
-    primary = skills_dir / f"{skill_id.replace(':', '/')}.md"
-    if primary.is_file():
-        logger.info("Loaded skill '%s' from %s", skill_id, primary)
-        return primary.read_text(encoding="utf-8", errors="replace")
+    for skills_dir in search_dirs:
+        if not skills_dir.is_dir():
+            continue
 
-    # Fallback: literal filename → rca:ci.md (colon in filename)
-    fallback = skills_dir / f"{skill_id}.md"
-    if fallback.is_file():
-        logger.info("Loaded skill '%s' from %s (fallback)", skill_id, fallback)
-        return fallback.read_text(encoding="utf-8", errors="replace")
+        # Primary path: replace ':' with '/' → rca:ci → rca/ci.md
+        primary = skills_dir / f"{skill_id.replace(':', '/')}.md"
+        if primary.is_file():
+            logger.info("Loaded skill '%s' from %s", skill_id, primary)
+            return primary.read_text(encoding="utf-8", errors="replace")
 
-    logger.warning("Skill '%s' not found in %s", skill_id, skills_dir)
+        # Try SKILL.md inside directory named with colons → rca:ci/SKILL.md
+        skill_dir = skills_dir / skill_id.replace(":", "/")
+        skill_md = skill_dir / "SKILL.md"
+        if skill_md.is_file():
+            logger.info("Loaded skill '%s' from %s", skill_id, skill_md)
+            return skill_md.read_text(encoding="utf-8", errors="replace")
+
+        # Directory named with literal colon → rca:ci/SKILL.md
+        colon_dir = skills_dir / skill_id
+        colon_skill = colon_dir / "SKILL.md"
+        if colon_skill.is_file():
+            logger.info("Loaded skill '%s' from %s (colon dir)", skill_id, colon_skill)
+            return colon_skill.read_text(encoding="utf-8", errors="replace")
+
+    logger.warning("Skill '%s' not found in any search path", skill_id)
     return None
 
 
