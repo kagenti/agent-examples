@@ -22,6 +22,24 @@ from abc import ABC, abstractmethod
 from typing import Any
 
 
+def _safe_tc(tc: Any) -> dict[str, Any]:
+    """Safely extract name/args from a tool call object.
+
+    LangChain tool_calls can be dicts, ToolCall TypedDicts, or
+    InvalidToolCall objects (tuples). Handle all formats gracefully.
+    """
+    try:
+        if isinstance(tc, dict):
+            return {"name": tc.get("name", "unknown"), "args": tc.get("args", {})}
+        if hasattr(tc, "name"):
+            return {"name": getattr(tc, "name", "unknown"), "args": getattr(tc, "args", {})}
+        if isinstance(tc, (list, tuple)) and len(tc) >= 2:
+            return {"name": str(tc[0]), "args": tc[1] if isinstance(tc[1], dict) else {}}
+    except Exception:
+        pass
+    return {"name": "unknown", "args": {}}
+
+
 class FrameworkEventSerializer(ABC):
     """Base class for framework-specific event serialization.
 
@@ -125,10 +143,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             parts.append(json.dumps({
                 "type": "tool_call",
                 "tools": [
-                    {
-                        "name": tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown"),
-                        "args": tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {}),
-                    }
+                    _safe_tc(tc)
                     for tc in tool_calls
                 ],
             }))
@@ -168,10 +183,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 "loop_id": self._loop_id,
                 "step": self._step_index,
                 "tools": [
-                    {
-                        "name": tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown"),
-                        "args": tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {}),
-                    }
+                    _safe_tc(tc)
                     for tc in tool_calls
                 ],
             }))
