@@ -14,6 +14,8 @@ Four LangGraph node functions implement structured multi-step reasoning:
 from __future__ import annotations
 
 import logging
+import re
+import uuid
 from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage
@@ -21,6 +23,137 @@ from langchain_core.messages import AIMessage, SystemMessage
 from sandbox_agent.budget import AgentBudget
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Text-based tool call parser
+# ---------------------------------------------------------------------------
+# Some model servers (e.g. vLLM without --enable-auto-tool-choice) return
+# tool invocations as text like:
+#   [shell(command="ls -la"), file_read(path="foo.py")]
+# instead of structured tool_calls in the OpenAI response format.
+# This parser converts that text into proper AIMessage.tool_calls so
+# LangGraph's tools_condition routes to the ToolNode.
+# ---------------------------------------------------------------------------
+
+# Matches: tool_name(key="value", key2="value2")
+# Handles: shell("ls") (positional), shell(command="ls") (keyword)
+_TOOL_CALL_RE = re.compile(
+    r'(\w+)\(([^)]*)\)',
+)
+
+# Known tool names — only parse calls for tools we actually have
+_KNOWN_TOOLS = {"shell", "file_read", "file_write", "web_fetch", "explore", "delegate"}
+
+# First-param defaults for tools that accept a positional argument
+_POSITIONAL_PARAM = {
+    "shell": "command",
+    "file_read": "path",
+    "web_fetch": "url",
+    "explore": "query",
+    "delegate": "task",
+}
+
+
+def _parse_kwargs(args_str: str, tool_name: str) -> dict[str, Any]:
+    """Parse 'key="value", key2="value2"' or '"positional"' into a dict."""
+    args_str = args_str.strip()
+    if not args_str:
+        return {}
+
+    result: dict[str, Any] = {}
+
+    # Try keyword arguments first: key="value" or key='value'
+    kw_pattern = re.compile(r'(\w+)\s*=\s*(?:"((?:[^"\\]|\\.)*)"|\'((?:[^\'\\]|\\.)*)\')')
+    kw_matches = kw_pattern.findall(args_str)
+    if kw_matches:
+        for key, val_dq, val_sq in kw_matches:
+            val = val_dq if val_dq else val_sq
+            val = val.replace('\\"', '"').replace("\\'", "'")
+            result[key] = val
+        return result
+
+    # Positional: just a quoted string like "ls -la" or 'ls -la'
+    pos_match = re.match(r'^["\'](.+?)["\']$', args_str, re.DOTALL)
+    if pos_match:
+        param_name = _POSITIONAL_PARAM.get(tool_name, "input")
+        result[param_name] = pos_match.group(1).replace('\\"', '"')
+        return result
+
+    # Unquoted positional (rare but handle it)
+    param_name = _POSITIONAL_PARAM.get(tool_name, "input")
+    result[param_name] = args_str
+    return result
+
+
+def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
+    """Extract tool calls from text content.
+
+    Returns a list of dicts matching LangChain ToolCall format:
+      [{"name": "shell", "args": {"command": "ls"}, "id": "...", "type": "tool_call"}]
+
+    Returns empty list if no recognizable tool calls found.
+    """
+    if not content:
+        return []
+
+    # Look for the pattern: [tool(...), tool(...)] or just tool(...)
+    # Strip surrounding brackets if present
+    text = content.strip()
+    if text.startswith("[") and text.endswith("]"):
+        text = text[1:-1].strip()
+        # Remove trailing comma
+        if text.endswith(","):
+            text = text[:-1].strip()
+
+    calls = []
+    for match in _TOOL_CALL_RE.finditer(text):
+        tool_name = match.group(1)
+        args_str = match.group(2)
+
+        if tool_name not in _KNOWN_TOOLS:
+            continue
+
+        args = _parse_kwargs(args_str, tool_name)
+        calls.append({
+            "name": tool_name,
+            "args": args,
+            "id": f"text-{uuid.uuid4().hex[:12]}",
+            "type": "tool_call",
+        })
+
+    return calls
+
+
+def maybe_patch_tool_calls(response: AIMessage) -> AIMessage:
+    """If the response has no tool_calls but contains text-based calls, patch them in."""
+    if response.tool_calls:
+        # Model returned structured tool_calls — use as-is
+        return response
+
+    content = response.content
+    if isinstance(content, list):
+        # Multi-part content — extract text parts
+        content = " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+
+    parsed = parse_text_tool_calls(content)
+    if not parsed:
+        return response
+
+    logger.info(
+        "Parsed %d text-based tool call(s): %s",
+        len(parsed),
+        [c["name"] for c in parsed],
+    )
+
+    # Create a new AIMessage with the parsed tool_calls
+    return AIMessage(
+        content="",  # Clear text content — tools will produce output
+        tool_calls=parsed,
+    )
 
 # Default budget — used when no explicit budget is passed.
 DEFAULT_BUDGET = AgentBudget()
@@ -211,6 +344,11 @@ async def executor_node(
     # Include the conversation history so the executor has full context
     messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
+
+    # If the model returned text-based tool calls instead of structured
+    # tool_calls (common with vLLM without --enable-auto-tool-choice),
+    # parse them so tools_condition routes to the ToolNode.
+    response = maybe_patch_tool_calls(response)
 
     return {"messages": [response]}
 

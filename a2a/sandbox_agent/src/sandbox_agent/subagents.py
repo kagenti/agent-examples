@@ -147,6 +147,7 @@ def create_explore_graph(workspace: str, llm: Any) -> Any:
     llm_with_tools = llm.bind_tools(tools)
 
     async def assistant(state: MessagesState) -> dict[str, Any]:
+        from sandbox_agent.reasoning import maybe_patch_tool_calls
         system = SystemMessage(
             content=(
                 "You are a codebase research assistant. Your job is to find "
@@ -157,7 +158,7 @@ def create_explore_graph(workspace: str, llm: Any) -> Any:
         )
         messages = [system] + state["messages"]
         response = await llm_with_tools.ainvoke(messages)
-        return {"messages": [response]}
+        return {"messages": [maybe_patch_tool_calls(response)]}
 
     graph = StateGraph(MessagesState)
     graph.add_node("assistant", assistant)
@@ -299,6 +300,7 @@ async def _run_in_process(
     llm_with_tools = llm.bind_tools(tools_list)
 
     async def assistant(state: MessagesState) -> dict[str, Any]:
+        from sandbox_agent.reasoning import maybe_patch_tool_calls
         system = SystemMessage(
             content=(
                 "You are a sub-agent working on a delegated task. Complete the task "
@@ -308,7 +310,7 @@ async def _run_in_process(
         )
         messages = [system] + state["messages"]
         response = await llm_with_tools.ainvoke(messages)
-        return {"messages": [response]}
+        return {"messages": [maybe_patch_tool_calls(response)]}
 
     graph = StateGraph(MessagesState)
     graph.add_node("assistant", assistant)
