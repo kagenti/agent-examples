@@ -86,6 +86,8 @@ class SandboxState(MessagesState):
     iteration: int
     done: bool
     skill_instructions: str
+    prompt_tokens: int
+    completion_tokens: int
 
 
 # ---------------------------------------------------------------------------

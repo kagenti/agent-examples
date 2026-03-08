@@ -404,6 +404,11 @@ async def planner_node(
     plan_messages = [SystemMessage(content=system_content)] + messages
     response = await llm.ainvoke(plan_messages)
 
+    # Extract token usage from the LLM response
+    usage = getattr(response, 'usage_metadata', None) or {}
+    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+
     # Parse numbered steps from the response
     plan = _parse_plan(response.content)
 
@@ -415,6 +420,8 @@ async def planner_node(
         "current_step": 0,
         "iteration": iteration + 1,
         "done": False,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
     }
 
 
@@ -447,6 +454,11 @@ async def executor_node(
     # Include the conversation history so the executor has full context
     messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
+
+    # Extract token usage from the LLM response
+    usage = getattr(response, 'usage_metadata', None) or {}
+    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
 
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
@@ -503,7 +515,11 @@ async def executor_node(
                 tool_calls=new_calls,
             )
 
-    return {"messages": [response]}
+    return {
+        "messages": [response],
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+    }
 
 
 async def reflector_node(
@@ -574,6 +590,11 @@ async def reflector_node(
     reflect_messages = [SystemMessage(content=system_content)]
     response = await llm.ainvoke(reflect_messages)
 
+    # Extract token usage from the LLM response
+    usage = getattr(response, 'usage_metadata', None) or {}
+    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+
     decision = _parse_decision(response.content)
     logger.info("Reflector decision: %s (step %d/%d)", decision, current_step + 1, len(plan))
 
@@ -583,6 +604,8 @@ async def reflector_node(
             "step_results": step_results,
             "current_step": current_step + 1,
             "done": True,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
         }
     elif decision == "replan":
         # Feed back to planner — keep step_results, reset current_step
@@ -590,6 +613,8 @@ async def reflector_node(
             "messages": [response],
             "step_results": step_results,
             "done": False,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
         }
     else:
         # continue — advance to next step
@@ -598,6 +623,8 @@ async def reflector_node(
             "step_results": step_results,
             "current_step": current_step + 1,
             "done": False,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
         }
 
 
@@ -637,6 +664,11 @@ async def reporter_node(
     messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm.ainvoke(messages)
 
+    # Extract token usage from the LLM response
+    usage = getattr(response, 'usage_metadata', None) or {}
+    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
+    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+
     content = response.content
     if isinstance(content, list):
         text = " ".join(
@@ -649,6 +681,8 @@ async def reporter_node(
     return {
         "messages": [response],
         "final_answer": text,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
     }
 
 

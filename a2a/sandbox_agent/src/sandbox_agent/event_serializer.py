@@ -104,7 +104,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         msg = msgs[-1]
 
         if key == "executor":
-            return self._serialize_executor(msg)
+            return self._serialize_executor(msg, value)
         elif key == "tools":
             return self._serialize_tool_result(msg)
         else:
@@ -151,7 +151,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         return json.dumps({"type": "llm_response", "content": text})
 
-    def _serialize_executor(self, msg: Any) -> str:
+    def _serialize_executor(self, msg: Any, value: dict | None = None) -> str:
         """Serialize an executor node output with loop_id for AgentLoopCard."""
         tool_calls = getattr(msg, "tool_calls", [])
         content = getattr(msg, "content", "")
@@ -163,12 +163,15 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         parts = []
 
+        _v = value or {}
         # Emit plan_step event so UI shows which step is executing
         parts.append(json.dumps({
             "type": "plan_step",
             "loop_id": self._loop_id,
             "step": self._step_index,
             "description": text[:200] if text else "",
+            "prompt_tokens": _v.get("prompt_tokens", 0),
+            "completion_tokens": _v.get("completion_tokens", 0),
         }))
 
         if tool_calls:
@@ -235,6 +238,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "steps": plan,
             "iteration": iteration,
             "content": text,
+            "prompt_tokens": value.get("prompt_tokens", 0),
+            "completion_tokens": value.get("completion_tokens", 0),
         })
 
     def _serialize_reflector(self, value: dict) -> str:
@@ -263,6 +268,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "current_step": current_step,
             "assessment": text,
             "content": text,
+            "prompt_tokens": value.get("prompt_tokens", 0),
+            "completion_tokens": value.get("completion_tokens", 0),
         })
 
     def _serialize_reporter(self, value: dict) -> str:
@@ -283,6 +290,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "type": "llm_response",
             "loop_id": self._loop_id,
             "content": final_answer[:2000],
+            "prompt_tokens": value.get("prompt_tokens", 0),
+            "completion_tokens": value.get("completion_tokens", 0),
         })
 
     @staticmethod

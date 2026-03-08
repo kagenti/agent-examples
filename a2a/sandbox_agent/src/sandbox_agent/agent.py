@@ -411,12 +411,16 @@ class SandboxAgentExecutor(AgentExecutor):
                 else:
                     logger.warning("Skill '%s' requested but not found in workspace %s", skill_id, workspace_path)
 
-            graph_config = {"configurable": {"thread_id": context_id or "stateless"}}
+            graph_config = {
+                "configurable": {"thread_id": context_id or "stateless"},
+                "recursion_limit": 50,
+            }
             logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 
             try:
                 output = None
                 serializer = LangGraphSerializer()
+                llm_request_ids: list[str] = []
 
                 # Retry loop for transient LLM API errors (429 rate limits)
                 max_retries = 3
@@ -437,6 +441,14 @@ class SandboxAgentExecutor(AgentExecutor):
                                 ),
                             )
                             output = event
+
+                            # Capture LLM request_ids from AIMessage responses
+                            for _node_val in event.values():
+                                if isinstance(_node_val, dict):
+                                    for _msg in _node_val.get("messages", []):
+                                        _rid = getattr(_msg, "response_metadata", {}).get("id")
+                                        if _rid and _rid not in llm_request_ids:
+                                            llm_request_ids.append(_rid)
                         break  # Success — exit retry loop
                     except Exception as retry_err:
                         err_str = str(retry_err).lower()
@@ -513,6 +525,21 @@ class SandboxAgentExecutor(AgentExecutor):
 
                 if final_answer is None:
                     final_answer = "No response generated."
+
+                # Store LLM request_ids in task metadata for token usage tracking
+                if llm_request_ids:
+                    try:
+                        existing_meta = {}
+                        if task.metadata:
+                            existing_meta = dict(task.metadata) if not isinstance(task.metadata, dict) else task.metadata
+                        existing_meta["llm_request_ids"] = llm_request_ids
+                        task.metadata = existing_meta
+                        logger.info(
+                            "Stored %d LLM request_ids in task metadata for context_id=%s",
+                            len(llm_request_ids), context_id,
+                        )
+                    except Exception as meta_err:
+                        logger.warning("Failed to store llm_request_ids: %s", meta_err)
 
                 # Add artifact with final answer and complete
                 parts = [TextPart(text=final_answer)]
