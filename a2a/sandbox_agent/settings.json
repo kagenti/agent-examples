@@ -13,7 +13,9 @@
       "shell(pip list:*)", "shell(sh:*)", "shell(bash:*)",
       "shell(git clone:*)", "shell(git status:*)", "shell(git log:*)",
       "shell(git diff:*)", "shell(git add:*)", "shell(git commit:*)",
-      "shell(git checkout:*)", "shell(git branch:*)",
+      "shell(git checkout:*)", "shell(git branch:*)", "shell(git remote:*)",
+      "shell(git fetch:*)", "shell(git pull:*)", "shell(git show:*)",
+      "shell(git rev-parse:*)",
       "shell(cd:*)", "shell(gh:*)", "shell(jq:*)",
       "file(read:${WORKSPACE}/**)", "file(write:${WORKSPACE}/**)",
       "file(delete:${WORKSPACE}/**)"
