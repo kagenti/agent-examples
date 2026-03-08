@@ -4,15 +4,22 @@ Each agent framework (LangGraph, CrewAI, AG2) has its own internal event
 format. Serializers convert framework events into a common JSON schema
 that the backend and frontend understand.
 
-Event types:
-    tool_call     — LLM decided to call one or more tools
-    tool_result   — A tool returned output
-    llm_response  — LLM generated text (no tool calls)
-    plan          — Planner produced a numbered plan
-    plan_step     — Executor is working on a specific plan step
-    reflection    — Reflector reviewed step output
-    error         — An error occurred during execution
-    hitl_request  — Human-in-the-loop approval is needed
+Event types (new — node-specific):
+    planner_output     — Planner created/revised a plan
+    executor_step      — Executor starts working on a plan step
+    tool_call          — Tool invoked (unchanged)
+    tool_result        — Tool returned output (unchanged)
+    reflector_decision — Reflector decides continue/replan/done
+    reporter_output    — Reporter generates the final answer
+    budget_update      — Budget tracking
+    error              — An error occurred during execution
+    hitl_request       — Human-in-the-loop approval is needed
+
+Legacy types (kept for backward compatibility):
+    plan          — Alias for planner_output
+    plan_step     — Alias for executor_step
+    reflection    — Alias for reflector_decision
+    llm_response  — Generic LLM text (used for unknown nodes only)
 """
 
 from __future__ import annotations
@@ -164,23 +171,27 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts = []
 
         _v = value or {}
-        # Emit plan_step event so UI shows which step is executing
-        parts.append(json.dumps({
-            "type": "plan_step",
+        plan = _v.get("plan", [])
+        model = _v.get("model", "")
+        prompt_tokens = _v.get("prompt_tokens", 0)
+        completion_tokens = _v.get("completion_tokens", 0)
+
+        # Emit executor_step event so UI shows which step is executing
+        step_payload = {
+            "type": "executor_step",
             "loop_id": self._loop_id,
             "step": self._step_index,
+            "total_steps": len(plan) if plan else 0,
             "description": text[:200] if text else "",
-            "prompt_tokens": _v.get("prompt_tokens", 0),
-            "completion_tokens": _v.get("completion_tokens", 0),
-        }))
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        parts.append(json.dumps(step_payload))
+        # Legacy alias for backward compatibility
+        parts.append(json.dumps(dict(step_payload, type="plan_step")))
 
         if tool_calls:
-            if text.strip():
-                parts.append(json.dumps({
-                    "type": "llm_response",
-                    "loop_id": self._loop_id,
-                    "content": text,
-                }))
             parts.append(json.dumps({
                 "type": "tool_call",
                 "loop_id": self._loop_id,
@@ -192,18 +203,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             }))
             return "\n".join(parts)
 
-        if text:
-            parts.append(json.dumps({
-                "type": "llm_response",
-                "loop_id": self._loop_id,
-                "content": text,
-            }))
-
-        return "\n".join(parts) if parts else json.dumps({
-            "type": "llm_response",
-            "loop_id": self._loop_id,
-            "content": "",
-        })
+        return "\n".join(parts)
 
     def _serialize_tool_result(self, msg: Any) -> str:
         """Serialize a tool node output with loop_id."""
@@ -218,7 +218,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         })
 
     def _serialize_planner(self, value: dict) -> str:
-        """Serialize a planner node output — emits the plan steps."""
+        """Serialize a planner node output — emits planner_output + legacy plan."""
         plan = value.get("plan", [])
         iteration = value.get("iteration", 1)
 
@@ -232,18 +232,27 @@ class LangGraphSerializer(FrameworkEventSerializer):
             else:
                 text = str(content)[:2000] if content else ""
 
-        return json.dumps({
-            "type": "plan",
+        model = value.get("model", "")
+        prompt_tokens = value.get("prompt_tokens", 0)
+        completion_tokens = value.get("completion_tokens", 0)
+
+        payload = {
+            "type": "planner_output",
             "loop_id": self._loop_id,
             "steps": plan,
             "iteration": iteration,
             "content": text,
-            "prompt_tokens": value.get("prompt_tokens", 0),
-            "completion_tokens": value.get("completion_tokens", 0),
-        })
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+
+        # Emit new type + legacy type for backward compatibility
+        legacy = dict(payload, type="plan")
+        return "\n".join([json.dumps(payload), json.dumps(legacy)])
 
     def _serialize_reflector(self, value: dict) -> str:
-        """Serialize a reflector node output — emits the decision."""
+        """Serialize a reflector node output — emits reflector_decision + legacy reflection."""
         done = value.get("done", False)
         current_step = value.get("current_step", 0)
         step_results = value.get("step_results", [])
@@ -258,22 +267,45 @@ class LangGraphSerializer(FrameworkEventSerializer):
             else:
                 text = str(content)[:500] if content else ""
 
+        # Derive the decision keyword from the text
+        decision = "done" if done else self._extract_decision(text)
+
         # Advance step index when reflector completes a step
         self._step_index = current_step
 
-        return json.dumps({
+        model = value.get("model", "")
+        prompt_tokens = value.get("prompt_tokens", 0)
+        completion_tokens = value.get("completion_tokens", 0)
+        iteration = value.get("iteration", 0)
+
+        payload = {
+            "type": "reflector_decision",
+            "loop_id": self._loop_id,
+            "decision": decision,
+            "assessment": text,
+            "iteration": iteration,
+            "done": done,
+            "current_step": current_step,
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+
+        # Emit new type + legacy type for backward compatibility
+        legacy = {
             "type": "reflection",
             "loop_id": self._loop_id,
             "done": done,
             "current_step": current_step,
             "assessment": text,
             "content": text,
-            "prompt_tokens": value.get("prompt_tokens", 0),
-            "completion_tokens": value.get("completion_tokens", 0),
-        })
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        }
+        return "\n".join([json.dumps(payload), json.dumps(legacy)])
 
     def _serialize_reporter(self, value: dict) -> str:
-        """Serialize a reporter node output — emits the final answer."""
+        """Serialize a reporter node output — emits reporter_output."""
         final_answer = value.get("final_answer", "")
 
         # Also check messages for the reporter's LLM response
@@ -286,13 +318,31 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 else:
                     final_answer = str(content)[:2000] if content else ""
 
+        model = value.get("model", "")
+        prompt_tokens = value.get("prompt_tokens", 0)
+        completion_tokens = value.get("completion_tokens", 0)
+
         return json.dumps({
-            "type": "llm_response",
+            "type": "reporter_output",
             "loop_id": self._loop_id,
             "content": final_answer[:2000],
-            "prompt_tokens": value.get("prompt_tokens", 0),
-            "completion_tokens": value.get("completion_tokens", 0),
+            "model": model,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
         })
+
+    @staticmethod
+    def _extract_decision(text: str) -> str:
+        """Extract a decision keyword from reflector text.
+
+        Returns one of: ``continue``, ``replan``, ``done``, ``hitl``.
+        Defaults to ``continue`` if the text is ambiguous.
+        """
+        text_lower = text.strip().lower()
+        for decision in ("done", "replan", "hitl", "continue"):
+            if decision in text_lower:
+                return decision
+        return "continue"
 
     @staticmethod
     def _extract_text_blocks(content: list) -> str:
