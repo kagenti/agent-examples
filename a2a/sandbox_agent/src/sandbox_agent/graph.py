@@ -188,16 +188,50 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
             else:
                 return f"DENIED: command '{exc.command}' was rejected by human review."
 
-        parts: list[str] = []
-        if result.stdout:
-            parts.append(result.stdout)
-        if result.stderr:
-            parts.append(f"STDERR: {result.stderr}")
-        if result.exit_code != 0:
-            parts.append(f"EXIT_CODE: {result.exit_code}")
-        return "\n".join(parts) if parts else "(no output)"
+        # Retry on rate-limit errors (GitHub API, etc.) with exponential backoff
+        output = _format_result(result)
+        if result.exit_code != 0 and _is_rate_limited(output):
+            import asyncio
+            for attempt in range(1, 4):  # up to 3 retries
+                delay = 2 ** attempt  # 2s, 4s, 8s
+                logger.info("Rate limit detected, retry %d/3 after %ds", attempt, delay)
+                await asyncio.sleep(delay)
+                try:
+                    result = await executor.run_shell(command)
+                except HitlRequired:
+                    break  # don't retry HITL
+                output = _format_result(result)
+                if result.exit_code == 0 or not _is_rate_limited(output):
+                    break
+
+        return output
 
     return shell
+
+
+def _format_result(result: Any) -> str:
+    """Format an ExecutionResult into a string."""
+    parts: list[str] = []
+    if result.stdout:
+        parts.append(result.stdout)
+    if result.stderr:
+        parts.append(f"STDERR: {result.stderr}")
+    if result.exit_code != 0:
+        parts.append(f"EXIT_CODE: {result.exit_code}")
+    return "\n".join(parts) if parts else "(no output)"
+
+
+def _is_rate_limited(output: str) -> bool:
+    """Detect rate-limit errors in command output."""
+    lower = output.lower()
+    return any(pattern in lower for pattern in (
+        "rate limit exceeded",
+        "rate limit",
+        "too many requests",
+        "429",
+        "api rate limit",
+        "secondary rate limit",
+    ))
 
 
 def _make_file_read_tool(workspace_path: str) -> Any:

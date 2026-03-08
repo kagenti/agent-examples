@@ -14,7 +14,7 @@
       "shell(git clone:*)", "shell(git status:*)", "shell(git log:*)",
       "shell(git diff:*)", "shell(git add:*)", "shell(git commit:*)",
       "shell(git checkout:*)", "shell(git branch:*)",
-      "shell(gh:*)", "shell(jq:*)",
+      "shell(cd:*)", "shell(gh:*)", "shell(jq:*)",
       "file(read:${WORKSPACE}/**)", "file(write:${WORKSPACE}/**)",
       "file(delete:${WORKSPACE}/**)"
     ],

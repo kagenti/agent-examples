@@ -68,6 +68,9 @@ class PermissionChecker:
     # Core method
     # ------------------------------------------------------------------
 
+    # Shell metacharacters that separate independent commands.
+    _COMPOUND_SEPARATORS = ("&&", "||", ";", "|")
+
     def check(self, operation_type: str, operation: str) -> PermissionResult:
         """Return ALLOW, DENY, or HITL for a given *operation_type* + *operation*.
 
@@ -80,6 +83,17 @@ class PermissionChecker:
             shell command or ``"read:/workspace/ctx1/main.py"`` for a file
             operation.
         """
+        # For shell commands with compound operators (&&, ||, ;, |),
+        # check each segment independently.
+        if operation_type == "shell":
+            segments = self._split_compound(operation)
+            if len(segments) > 1:
+                return self._check_compound(segments)
+
+        return self._check_single(operation_type, operation)
+
+    def _check_single(self, operation_type: str, operation: str) -> PermissionResult:
+        """Check a single (non-compound) operation."""
         # Deny rules are checked first -- deny takes precedence.
         if self._matches_any(operation_type, operation, self._deny_rules):
             return PermissionResult.DENY
@@ -103,6 +117,39 @@ class PermissionChecker:
             return PermissionResult.ALLOW
 
         return PermissionResult.HITL
+
+    def _check_compound(self, segments: list[str]) -> PermissionResult:
+        """Check each segment of a compound shell command.
+
+        All segments must be ALLOW for the compound to be ALLOW.
+        Any DENY makes the whole compound DENY.
+        Otherwise HITL.
+        """
+        has_hitl = False
+        for seg in segments:
+            result = self._check_single("shell", seg)
+            if result is PermissionResult.DENY:
+                return PermissionResult.DENY
+            if result is PermissionResult.HITL:
+                has_hitl = True
+        return PermissionResult.HITL if has_hitl else PermissionResult.ALLOW
+
+    @classmethod
+    def _split_compound(cls, operation: str) -> list[str]:
+        """Split a shell command on compound operators (&&, ||, ;, |).
+
+        Returns a list of stripped command segments. If no operators are
+        found, returns a single-element list with the original command.
+        """
+        # Replace multi-char operators first to avoid confusion with single |
+        temp = operation
+        sentinel = "\x00"
+        for sep in ("&&", "||", ";"):
+            temp = temp.replace(sep, sentinel)
+        # Now split on single | (but not if it was part of || already replaced)
+        temp = temp.replace("|", sentinel)
+        segments = [s.strip() for s in temp.split(sentinel) if s.strip()]
+        return segments if segments else [operation]
 
     # ------------------------------------------------------------------
     # Internal helpers
