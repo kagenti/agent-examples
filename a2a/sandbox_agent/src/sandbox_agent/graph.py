@@ -164,7 +164,11 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
 
     @tool
     async def shell(command: str) -> str:
-        """Execute a shell command in the sandbox workspace.
+        f"""Execute a shell command in the session workspace ({workspace_path}).
+
+        The working directory is the session workspace. Use relative paths
+        for files in this session. Files created here are visible in the
+        Files tab. The workspace path is: {workspace_path}
 
         Args:
             command: The shell command to run.
