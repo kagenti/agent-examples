@@ -13,6 +13,7 @@ Four LangGraph node functions implement structured multi-step reasoning:
 
 from __future__ import annotations
 
+import json
 import logging
 import re
 import uuid
@@ -40,6 +41,13 @@ logger = logging.getLogger(__name__)
 # Handles: shell("ls") (positional), shell(command="ls") (keyword)
 _TOOL_CALL_RE = re.compile(
     r'(\w+)\(([^)]*)\)',
+)
+
+# Matches Llama 4 Scout format: [label, tool_name]{"key": "value"}
+# Examples: [clone_repo, shell]{"command": "git clone ..."}
+#           [rca:ci, delegate]{"task": "analyze CI logs"}
+_LABEL_TOOL_JSON_RE = re.compile(
+    r'\[[^\]]*,\s*(\w+)\]\s*(\{[^}]+\})',
 )
 
 # Known tool names — only parse calls for tools we actually have
@@ -109,6 +117,29 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
             text = text[:-1].strip()
 
     calls = []
+
+    # Try Llama 4 format first: [label, tool_name]{"key": "value"}
+    for match in _LABEL_TOOL_JSON_RE.finditer(content):
+        tool_name = match.group(1)
+        json_str = match.group(2)
+        if tool_name not in _KNOWN_TOOLS:
+            continue
+        try:
+            args = json.loads(json_str)
+            if isinstance(args, dict):
+                calls.append({
+                    "name": tool_name,
+                    "args": args,
+                    "id": f"text-{uuid.uuid4().hex[:12]}",
+                    "type": "tool_call",
+                })
+        except json.JSONDecodeError:
+            continue
+
+    if calls:
+        return calls
+
+    # Fall back to legacy format: tool_name(args)
     for match in _TOOL_CALL_RE.finditer(text):
         tool_name = match.group(1)
         args_str = match.group(2)
@@ -532,15 +563,6 @@ async def reflector_node(
     step_text = plan[current_step] if current_step < len(plan) else "N/A"
     plan_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(plan))
     results_text = last_content[:1000]
-
-    # For single-step plans, skip reflection LLM call
-    if len(plan) <= 1:
-        logger.info("Single-step plan — skipping reflection, marking done")
-        return {
-            "step_results": step_results,
-            "current_step": current_step + 1,
-            "done": True,
-        }
 
     # Ask LLM to reflect
     system_content = _REFLECTOR_SYSTEM.format(
