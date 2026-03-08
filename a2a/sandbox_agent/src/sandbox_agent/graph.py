@@ -581,9 +581,9 @@ def build_graph(
         tools_condition,
         {"tools": "tools", "__end__": "reflector"},
     )
-    # After tools execute, go to reflector (not back to executor which would
-    # re-invoke the LLM and potentially re-generate the same tool calls).
-    graph.add_edge("tools", "reflector")
+    # After tools execute, go back to executor so the LLM can see tool
+    # results and decide on next actions (or signal completion).
+    graph.add_edge("tools", "executor")
 
     # Reflector → reporter (done) or → planner (continue/replan)
     graph.add_conditional_edges(
