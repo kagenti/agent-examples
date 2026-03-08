@@ -363,12 +363,14 @@ class SandboxAgentExecutor(AgentExecutor):
             logger.info("PostgreSQL checkpointer initialized")
 
         # 3. Build graph with shared checkpointer for multi-turn memory
+        namespace = os.environ.get("NAMESPACE", "team1")
         graph = build_graph(
             workspace_path=workspace_path,
             permission_checker=self._permission_checker,
             sources_config=self._sources_config,
             checkpointer=self._checkpointer,
             context_id=context_id or "stateless",
+            namespace=namespace,
         )
 
         # 4. Stream graph execution with thread_id for checkpointer routing.

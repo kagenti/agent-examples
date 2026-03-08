@@ -18,7 +18,7 @@ import re
 import uuid
 from typing import Any
 
-from langchain_core.messages import AIMessage, SystemMessage
+from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from sandbox_agent.budget import AgentBudget
 
@@ -174,8 +174,13 @@ executed with the available tools (shell, file_read, file_write, grep, glob,
 web_fetch, explore, delegate).
 
 Rules:
-- If the request is simple (a single command, a quick question, or a trivial
-  file operation), output EXACTLY one step.
+- If the request needs NO tools (just a text answer, saying something,
+  answering a question from memory, or repeating text), output EXACTLY:
+  1. Respond to the user.
+  DO NOT add extra steps for thinking, analyzing, or verifying.
+- If the request is a single command or a trivial file operation,
+  output EXACTLY one step.
+- NEVER create multi-step plans for simple requests. One command = one step.
 - Keep steps concrete and tool-oriented — no vague "analyze" or "think" steps.
 - For multi-step analysis, debugging, or investigation tasks, add a final
   step: "Write findings summary to report.md" with sections: Problem,
@@ -186,8 +191,17 @@ Rules:
 - Number each step starting at 1.
 - Output ONLY the numbered list, nothing else.
 
+Example for a text-only request ("Say exactly: hello world"):
+1. Respond to the user.
+
+Example for a question ("What was the marker text?"):
+1. Respond to the user.
+
 Example for a simple request ("list files"):
 1. Run `ls -la` in the workspace.
+
+Example for a single command ("run echo test"):
+1. Run `echo test` in the shell.
 
 Example for a complex request ("create a Python project with tests"):
 1. Create the directory structure with `mkdir -p src tests`.
@@ -281,6 +295,40 @@ RULES:
 # ---------------------------------------------------------------------------
 
 
+def _is_trivial_text_request(messages: list) -> bool:
+    """Detect requests that need no tools — just a text response.
+
+    Matches patterns like "Say exactly: ...", "What was the marker?",
+    simple greetings, or questions that can be answered from conversation
+    context alone.
+    """
+    if not messages:
+        return False
+    last = messages[-1]
+    content = getattr(last, "content", "")
+    if isinstance(content, list):
+        content = " ".join(
+            b.get("text", "") for b in content
+            if isinstance(b, dict) and b.get("type") == "text"
+        )
+    text = str(content).strip().lower()
+    if not text:
+        return False
+
+    # Patterns that clearly need no tools
+    trivial_patterns = (
+        "say exactly",
+        "repeat ",
+        "what was the marker",
+        "what did i say",
+        "what did i tell",
+        "hello",
+        "hi",
+        "who are you",
+    )
+    return any(text.startswith(p) or p in text for p in trivial_patterns)
+
+
 async def planner_node(
     state: dict[str, Any],
     llm: Any,
@@ -293,6 +341,16 @@ async def planner_node(
     messages = state["messages"]
     iteration = state.get("iteration", 0)
     step_results = state.get("step_results", [])
+
+    # Fast-path: trivial text-only requests skip the planner LLM call entirely
+    if iteration == 0 and _is_trivial_text_request(messages):
+        logger.info("Fast-path: trivial text request — single-step plan, no LLM call")
+        return {
+            "plan": ["Respond to the user."],
+            "current_step": 0,
+            "iteration": 1,
+            "done": False,
+        }
 
     # Build context for the planner
     context_parts = []
@@ -363,6 +421,56 @@ async def executor_node(
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
     # parse them so tools_condition routes to the ToolNode.
     response = maybe_patch_tool_calls(response)
+
+    # -- Dedup: skip tool calls that already have ToolMessage responses ------
+    # The text-based parser generates fresh UUIDs each invocation, so
+    # LangGraph treats re-parsed calls as new work.  Match on (name, args)
+    # against already-executed calls in the message history to break the
+    # executor→tools→executor loop.
+    if response.tool_calls:
+        executed: set[tuple[str, str]] = set()
+        messages = state.get("messages", [])
+        # Build a map from tool_call_id → (name, args) for all AIMessage
+        # tool calls, then record those that have a ToolMessage response.
+        tc_id_to_key: dict[str, tuple[str, str]] = {}
+        for msg in messages:
+            if isinstance(msg, AIMessage) and msg.tool_calls:
+                for tc in msg.tool_calls:
+                    key = (tc["name"], repr(sorted(tc["args"].items())))
+                    tc_id_to_key[tc["id"]] = key
+            elif isinstance(msg, ToolMessage):
+                key = tc_id_to_key.get(msg.tool_call_id)
+                if key is not None:
+                    executed.add(key)
+
+        new_calls = [
+            tc for tc in response.tool_calls
+            if (tc["name"], repr(sorted(tc["args"].items()))) not in executed
+        ]
+
+        if len(new_calls) < len(response.tool_calls):
+            skipped = len(response.tool_calls) - len(new_calls)
+            logger.info(
+                "Dedup: skipped %d already-executed tool call(s)", skipped,
+            )
+            if not new_calls:
+                # All calls already executed — return text so tools_condition
+                # routes to reflector instead of looping back to tools.
+                return {
+                    "messages": [
+                        AIMessage(
+                            content=(
+                                "All tool calls for this step have already "
+                                "been executed. Proceeding to review results."
+                            ),
+                        )
+                    ]
+                }
+            # Keep only genuinely new calls
+            response = AIMessage(
+                content=response.content,
+                tool_calls=new_calls,
+            )
 
     return {"messages": [response]}
 

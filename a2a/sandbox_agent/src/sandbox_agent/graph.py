@@ -491,6 +491,15 @@ def build_graph(
         model=config.llm_model,
         base_url=config.llm_api_base,
         api_key=config.llm_api_key,
+        model_kwargs={
+            "extra_body": {
+                "metadata": {
+                    "session_id": context_id,
+                    "agent_name": os.environ.get("AGENT_NAME", "sandbox-legion"),
+                    "namespace": namespace,
+                }
+            }
+        },
     )
 
     # -- Tools --------------------------------------------------------------
