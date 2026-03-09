@@ -25,8 +25,11 @@ Legacy types (kept for backward compatibility):
 from __future__ import annotations
 
 import json
+import logging
 from abc import ABC, abstractmethod
 from typing import Any
+
+logger = logging.getLogger(__name__)
 
 
 def _safe_tc(tc: Any) -> dict[str, Any]:
@@ -90,38 +93,52 @@ class LangGraphSerializer(FrameworkEventSerializer):
     an expandable AgentLoopCard.
     """
 
-    def __init__(self, loop_id: str | None = None) -> None:
+    def __init__(self, loop_id: str | None = None, context_id: str | None = None) -> None:
         import uuid
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
+        self._context_id = context_id or "unknown"
 
     def serialize(self, key: str, value: dict) -> str:
         # Reasoning-loop nodes may emit state fields instead of messages
         if key == "planner":
-            return self._serialize_planner(value)
+            result = self._serialize_planner(value)
         elif key == "reflector":
-            return self._serialize_reflector(value)
+            result = self._serialize_reflector(value)
         elif key == "reporter":
-            return self._serialize_reporter(value)
-
-        msgs = value.get("messages", [])
-        if not msgs:
-            return json.dumps({"type": "llm_response", "content": f"[{key}]"})
-
-        msg = msgs[-1]
-
-        if key == "executor":
-            return self._serialize_executor(msg, value)
-        elif key == "tools":
-            return self._serialize_tool_result(msg)
+            result = self._serialize_reporter(value)
         else:
-            # Unknown node — treat as informational
-            content = getattr(msg, "content", "")
-            if isinstance(content, list):
-                text = self._extract_text_blocks(content)
+            msgs = value.get("messages", [])
+            if not msgs:
+                result = json.dumps({"type": "llm_response", "content": f"[{key}]"})
             else:
-                text = str(content)[:2000] if content else f"[{key}]"
-            return json.dumps({"type": "llm_response", "content": text})
+                msg = msgs[-1]
+
+                if key == "executor":
+                    result = self._serialize_executor(msg, value)
+                elif key == "tools":
+                    result = self._serialize_tool_result(msg)
+                else:
+                    # Unknown node — treat as informational
+                    content = getattr(msg, "content", "")
+                    if isinstance(content, list):
+                        text = self._extract_text_blocks(content)
+                    else:
+                        text = str(content)[:2000] if content else f"[{key}]"
+                    result = json.dumps({"type": "llm_response", "content": text})
+
+        # Log each serialized event for pipeline observability (Stage 1)
+        for line in result.split("\n"):
+            line = line.strip()
+            if line:
+                try:
+                    event_type = json.loads(line).get("type", "?")
+                except json.JSONDecodeError:
+                    event_type = "parse_error"
+                logger.info("SERIALIZE session=%s loop=%s type=%s step=%s",
+                    self._context_id, self._loop_id, event_type, self._step_index)
+
+        return result
 
     def _serialize_assistant(self, msg: Any) -> str:
         """Serialize an assistant (LLM) node output.

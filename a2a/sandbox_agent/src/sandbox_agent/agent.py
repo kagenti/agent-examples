@@ -420,7 +420,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
             try:
                 output = None
-                serializer = LangGraphSerializer()
+                serializer = LangGraphSerializer(context_id=context_id)
                 llm_request_ids: list[str] = []
 
                 # Retry loop for transient LLM API errors (429 rate limits)
@@ -437,18 +437,30 @@ class SandboxAgentExecutor(AgentExecutor):
                             )
                             # Send intermediate status updates as structured JSON
                             try:
+                                serialized_lines = "\n".join(
+                                    serializer.serialize(key, value)
+                                    for key, value in event.items()
+                                ) + "\n"
                                 await task_updater.update_status(
                                     TaskState.working,
                                     new_agent_text_message(
-                                        "\n".join(
-                                            serializer.serialize(key, value)
-                                            for key, value in event.items()
-                                        )
-                                        + "\n",
+                                        serialized_lines,
                                         task_updater.context_id,
                                         task_updater.task_id,
                                     ),
                                 )
+                                # Log A2A emit for pipeline observability (Stage 2)
+                                line_types = []
+                                for line in serialized_lines.split("\n"):
+                                    line = line.strip()
+                                    if line:
+                                        try:
+                                            lt = json.loads(line).get("type", "?")
+                                            line_types.append(lt)
+                                        except json.JSONDecodeError:
+                                            line_types.append("parse_error")
+                                logger.info("A2A_EMIT session=%s lines=%d types=%s",
+                                    context_id, len(line_types), line_types)
                             except asyncio.CancelledError:
                                 logger.warning(
                                     "SSE update cancelled at event %d (context=%s) — client may have disconnected, continuing processing",
