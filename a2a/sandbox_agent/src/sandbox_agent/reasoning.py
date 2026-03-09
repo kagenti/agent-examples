@@ -139,6 +139,36 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
     if calls:
         return calls
 
+    # Slash-command format: /shell\ncommand or /file_read\npath
+    slash_re = re.compile(r'^/(' + '|'.join(_KNOWN_TOOLS) + r')\s*\n(.+)', re.DOTALL)
+    slash_match = slash_re.match(text)
+    if slash_match:
+        tool_name = slash_match.group(1)
+        arg_text = slash_match.group(2).strip()
+        arg_key = {"shell": "command", "file_read": "path", "file_write": "path",
+                    "grep": "pattern", "glob": "pattern", "web_fetch": "url"}.get(tool_name, "command")
+        calls.append({
+            "name": tool_name,
+            "args": {arg_key: arg_text.split("\n")[0].strip()},
+            "id": f"text-{uuid.uuid4().hex[:12]}",
+            "type": "tool_call",
+        })
+        return calls
+
+    # Bash code block: ```bash\ncommand\n``` or ```sh\ncommand\n```
+    bash_re = re.compile(r'```(?:bash|sh)\s*\n(.+?)\n```', re.DOTALL)
+    bash_match = bash_re.search(text)
+    if bash_match:
+        cmd = bash_match.group(1).strip()
+        if cmd and len(cmd) < 2000:
+            calls.append({
+                "name": "shell",
+                "args": {"command": cmd},
+                "id": f"text-{uuid.uuid4().hex[:12]}",
+                "type": "tool_call",
+            })
+            return calls
+
     # Fall back to legacy format: tool_name(args)
     for match in _TOOL_CALL_RE.finditer(text):
         tool_name = match.group(1)
@@ -271,18 +301,15 @@ Available tools:
 - **delegate**: Spawn a child agent session for a delegated task.
 
 CRITICAL RULES:
-- You MUST use the tool calling API to execute actions. DO NOT write text
-  descriptions of what you would do — actually CALL the tool.
-- For shell commands: call shell(command="..."). For file operations: call
-  file_read or file_write. NEVER paste command output you haven't executed.
-- NEVER fabricate or imagine tool output. If you need data, CALL a tool.
-- If a tool call fails or returns an error, report the ACTUAL error message.
-- If a command is not found or permission denied, say so — do not pretend
-  it succeeded.
-- Call ONE tool at a time. Wait for the result before calling the next tool.
-  Do NOT generate multiple tool calls in a single response.
+- You MUST use the function/tool calling API to execute actions.
+- DO NOT write tool names as text (like "/shell", "shell(...)", or code blocks).
+  These are NOT how you call tools. Use the function calling API instead.
+- DO NOT write or invent command output. Call the tool, wait for the result.
+- If a tool call fails, report the ACTUAL error — do not invent output.
+- Call ONE tool at a time. Wait for the result before the next call.
+- Slash commands like /rca:ci are for humans, not for you. You use tools.
 
-Execute ONLY this step. You MUST make at least one tool call per step.
+Execute ONLY this step. You MUST make at least one tool call.
 When done, summarize what you accomplished with the actual tool output.
 """
 
