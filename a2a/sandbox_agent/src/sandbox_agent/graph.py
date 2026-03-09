@@ -522,7 +522,10 @@ def build_graph(
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
-    llm_with_tools = llm.bind_tools(tools)
+    # tool_choice="any" forces the LLM to always call at least one tool.
+    # Without this, some models (e.g. Llama 4 Scout) write text descriptions
+    # of tool invocations instead of using the function calling API.
+    llm_with_tools = llm.bind_tools(tools, tool_choice="any")
 
     # -- Budget -------------------------------------------------------------
     budget = AgentBudget()
