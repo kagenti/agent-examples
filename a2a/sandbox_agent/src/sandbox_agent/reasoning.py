@@ -678,7 +678,7 @@ async def reflector_node(
         recent_decisions[-3:],
     )
 
-    if decision == "done" or current_step + 1 >= len(plan):
+    if decision == "done" or (decision != "replan" and current_step + 1 >= len(plan)):
         return {
             "messages": [response],
             "step_results": step_results,
