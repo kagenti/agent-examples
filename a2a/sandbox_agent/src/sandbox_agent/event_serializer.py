@@ -183,6 +183,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "step": self._step_index,
             "total_steps": len(plan) if plan else 0,
             "description": text[:200] if text else "",
+            "reasoning": text[:2000] if text else "",
             "model": model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
@@ -202,6 +203,19 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 ],
             }))
             return "\n".join(parts)
+
+        # Emit tool_call event for text-parsed tools (no structured tool_calls)
+        parsed_tools = _v.get("parsed_tools", [])
+        if parsed_tools:
+            parts.append(json.dumps({
+                "type": "tool_call",
+                "loop_id": self._loop_id,
+                "step": self._step_index,
+                "tools": [
+                    {"name": t["name"], "args": t.get("args", {})}
+                    for t in parsed_tools
+                ],
+            }))
 
         return "\n".join(parts)
 

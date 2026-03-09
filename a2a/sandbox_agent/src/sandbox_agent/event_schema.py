@@ -69,6 +69,7 @@ class ExecutorStep(LoopEvent):
     step: int = 0
     total_steps: int = 0
     description: str = ""
+    reasoning: str = ""  # Full LLM response text (up to 2000 chars)
 
 
 @dataclass

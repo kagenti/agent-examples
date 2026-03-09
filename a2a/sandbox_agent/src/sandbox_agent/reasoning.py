@@ -463,6 +463,9 @@ async def executor_node(
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
     # parse them so tools_condition routes to the ToolNode.
+    # Capture the pre-patch content for event serialization.
+    pre_patch_content = response.content
+    had_structured_tools = bool(response.tool_calls)
     response = maybe_patch_tool_calls(response)
 
     # -- Dedup: skip tool calls that already have ToolMessage responses ------
@@ -515,11 +518,23 @@ async def executor_node(
                 tool_calls=new_calls,
             )
 
-    return {
+    # Build parsed_tools list for event serialization when tools came
+    # from text parsing (not structured tool_calls).
+    parsed_tools: list[dict[str, Any]] = []
+    if not had_structured_tools and response.tool_calls:
+        parsed_tools = [
+            {"name": tc["name"], "args": tc.get("args", {})}
+            for tc in response.tool_calls
+        ]
+
+    result: dict[str, Any] = {
         "messages": [response],
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
     }
+    if parsed_tools:
+        result["parsed_tools"] = parsed_tools
+    return result
 
 
 async def reflector_node(
