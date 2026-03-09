@@ -35,6 +35,7 @@ from starlette.routing import Route
 
 from langgraph.checkpoint.memory import MemorySaver
 
+from sandbox_agent.budget import AgentBudget
 from sandbox_agent.configuration import Configuration
 from sandbox_agent.event_serializer import LangGraphSerializer
 from sandbox_agent.graph import _load_skill, build_graph
@@ -413,7 +414,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
             graph_config = {
                 "configurable": {"thread_id": context_id or "stateless"},
-                "recursion_limit": 50,
+                "recursion_limit": AgentBudget().recursion_limit,
             }
             logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 

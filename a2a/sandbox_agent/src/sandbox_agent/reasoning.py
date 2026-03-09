@@ -272,12 +272,15 @@ Available tools:
 
 CRITICAL RULES:
 - You MUST use the function/tool calling API to execute actions.
-- DO NOT write tool names as text (like "/shell", "shell(...)", or code blocks).
-  These are NOT how you call tools. Use the function calling API instead.
+  This means generating a proper function call, NOT writing text like
+  "shell(command='ls')" or "[tool_name]{...}" or code blocks.
+- DO NOT describe what tools you would call. Actually CALL them.
 - DO NOT write or invent command output. Call the tool, wait for the result.
 - If a tool call fails, report the ACTUAL error — do not invent output.
 - Call ONE tool at a time. Wait for the result before the next call.
 - Slash commands like /rca:ci are for humans, not for you. You use tools.
+- If you cannot call a tool for any reason, respond with exactly:
+  CANNOT_CALL_TOOL: <reason>
 
 Execute ONLY this step. You MUST make at least one tool call.
 When done, summarize what you accomplished with the actual tool output.
@@ -505,6 +508,19 @@ async def executor_node(
     had_structured_tools = bool(response.tool_calls)
     response = maybe_patch_tool_calls(response)
 
+    # -- Detect unparsed text tool call attempts (stall signal) ----------------
+    # If the model wrote text that looks like a tool call but wasn't parsed,
+    # log a warning. The reflector will catch the zero-tool-call pattern.
+    if not response.tool_calls and pre_patch_content:
+        text_hint = str(pre_patch_content).lower()
+        if any(kw in text_hint for kw in ("shell(", "file_read(", "file_write(",
+                                            "```bash", "```shell", "i would run",
+                                            "i will execute", "let me run")):
+            logger.warning(
+                "Executor produced text resembling a tool call but no actual "
+                "tool_calls were generated — likely a stalled iteration"
+            )
+
     # -- Dedup: skip tool calls that already have ToolMessage responses ------
     # The text-based parser generates fresh UUIDs each invocation, so
     # LangGraph treats re-parsed calls as new work.  Match on (name, args)
@@ -630,11 +646,40 @@ async def reflector_node(
             last_content = str(content)
 
     # Stall detection — force done if agent is stuck
-    no_progress_count = sum(1 for d in recent_decisions[-3:] if d in ("replan", "continue"))
-    if no_progress_count >= 3 and tool_calls_this_iter == 0:
+    # 1. Two consecutive iterations with zero tool calls → stuck
+    no_tool_recent = 0
+    for d in reversed(recent_decisions[-3:]):
+        if d in ("replan", "continue"):
+            no_tool_recent += 1
+        else:
+            break
+    if no_tool_recent >= 2 and tool_calls_this_iter == 0:
         logger.warning(
-            "Stall detected: %d consecutive replans with 0 tool calls — forcing done",
-            no_progress_count,
+            "Stall detected: %d consecutive iterations with 0 tool calls — forcing done",
+            no_tool_recent + 1,  # +1 for the current iteration
+        )
+        return {
+            "step_results": step_results,
+            "current_step": current_step + 1,
+            "done": True,
+        }
+
+    # 2. Three consecutive "replan" decisions → planning loop, no progress
+    replan_tail = [d for d in recent_decisions[-3:] if d == "replan"]
+    if len(replan_tail) == 3 and len(recent_decisions) >= 3:
+        logger.warning(
+            "Stall detected: 3 consecutive replan decisions — forcing done",
+        )
+        return {
+            "step_results": step_results,
+            "current_step": current_step + 1,
+            "done": True,
+        }
+
+    # 3. Identical executor output across 2 consecutive iterations → stuck
+    if step_results and last_content[:500] == step_results[-1]:
+        logger.warning(
+            "Stall detected: executor output identical to previous iteration — forcing done",
         )
         return {
             "step_results": step_results,

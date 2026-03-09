@@ -3,11 +3,31 @@
 Prevents runaway execution by capping iterations, tool calls per step,
 and total token usage.  When the budget is exceeded the reflector forces
 the loop to terminate gracefully.
+
+Budget parameters are configurable via environment variables:
+
+- ``SANDBOX_MAX_ITERATIONS`` (default: 100)
+- ``SANDBOX_MAX_TOOL_CALLS_PER_STEP`` (default: 10)
+- ``SANDBOX_MAX_TOKENS`` (default: 1000000)
+- ``SANDBOX_HITL_INTERVAL`` (default: 50)
+- ``SANDBOX_RECURSION_LIMIT`` (default: 50)
 """
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read an integer from the environment, falling back to *default*."""
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
 
 
 @dataclass
@@ -24,12 +44,15 @@ class AgentBudget:
         Approximate upper bound on total tokens consumed (prompt + completion).
     hitl_interval:
         After this many iterations, the reflector suggests a human check-in.
+    recursion_limit:
+        LangGraph recursion limit passed to graph invocation config.
     """
 
-    max_iterations: int = 100
-    max_tool_calls_per_step: int = 10
-    max_tokens: int = 1_000_000
-    hitl_interval: int = 50
+    max_iterations: int = _env_int("SANDBOX_MAX_ITERATIONS", 100)
+    max_tool_calls_per_step: int = _env_int("SANDBOX_MAX_TOOL_CALLS_PER_STEP", 10)
+    max_tokens: int = _env_int("SANDBOX_MAX_TOKENS", 1_000_000)
+    hitl_interval: int = _env_int("SANDBOX_HITL_INTERVAL", 50)
+    recursion_limit: int = _env_int("SANDBOX_RECURSION_LIMIT", 50)
 
     # Mutable runtime counters — not constructor args.
     iterations_used: int = field(default=0, init=False)
