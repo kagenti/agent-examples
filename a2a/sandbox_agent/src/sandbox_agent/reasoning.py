@@ -244,7 +244,7 @@ Example for an RCA/CI investigation ("analyze CI failures for owner/repo PR #758
 1. Clone and set up remotes: `git clone https://github.com/owner/repo.git repos/repo && cd repos/repo && git remote set-url origin https://github.com/owner/repo.git`.
 2. From the repo dir, list failures: `cd repos/repo && gh run list --status failure --limit 5`.
 3. Download failure logs: `cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`.
-4. Extract errors: `grep -C 5 'FAILED\|ERROR\|AssertionError' output/ci-run.log`.
+4. Extract errors: `grep -C 5 'FAILED\\|ERROR\\|AssertionError' output/ci-run.log`.
 5. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
 IMPORTANT for gh CLI:
@@ -273,7 +273,7 @@ Available tools:
 CRITICAL RULES:
 - You MUST use the function/tool calling API to execute actions.
   This means generating a proper function call, NOT writing text like
-  "shell(command='ls')" or "[tool_name]{...}" or code blocks.
+  "shell(command='ls')" or "[tool_name]{{...}}" or code blocks.
 - DO NOT describe what tools you would call. Actually CALL them.
 - DO NOT write or invent command output. Call the tool, wait for the result.
 - If a tool call fails, report the ACTUAL error — do not invent output.
