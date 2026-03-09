@@ -26,6 +26,15 @@ from sandbox_agent.budget import AgentBudget
 logger = logging.getLogger(__name__)
 
 
+def _safe_format(template: str, **kwargs: Any) -> str:
+    """Format a prompt template, falling back to raw template on errors."""
+    try:
+        return template.format(**kwargs)
+    except (KeyError, IndexError) as exc:
+        logger.warning("Prompt format error (%s), using raw template", exc)
+        return template
+
+
 # ---------------------------------------------------------------------------
 # Text-based tool call parser
 # ---------------------------------------------------------------------------
@@ -481,7 +490,8 @@ async def executor_node(
         }
 
     step_text = plan[current_step]
-    system_content = _EXECUTOR_SYSTEM.format(
+    system_content = _safe_format(
+        _EXECUTOR_SYSTEM,
         current_step=current_step + 1,
         step_text=step_text,
     )
@@ -695,7 +705,8 @@ async def reflector_node(
 
     # Ask LLM to reflect
     recent_str = ", ".join(recent_decisions[-5:]) if recent_decisions else "none"
-    system_content = _REFLECTOR_SYSTEM.format(
+    system_content = _safe_format(
+        _REFLECTOR_SYSTEM,
         plan_text=plan_text,
         current_step=current_step + 1,
         step_text=step_text,
@@ -790,7 +801,8 @@ async def reporter_node(
         f"Step {i+1}: {r}" for i, r in enumerate(step_results)
     )
 
-    system_content = _REPORTER_SYSTEM.format(
+    system_content = _safe_format(
+        _REPORTER_SYSTEM,
         plan_text=plan_text,
         results_text=results_text,
     )
