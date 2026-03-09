@@ -292,10 +292,22 @@ Plan:
 Current step ({current_step}): {step_text}
 Step result: {step_result}
 
+Iteration: {iteration} of {max_iterations}
+Tool calls this iteration: {tool_calls_this_iter}
+Recent decisions: {recent_decisions}
+
+STALL DETECTION:
+- If the executor made 0 tool calls, the step likely FAILED. After 2
+  consecutive iterations with 0 tool calls, output "done" to stop looping.
+- If recent decisions show 3+ consecutive "replan", output "done" — the
+  agent is stuck and cannot make progress.
+- If the step result is just text describing what WOULD be done (not actual
+  tool output), that means the executor did not call any tools. Treat as failure.
+
 Decide ONE of the following (output ONLY the decision word):
-- **continue** — Step succeeded; move to the next step.
+- **continue** — Step succeeded with real tool output; move to the next step.
 - **replan** — Step failed or revealed new information; re-plan remaining work.
-- **done** — All steps are complete or the task is fully answered.
+- **done** — All steps are complete, task is answered, OR agent is stuck.
 - **hitl** — Human input is needed to proceed.
 
 Output the single word: continue, replan, done, or hitl.
@@ -558,6 +570,7 @@ async def reflector_node(
     step_results = list(state.get("step_results", []))
     iteration = state.get("iteration", 0)
     done = state.get("done", False)
+    recent_decisions = list(state.get("recent_decisions", []))
 
     # If executor signaled done (ran out of steps), go straight to done
     if done:
@@ -575,11 +588,13 @@ async def reflector_node(
             "done": True,
         }
 
-    # Extract the result from the last message
+    # Count tool calls in this iteration (from executor's last message)
     messages = state["messages"]
+    tool_calls_this_iter = 0
     last_content = ""
     if messages:
         last_msg = messages[-1]
+        tool_calls_this_iter = len(getattr(last_msg, "tool_calls", []) or [])
         content = getattr(last_msg, "content", "")
         if isinstance(content, list):
             last_content = " ".join(
@@ -589,6 +604,19 @@ async def reflector_node(
         else:
             last_content = str(content)
 
+    # Stall detection — force done if agent is stuck
+    no_progress_count = sum(1 for d in recent_decisions[-3:] if d in ("replan", "continue"))
+    if no_progress_count >= 3 and tool_calls_this_iter == 0:
+        logger.warning(
+            "Stall detected: %d consecutive replans with 0 tool calls — forcing done",
+            no_progress_count,
+        )
+        return {
+            "step_results": step_results,
+            "current_step": current_step + 1,
+            "done": True,
+        }
+
     step_results.append(last_content[:500])
 
     step_text = plan[current_step] if current_step < len(plan) else "N/A"
@@ -596,11 +624,16 @@ async def reflector_node(
     results_text = last_content[:1000]
 
     # Ask LLM to reflect
+    recent_str = ", ".join(recent_decisions[-5:]) if recent_decisions else "none"
     system_content = _REFLECTOR_SYSTEM.format(
         plan_text=plan_text,
         current_step=current_step + 1,
         step_text=step_text,
         step_result=results_text,
+        iteration=iteration,
+        max_iterations=budget.max_iterations,
+        tool_calls_this_iter=tool_calls_this_iter,
+        recent_decisions=recent_str,
     )
     reflect_messages = [SystemMessage(content=system_content)]
     response = await llm.ainvoke(reflect_messages)
@@ -611,22 +644,30 @@ async def reflector_node(
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
 
     decision = _parse_decision(response.content)
-    logger.info("Reflector decision: %s (step %d/%d)", decision, current_step + 1, len(plan))
+    recent_decisions.append(decision)
+    # Keep only last 10 decisions to avoid unbounded growth
+    recent_decisions = recent_decisions[-10:]
+    logger.info(
+        "Reflector decision: %s (step %d/%d, iter %d, tools=%d, recent=%s)",
+        decision, current_step + 1, len(plan), iteration, tool_calls_this_iter,
+        recent_decisions[-3:],
+    )
 
     if decision == "done" or current_step + 1 >= len(plan):
         return {
             "messages": [response],
             "step_results": step_results,
+            "recent_decisions": recent_decisions,
             "current_step": current_step + 1,
             "done": True,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
         }
     elif decision == "replan":
-        # Feed back to planner — keep step_results, reset current_step
         return {
             "messages": [response],
             "step_results": step_results,
+            "recent_decisions": recent_decisions,
             "done": False,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
@@ -636,6 +677,7 @@ async def reflector_node(
         return {
             "messages": [response],
             "step_results": step_results,
+            "recent_decisions": recent_decisions,
             "current_step": current_step + 1,
             "done": False,
             "prompt_tokens": prompt_tokens,
