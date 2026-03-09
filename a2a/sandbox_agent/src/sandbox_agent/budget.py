@@ -26,10 +26,10 @@ class AgentBudget:
         After this many iterations, the reflector suggests a human check-in.
     """
 
-    max_iterations: int = 40
+    max_iterations: int = 100
     max_tool_calls_per_step: int = 10
     max_tokens: int = 1_000_000
-    hitl_interval: int = 10
+    hitl_interval: int = 50
 
     # Mutable runtime counters — not constructor args.
     iterations_used: int = field(default=0, init=False)
