@@ -426,20 +426,39 @@ class SandboxAgentExecutor(AgentExecutor):
                 max_retries = 3
                 for attempt in range(max_retries + 1):
                     try:
+                        event_count = 0
                         async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
-                            # Send intermediate status updates as structured JSON
-                            await task_updater.update_status(
-                                TaskState.working,
-                                new_agent_text_message(
-                                    "\n".join(
-                                        serializer.serialize(key, value)
-                                        for key, value in event.items()
-                                    )
-                                    + "\n",
-                                    task_updater.context_id,
-                                    task_updater.task_id,
-                                ),
+                            event_count += 1
+                            node_names = list(event.keys())
+                            logger.info(
+                                "Graph event %d: nodes=%s (context=%s)",
+                                event_count, node_names, context_id,
                             )
+                            # Send intermediate status updates as structured JSON
+                            try:
+                                await task_updater.update_status(
+                                    TaskState.working,
+                                    new_agent_text_message(
+                                        "\n".join(
+                                            serializer.serialize(key, value)
+                                            for key, value in event.items()
+                                        )
+                                        + "\n",
+                                        task_updater.context_id,
+                                        task_updater.task_id,
+                                    ),
+                                )
+                            except asyncio.CancelledError:
+                                logger.warning(
+                                    "SSE update cancelled at event %d (context=%s) — client may have disconnected",
+                                    event_count, context_id,
+                                )
+                                raise
+                            except Exception as update_err:
+                                logger.error(
+                                    "Failed to send SSE update for event %d: %s",
+                                    event_count, update_err,
+                                )
                             output = event
 
                             # Capture LLM request_ids from AIMessage responses
@@ -546,6 +565,19 @@ class SandboxAgentExecutor(AgentExecutor):
                 await task_updater.add_artifact(parts)
                 await task_updater.complete()
 
+            except asyncio.CancelledError:
+                logger.error(
+                    "Graph execution CANCELLED for context=%s — client disconnected or timeout",
+                    context_id,
+                    exc_info=True,
+                )
+                try:
+                    parts = [TextPart(text="Agent execution was cancelled (client disconnected or timeout).")]
+                    await task_updater.add_artifact(parts)
+                    await task_updater.failed()
+                except Exception:
+                    pass  # best-effort cleanup
+                return
             except Exception as e:
                 logger.error("Graph execution error: %s", e, exc_info=True)
                 error_msg = json.dumps({"type": "error", "message": str(e)})
