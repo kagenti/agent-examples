@@ -423,108 +423,145 @@ class SandboxAgentExecutor(AgentExecutor):
                 serializer = LangGraphSerializer(context_id=context_id)
                 llm_request_ids: list[str] = []
 
-                # Retry loop for transient LLM API errors (429 rate limits)
-                max_retries = 3
-                for attempt in range(max_retries + 1):
-                    try:
-                        event_count = 0
-                        async for event in graph.astream(input_state, config=graph_config, stream_mode="updates"):
-                            event_count += 1
-                            node_names = list(event.keys())
-                            logger.info(
-                                "Graph event %d: nodes=%s (context=%s)",
-                                event_count, node_names, context_id,
-                            )
-                            # Send intermediate status updates as structured JSON
-                            try:
-                                serialized_lines = "\n".join(
-                                    serializer.serialize(key, value)
-                                    for key, value in event.items()
-                                ) + "\n"
-                                await task_updater.update_status(
-                                    TaskState.working,
-                                    new_agent_text_message(
-                                        serialized_lines,
-                                        task_updater.context_id,
-                                        task_updater.task_id,
-                                    ),
+                # Run graph in a shielded background task so client disconnect
+                # does NOT cancel the LangGraph execution.  Events are fed
+                # through an asyncio.Queue; the consumer (below) forwards them
+                # to the A2A event stream.  If the consumer is cancelled the
+                # graph keeps running and saves results to the task store.
+                _SENTINEL = object()
+                event_queue: asyncio.Queue = asyncio.Queue()
+
+                async def _run_graph() -> None:
+                    """Execute graph and push events to queue (shielded)."""
+                    max_retries = 3
+                    for attempt in range(max_retries + 1):
+                        try:
+                            async for ev in graph.astream(
+                                input_state, config=graph_config, stream_mode="updates"
+                            ):
+                                await event_queue.put(ev)
+                            break  # success
+                        except Exception as retry_err:
+                            err_str = str(retry_err).lower()
+                            is_quota = "insufficient_quota" in err_str
+                            is_rate = "rate_limit" in err_str or "429" in err_str
+                            if is_quota:
+                                logger.error("LLM quota exceeded: %s", retry_err)
+                                await event_queue.put(
+                                    {"_error": "LLM API quota exceeded. Check billing."}
                                 )
-                                # Log A2A emit for pipeline observability (Stage 2)
-                                line_types = []
-                                for line in serialized_lines.split("\n"):
-                                    line = line.strip()
-                                    if line:
-                                        try:
-                                            lt = json.loads(line).get("type", "?")
-                                            line_types.append(lt)
-                                        except json.JSONDecodeError:
-                                            line_types.append("parse_error")
-                                logger.info("A2A_EMIT session=%s lines=%d types=%s",
-                                    context_id, len(line_types), line_types)
-                            except asyncio.CancelledError:
+                                break
+                            elif is_rate and attempt < max_retries:
+                                delay = 2 ** (attempt + 1)
                                 logger.warning(
-                                    "SSE update cancelled at event %d (context=%s) — client may have disconnected, continuing processing",
-                                    event_count, context_id,
+                                    "Rate limited (%d/%d), retrying in %ds: %s",
+                                    attempt + 1, max_retries, delay, retry_err,
                                 )
-                                # Don't re-raise — keep processing so results are saved to task store
-                            except Exception as update_err:
-                                logger.error(
-                                    "Failed to send SSE update for event %d: %s",
-                                    event_count, update_err,
-                                )
-                            output = event
+                                await asyncio.sleep(delay)
+                                continue
+                            else:
+                                await event_queue.put({"_error": str(retry_err)})
+                                break
+                    await event_queue.put(_SENTINEL)
 
-                            # Capture LLM request_ids from AIMessage responses
-                            for _node_val in event.values():
-                                if isinstance(_node_val, dict):
-                                    for _msg in _node_val.get("messages", []):
-                                        _rid = getattr(_msg, "response_metadata", {}).get("id")
-                                        if _rid and _rid not in llm_request_ids:
-                                            llm_request_ids.append(_rid)
-                        break  # Success — exit retry loop
-                    except Exception as retry_err:
-                        err_str = str(retry_err).lower()
-                        is_quota = "insufficient_quota" in err_str
-                        is_rate_limit = "rate_limit" in err_str or "429" in err_str
+                # Shield the graph task from cancellation
+                graph_task = asyncio.ensure_future(asyncio.shield(_run_graph()))
 
-                        if is_quota:
-                            # Permanent — no retry
-                            logger.error("LLM quota exceeded: %s", retry_err)
-                            error_msg = (
-                                "LLM API quota exceeded. Please check your API billing "
-                                "at https://platform.openai.com/account/billing/overview"
-                            )
-                            await task_updater.update_status(
-                                TaskState.working,
-                                new_agent_text_message(
-                                    json.dumps({"type": "error", "message": error_msg}),
-                                    task_updater.context_id,
-                                    task_updater.task_id,
-                                ),
-                            )
-                            parts = [TextPart(text=error_msg)]
-                            await task_updater.add_artifact(parts)
-                            await task_updater.failed()
-                            return
-                        elif is_rate_limit and attempt < max_retries:
-                            # Transient — retry with backoff
-                            delay = 2 ** (attempt + 1)
-                            logger.warning(
-                                "Rate limited (attempt %d/%d), retrying in %ds: %s",
-                                attempt + 1, max_retries, delay, retry_err,
-                            )
-                            await task_updater.update_status(
-                                TaskState.working,
-                                new_agent_text_message(
-                                    json.dumps({"type": "error", "message": f"Rate limited, retrying in {delay}s..."}),
-                                    task_updater.context_id,
-                                    task_updater.task_id,
-                                ),
-                            )
-                            await asyncio.sleep(delay)
-                            continue
-                        else:
-                            raise  # Not a retryable error
+                # Consume events from the queue — this side CAN be cancelled
+                event_count = 0
+                client_disconnected = False
+                while True:
+                    try:
+                        event = await event_queue.get()
+                    except asyncio.CancelledError:
+                        logger.warning(
+                            "Event consumer cancelled (context=%s) — graph continues in background",
+                            context_id,
+                        )
+                        client_disconnected = True
+                        break
+                    if event is _SENTINEL:
+                        break
+                    if "_error" in event:
+                        error_msg = event["_error"]
+                        await task_updater.update_status(
+                            TaskState.working,
+                            new_agent_text_message(
+                                json.dumps({"type": "error", "message": error_msg}),
+                                task_updater.context_id,
+                                task_updater.task_id,
+                            ),
+                        )
+                        parts = [TextPart(text=f"Error: {error_msg}")]
+                        await task_updater.add_artifact(parts)
+                        await task_updater.failed()
+                        return
+
+                    event_count += 1
+                    node_names = list(event.keys())
+                    logger.info(
+                        "Graph event %d: nodes=%s (context=%s)",
+                        event_count, node_names, context_id,
+                    )
+                    # Send intermediate status updates as structured JSON
+                    try:
+                        serialized_lines = "\n".join(
+                            serializer.serialize(key, value)
+                            for key, value in event.items()
+                        ) + "\n"
+                        await task_updater.update_status(
+                            TaskState.working,
+                            new_agent_text_message(
+                                serialized_lines,
+                                task_updater.context_id,
+                                task_updater.task_id,
+                            ),
+                        )
+                        line_types = []
+                        for line in serialized_lines.split("\n"):
+                            line = line.strip()
+                            if line:
+                                try:
+                                    lt = json.loads(line).get("type", "?")
+                                    line_types.append(lt)
+                                except json.JSONDecodeError:
+                                    line_types.append("parse_error")
+                        logger.info("A2A_EMIT session=%s lines=%d types=%s",
+                            context_id, len(line_types), line_types)
+                    except asyncio.CancelledError:
+                        logger.warning(
+                            "SSE update cancelled at event %d (context=%s) — client disconnected",
+                            event_count, context_id,
+                        )
+                        client_disconnected = True
+                        break
+                    except Exception as update_err:
+                        logger.error(
+                            "Failed to send SSE update for event %d: %s",
+                            event_count, update_err,
+                        )
+                    output = event
+
+                    # Capture LLM request_ids from AIMessage responses
+                    for _node_val in event.values():
+                        if isinstance(_node_val, dict):
+                            for _msg in _node_val.get("messages", []):
+                                _rid = getattr(_msg, "response_metadata", {}).get("id")
+                                if _rid and _rid not in llm_request_ids:
+                                    llm_request_ids.append(_rid)
+
+                # If client disconnected, wait for graph to finish in background
+                if client_disconnected:
+                    logger.info("Waiting for graph to complete in background (context=%s)", context_id)
+                    try:
+                        await asyncio.wait_for(graph_task, timeout=300)
+                    except (asyncio.TimeoutError, asyncio.CancelledError):
+                        logger.warning("Graph background task timed out or cancelled (context=%s)", context_id)
+                    # Drain remaining events for output extraction
+                    while not event_queue.empty():
+                        ev = event_queue.get_nowait()
+                        if ev is not _SENTINEL and "_error" not in ev:
+                            output = ev
 
                 # Extract final answer from the last event.
                 # The reporter node sets {"final_answer": "..."}.
