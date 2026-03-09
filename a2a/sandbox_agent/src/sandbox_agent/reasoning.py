@@ -649,8 +649,14 @@ async def reporter_node(
                 )
             else:
                 text = str(content)
-            return {"final_answer": text}
-        return {"final_answer": "No response generated."}
+            # Guard: if text is a bare reflector decision keyword
+            # (e.g. budget exhaustion forces done with "continue"),
+            # fall through to LLM-based summary from step_results.
+            if not _BARE_DECISION_RE.match(text.strip()):
+                return {"final_answer": text}
+            # Fall through to LLM-based summary below
+        elif not step_results:
+            return {"final_answer": "No response generated."}
 
     plan_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(plan))
     results_text = "\n".join(
@@ -758,3 +764,6 @@ def _parse_decision(content: str | list) -> str:
             return decision
 
     return "continue"
+
+
+_BARE_DECISION_RE = re.compile(r'^(continue|replan|done|hitl)\s*$', re.IGNORECASE)
