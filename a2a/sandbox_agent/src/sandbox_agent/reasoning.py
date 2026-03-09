@@ -139,36 +139,6 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
     if calls:
         return calls
 
-    # Slash-command format: /shell\ncommand or /file_read\npath
-    slash_re = re.compile(r'^/(' + '|'.join(_KNOWN_TOOLS) + r')\s*\n(.+)', re.DOTALL)
-    slash_match = slash_re.match(text)
-    if slash_match:
-        tool_name = slash_match.group(1)
-        arg_text = slash_match.group(2).strip()
-        arg_key = {"shell": "command", "file_read": "path", "file_write": "path",
-                    "grep": "pattern", "glob": "pattern", "web_fetch": "url"}.get(tool_name, "command")
-        calls.append({
-            "name": tool_name,
-            "args": {arg_key: arg_text.split("\n")[0].strip()},
-            "id": f"text-{uuid.uuid4().hex[:12]}",
-            "type": "tool_call",
-        })
-        return calls
-
-    # Bash code block: ```bash\ncommand\n``` or ```sh\ncommand\n```
-    bash_re = re.compile(r'```(?:bash|sh)\s*\n(.+?)\n```', re.DOTALL)
-    bash_match = bash_re.search(text)
-    if bash_match:
-        cmd = bash_match.group(1).strip()
-        if cmd and len(cmd) < 2000:
-            calls.append({
-                "name": "shell",
-                "args": {"command": cmd},
-                "id": f"text-{uuid.uuid4().hex[:12]}",
-                "type": "tool_call",
-            })
-            return calls
-
     # Fall back to legacy format: tool_name(args)
     for match in _TOOL_CALL_RE.finditer(text):
         tool_name = match.group(1)
