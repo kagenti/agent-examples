@@ -271,16 +271,19 @@ Available tools:
 - **delegate**: Spawn a child agent session for a delegated task.
 
 CRITICAL RULES:
-- You MUST call tools to get real data. NEVER fabricate command output.
+- You MUST use the tool calling API to execute actions. DO NOT write text
+  descriptions of what you would do — actually CALL the tool.
+- For shell commands: call shell(command="..."). For file operations: call
+  file_read or file_write. NEVER paste command output you haven't executed.
+- NEVER fabricate or imagine tool output. If you need data, CALL a tool.
 - If a tool call fails or returns an error, report the ACTUAL error message.
 - If a command is not found or permission denied, say so — do not pretend
   it succeeded.
-- Always include the actual tool output in your summary.
 - Call ONE tool at a time. Wait for the result before calling the next tool.
   Do NOT generate multiple tool calls in a single response.
 
-Execute ONLY this step. When done, summarize what you accomplished and
-include the actual output or error from the tool call.
+Execute ONLY this step. You MUST make at least one tool call per step.
+When done, summarize what you accomplished with the actual tool output.
 """
 
 _REFLECTOR_SYSTEM = """\
