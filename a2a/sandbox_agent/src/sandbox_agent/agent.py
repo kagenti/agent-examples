@@ -450,10 +450,10 @@ class SandboxAgentExecutor(AgentExecutor):
                                 )
                             except asyncio.CancelledError:
                                 logger.warning(
-                                    "SSE update cancelled at event %d (context=%s) — client may have disconnected",
+                                    "SSE update cancelled at event %d (context=%s) — client may have disconnected, continuing processing",
                                     event_count, context_id,
                                 )
-                                raise
+                                # Don't re-raise — keep processing so results are saved to task store
                             except Exception as update_err:
                                 logger.error(
                                     "Failed to send SSE update for event %d: %s",
@@ -566,18 +566,13 @@ class SandboxAgentExecutor(AgentExecutor):
                 await task_updater.complete()
 
             except asyncio.CancelledError:
-                logger.error(
-                    "Graph execution CANCELLED for context=%s — client disconnected or timeout",
+                logger.warning(
+                    "Graph execution context cancelled for context=%s — client likely disconnected. "
+                    "Agent will continue processing and save results to task store.",
                     context_id,
-                    exc_info=True,
                 )
-                try:
-                    parts = [TextPart(text="Agent execution was cancelled (client disconnected or timeout).")]
-                    await task_updater.add_artifact(parts)
-                    await task_updater.failed()
-                except Exception:
-                    pass  # best-effort cleanup
-                return
+                # Don't return — fall through to save results to task store.
+                # The A2A SDK persists the task, so the client can poll later.
             except Exception as e:
                 logger.error("Graph execution error: %s", e, exc_info=True)
                 error_msg = json.dumps({"type": "error", "message": str(e)})
