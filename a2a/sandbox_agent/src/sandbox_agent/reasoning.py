@@ -395,14 +395,39 @@ async def planner_node(
             "done": False,
         }
 
-    # Build context for the planner
+    # Build context for the planner — include tool call history on replan
     context_parts = []
-    if iteration > 0 and step_results:
-        context_parts.append("Previous step results:")
-        for i, result in enumerate(step_results, 1):
-            context_parts.append(f"  Step {i}: {result}")
-        context_parts.append("")
-        context_parts.append("Adjust the plan for remaining work.")
+    if iteration > 0:
+        # Extract tool call history from messages
+        tool_history = []
+        for msg in messages:
+            # AIMessage with tool_calls
+            tool_calls = getattr(msg, "tool_calls", None)
+            if tool_calls:
+                for tc in tool_calls:
+                    name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                    args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                    args_str = str(args)[:100]
+                    tool_history.append(f"  CALLED: {name}({args_str})")
+            # ToolMessage with result
+            if hasattr(msg, "name") and hasattr(msg, "content") and getattr(msg, "type", "") == "tool":
+                output = str(getattr(msg, "content", ""))[:200]
+                tool_history.append(f"  RESULT ({msg.name}): {output}")
+
+        if tool_history:
+            context_parts.append("Tool calls already executed (DO NOT repeat these):")
+            context_parts.extend(tool_history[-20:])  # Last 20 entries
+            context_parts.append("")
+
+        if step_results:
+            context_parts.append("Previous step results:")
+            for i, result in enumerate(step_results, 1):
+                context_parts.append(f"  Step {i}: {result}")
+            context_parts.append("")
+
+        context_parts.append(
+            "Adjust the plan for remaining work. Do NOT repeat steps that already succeeded."
+        )
 
     system_content = _PLANNER_SYSTEM
     if context_parts:
