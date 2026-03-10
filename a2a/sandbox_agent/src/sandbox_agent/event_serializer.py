@@ -201,6 +201,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         model = _v.get("model", "")
         prompt_tokens = _v.get("prompt_tokens", 0)
         completion_tokens = _v.get("completion_tokens", 0)
+        prompt_data = self._extract_prompt_data(_v)
 
         # Emit executor_step event so UI shows which step is executing
         step_payload = {
@@ -213,6 +214,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "model": model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            **prompt_data,
         }
         parts.append(json.dumps(step_payload))
         # Legacy alias for backward compatibility
@@ -288,6 +290,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         model = value.get("model", "")
         prompt_tokens = value.get("prompt_tokens", 0)
         completion_tokens = value.get("completion_tokens", 0)
+        prompt_data = self._extract_prompt_data(value)
 
         payload = {
             "type": "planner_output",
@@ -298,6 +301,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "model": model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            **prompt_data,
         }
 
         # Emit new type + legacy type for backward compatibility
@@ -330,6 +334,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         prompt_tokens = value.get("prompt_tokens", 0)
         completion_tokens = value.get("completion_tokens", 0)
         iteration = value.get("iteration", 0)
+        prompt_data = self._extract_prompt_data(value)
 
         payload = {
             "type": "reflector_decision",
@@ -342,6 +347,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "model": model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            **prompt_data,
         }
 
         # Emit new type + legacy type for backward compatibility
@@ -374,6 +380,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         model = value.get("model", "")
         prompt_tokens = value.get("prompt_tokens", 0)
         completion_tokens = value.get("completion_tokens", 0)
+        prompt_data = self._extract_prompt_data(value)
 
         return json.dumps({
             "type": "reporter_output",
@@ -382,6 +389,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "model": model,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
+            **prompt_data,
         })
 
     @staticmethod
