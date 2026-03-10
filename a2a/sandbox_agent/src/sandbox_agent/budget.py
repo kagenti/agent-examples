@@ -11,6 +11,8 @@ Budget parameters are configurable via environment variables:
 - ``SANDBOX_MAX_TOKENS`` (default: 1000000)
 - ``SANDBOX_HITL_INTERVAL`` (default: 50)
 - ``SANDBOX_RECURSION_LIMIT`` (default: 50)
+- ``SANDBOX_LLM_TIMEOUT`` (default: 300) — seconds per LLM call
+- ``SANDBOX_LLM_MAX_RETRIES`` (default: 3) — retry on transient LLM errors
 """
 
 from __future__ import annotations
@@ -53,6 +55,8 @@ class AgentBudget:
     max_tokens: int = _env_int("SANDBOX_MAX_TOKENS", 1_000_000)
     hitl_interval: int = _env_int("SANDBOX_HITL_INTERVAL", 50)
     recursion_limit: int = _env_int("SANDBOX_RECURSION_LIMIT", 50)
+    llm_timeout: int = _env_int("SANDBOX_LLM_TIMEOUT", 300)
+    llm_max_retries: int = _env_int("SANDBOX_LLM_MAX_RETRIES", 3)
 
     # Mutable runtime counters — not constructor args.
     iterations_used: int = field(default=0, init=False)

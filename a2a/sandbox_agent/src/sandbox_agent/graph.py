@@ -550,12 +550,15 @@ def build_graph(
     from sandbox_agent.configuration import Configuration
 
     config = Configuration()  # type: ignore[call-arg]
+    # -- Budget -------------------------------------------------------------
+    budget = AgentBudget()
+
     llm = ChatOpenAI(
         model=config.llm_model,
         base_url=config.llm_api_base,
         api_key=config.llm_api_key,
-        timeout=120,          # 2 min per LLM call (LiteLLM proxy)
-        max_retries=3,        # Retry on transient LLM errors
+        timeout=budget.llm_timeout,
+        max_retries=budget.llm_max_retries,
         model_kwargs={
             "extra_body": {
                 "metadata": {
@@ -585,9 +588,6 @@ def build_graph(
     # Without this, some models (e.g. Llama 4 Scout) write text descriptions
     # of tool invocations instead of using the function calling API.
     llm_with_tools = llm.bind_tools(tools, tool_choice="any")
-
-    # -- Budget -------------------------------------------------------------
-    budget = AgentBudget()
 
     # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
