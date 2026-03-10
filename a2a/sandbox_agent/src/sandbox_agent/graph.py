@@ -9,12 +9,40 @@ The graph binds six tools to an LLM and uses a structured reasoning loop:
 - **explore**: spawns a read-only sub-agent for codebase research
 - **delegate**: spawns a child agent session for delegated tasks
 
-Graph architecture (plan-execute-reflect):
+Graph architecture (router → plan → execute → reflect):
 
-    planner → executor ⇄ tools → reflector → [done?] → reporter → END
-                                               [no]  → planner (loop)
+```mermaid
+graph TD
+    START((User Message)) --> router
+    router -->|new/replan| planner
+    router -->|resume| executor
 
-Simple (single-step) requests skip the reflection LLM call for fast responses.
+    planner --> executor
+    executor -->|tool_calls| tools
+    tools --> executor
+    executor -->|no tool_calls| reflector
+
+    reflector -->|execute| executor
+    reflector -->|replan| planner
+    reflector -->|done| reporter
+    reporter --> END((Final Answer))
+
+    style router fill:#4CAF50,color:white
+    style planner fill:#2196F3,color:white
+    style executor fill:#FF9800,color:white
+    style tools fill:#607D8B,color:white
+    style reflector fill:#9C27B0,color:white
+    style reporter fill:#F44336,color:white
+```
+
+Key flows:
+- **execute**: Step succeeded → executor runs the next plan step
+- **replan**: Step failed → planner creates a new plan → executor runs it
+- **done**: Task complete → reporter summarizes results
+
+The executor uses micro-reflection: one tool call per LLM invocation,
+see result, decide next action. Budget limits (iterations, tokens,
+wall clock) are the only hard stops.
 """
 
 from __future__ import annotations
