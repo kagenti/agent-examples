@@ -307,16 +307,16 @@ Example ("create a Python project with tests"):
 4. Run tests: shell(`python -m pytest tests/`).
 
 Example ("analyze CI failures for owner/repo PR #758"):
-1. Set up GitHub auth: shell(`export GH_TOKEN=$GITHUB_PAT_TOKEN`).
-2. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
-3. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
-4. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`).
-5. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
-6. Write findings to report.md with sections: Root Cause, Impact, Fix.
+1. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
+2. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
+3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`).
+4. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
+5. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
 IMPORTANT for gh CLI:
+- GH_TOKEN and GITHUB_TOKEN are ALREADY set in the environment. Do NOT
+  run `export GH_TOKEN=...` — it's unnecessary and will break auth.
 - Always clone the target repo FIRST into repos/, then `cd repos/<name>` before gh commands.
-- Set origin to the UPSTREAM repo URL (not a fork) so gh resolves the correct repo.
 - gh auto-detects the repo from git remote "origin" — it MUST run inside the cloned repo.
 - Use `cd repos/<name> && gh <command>` in a single shell call (each call starts from workspace root).
 - Save output to output/ for later analysis.
@@ -390,12 +390,15 @@ into a clear, concise final answer for the user.
 Plan:
 {plan_text}
 
+Step status:
+{step_status_text}
+
 Step results:
 {results_text}
 
 RULES:
 - Only report facts from actual tool output — NEVER fabricate data.
-- If a step failed or returned an error, include the error in the report.
+- If a step FAILED, explain WHY it failed (include the error message).
 - If no real data was obtained, say "Unable to retrieve data" rather than
   making up results.
 - Include relevant command output, file paths, or next steps.
@@ -1044,9 +1047,23 @@ async def reporter_node(
         f"Step {i+1}: {r}" for i, r in enumerate(step_results)
     )
 
+    # Build step status summary from plan_steps
+    step_status_lines = []
+    for ps in plan_steps:
+        idx = ps.get("index", 0)
+        status = ps.get("status", "unknown").upper()
+        desc = ps.get("description", "")[:80]
+        result = ps.get("result_summary", "")[:100]
+        line = f"{idx+1}. [{status}] {desc}"
+        if result and status == "failed":
+            line += f" — ERROR: {result}"
+        step_status_lines.append(line)
+    step_status_text = "\n".join(step_status_lines) if step_status_lines else "No step status available."
+
     system_content = _safe_format(
         _REPORTER_SYSTEM,
         plan_text=plan_text,
+        step_status_text=step_status_text,
         results_text=results_text,
     )
     # Filter dedup sentinel messages from conversation history passed to the
