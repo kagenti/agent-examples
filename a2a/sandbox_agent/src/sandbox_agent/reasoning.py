@@ -783,15 +783,32 @@ async def executor_node(
     # -- Dedup: skip tool calls that already have ToolMessage responses ------
     # The text-based parser generates fresh UUIDs each invocation, so
     # LangGraph treats re-parsed calls as new work.  Match on (name, args)
-    # against already-executed calls in the message history to break the
-    # executor→tools→executor loop.
+    # against already-executed calls in the CURRENT plan iteration to break
+    # the executor→tools→executor loop.
+    #
+    # IMPORTANT: Only dedup within the current iteration (since the last
+    # planner/replanner message). After a replan, the executor must be free
+    # to retry the same tools — the new plan may need the same commands
+    # to succeed with different context.
     if response.tool_calls:
         executed: set[tuple[str, str]] = set()
         messages = state.get("messages", [])
-        # Build a map from tool_call_id → (name, args) for all AIMessage
-        # tool calls, then record those that have a ToolMessage response.
+
+        # Find the boundary: start scanning from the last planner output.
+        # Messages before that are from previous plan iterations and should
+        # NOT cause dedup — the new plan may legitimately retry them.
+        scan_start = 0
+        for i in range(len(messages) - 1, -1, -1):
+            msg = messages[i]
+            content = getattr(msg, "content", "")
+            if isinstance(content, str) and "Plan:" in content and "Step " in content:
+                scan_start = i
+                break
+
+        # Build a map from tool_call_id → (name, args) for AIMessage
+        # tool calls SINCE the last planner output.
         tc_id_to_key: dict[str, tuple[str, str]] = {}
-        for msg in messages:
+        for msg in messages[scan_start:]:
             if isinstance(msg, AIMessage) and msg.tool_calls:
                 for tc in msg.tool_calls:
                     key = (tc["name"], repr(sorted(tc["args"].items())))
