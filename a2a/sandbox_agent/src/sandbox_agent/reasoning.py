@@ -667,9 +667,16 @@ async def reflector_node(
             last_content = str(content)
 
     # Stall detection — force done if agent is stuck
-    # 1. Two consecutive iterations with zero tool calls → stuck
+    # Only count decisions AFTER the most recent replan (replans reset context)
+    decisions_since_replan = []
+    for d in reversed(recent_decisions):
+        if d == "replan":
+            break  # Stop at the last replan boundary
+        decisions_since_replan.insert(0, d)
+
+    # 1. Two consecutive no-tool iterations since last replan → stuck
     no_tool_recent = 0
-    for d in reversed(recent_decisions[-3:]):
+    for d in reversed(decisions_since_replan[-3:]):
         if d in ("replan", "continue"):
             no_tool_recent += 1
         else:
@@ -687,7 +694,7 @@ async def reflector_node(
 
     # 2. Three consecutive "replan" decisions → planning loop, no progress
     replan_tail = [d for d in recent_decisions[-3:] if d == "replan"]
-    if len(replan_tail) == 3 and len(recent_decisions) >= 3:
+    if len(replan_tail) >= 3 and len(recent_decisions) >= 3:
         logger.warning(
             "Stall detected: 3 consecutive replan decisions — forcing done",
         )
