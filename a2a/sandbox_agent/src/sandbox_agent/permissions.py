@@ -248,6 +248,10 @@ class PermissionChecker:
         if not operation:
             return False
 
+        # Wildcard prefix (*) matches any command
+        if prefix == "*":
+            return fnmatch.fnmatch(operation, glob_part)
+
         # The operation must start with the prefix (case-sensitive).
         if not operation.startswith(prefix):
             return False
