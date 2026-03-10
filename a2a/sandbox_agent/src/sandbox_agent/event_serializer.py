@@ -101,7 +101,16 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
     def serialize(self, key: str, value: dict) -> str:
         # Reasoning-loop nodes may emit state fields instead of messages
-        if key == "planner":
+        if key == "router":
+            # Router is an internal node — emit minimal event for logging
+            route = value.get("_route", "new")
+            result = json.dumps({
+                "type": "router",
+                "loop_id": self._loop_id,
+                "route": route,
+                "plan_status": value.get("plan_status", ""),
+            })
+        elif key == "planner":
             result = self._serialize_planner(value)
         elif key == "reflector":
             result = self._serialize_reflector(value)
@@ -250,7 +259,9 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
     def _serialize_planner(self, value: dict) -> str:
         """Serialize a planner node output — emits planner_output + legacy plan."""
-        plan = value.get("plan", [])
+        # Prefer plan_steps descriptions, fall back to flat plan
+        plan_steps = value.get("plan_steps", [])
+        plan = [s.get("description", "") for s in plan_steps] if plan_steps else value.get("plan", [])
         iteration = value.get("iteration", 1)
 
         # Also include any LLM text from the planner's message

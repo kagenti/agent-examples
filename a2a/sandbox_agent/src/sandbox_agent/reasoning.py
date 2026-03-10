@@ -1,14 +1,29 @@
 """Plan-execute-reflect reasoning loop node functions.
 
-Four LangGraph node functions implement structured multi-step reasoning:
+Five LangGraph node functions implement structured multi-step reasoning:
 
-1. **planner** — Decomposes the user request into numbered steps.
+1. **router** — Entry point. Checks plan_status to decide: resume existing
+   plan, replan with new context, or start fresh.
+2. **planner** — Decomposes the user request into numbered steps.
    Detects simple (single-step) requests and marks them done-after-execute.
-2. **executor** — Runs the current plan step with bound tools (existing
+3. **executor** — Runs the current plan step with bound tools (existing
    react pattern).
-3. **reflector** — Reviews execution output, decides: ``continue`` (next
-   step), ``replan``, ``done``, or ``hitl``.
-4. **reporter** — Formats accumulated step results into a final answer.
+4. **reflector** — Reviews execution output, decides: ``continue`` (next
+   step), ``replan``, ``done``, or ``hitl``.  Updates per-step status.
+5. **reporter** — Formats accumulated step results into a final answer.
+   Sets terminal ``plan_status`` based on how the loop ended.
+
+Plan state persists across A2A turns via the LangGraph checkpointer.
+When the user or looper sends "continue", the router resumes execution
+at the current step. Any other message triggers a replan that sees the
+previous plan's progress.
+
+# TODO: Research explicit PlanStore approach as alternative to checkpointer.
+# Pros of PlanStore: plan queryable outside graph (UI), full schema control,
+#   plan versioning independent of LangGraph internals.
+# Cons: more code, risk of plan/checkpointer state divergence, need custom
+#   persistence layer.  Current approach (A) uses checkpointer for atomic
+#   state which is simpler and less error-prone.
 """
 
 from __future__ import annotations
@@ -17,7 +32,7 @@ import json
 import logging
 import re
 import uuid
-from typing import Any
+from typing import Any, TypedDict
 
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
@@ -32,6 +47,49 @@ _DEDUP_SENTINEL = (
     "Step completed — all requested tool calls "
     "have been executed and results are available."
 )
+
+# Messages that trigger plan resumption rather than replanning.
+_CONTINUE_PHRASES = frozenset({
+    "continue", "continue on the plan", "go on", "proceed",
+    "keep going", "next", "carry on",
+})
+
+
+# ---------------------------------------------------------------------------
+# PlanStep — structured per-step tracking
+# ---------------------------------------------------------------------------
+
+
+class PlanStep(TypedDict, total=False):
+    """A single step in the plan with status tracking."""
+    index: int
+    description: str
+    status: str          # "pending" | "running" | "done" | "failed" | "skipped"
+    tool_calls: list[str]
+    result_summary: str
+    iteration_added: int
+
+
+def _make_plan_steps(
+    descriptions: list[str], iteration: int = 0
+) -> list[PlanStep]:
+    """Convert a list of step descriptions into PlanStep dicts."""
+    return [
+        PlanStep(
+            index=i,
+            description=desc,
+            status="pending",
+            tool_calls=[],
+            result_summary="",
+            iteration_added=iteration,
+        )
+        for i, desc in enumerate(descriptions)
+    ]
+
+
+def _plan_descriptions(plan_steps: list[PlanStep]) -> list[str]:
+    """Extract flat description list from plan_steps (for backward compat)."""
+    return [s.get("description", "") for s in plan_steps]
 
 
 def _safe_format(template: str, **kwargs: Any) -> str:
@@ -350,6 +408,76 @@ RULES:
 # ---------------------------------------------------------------------------
 
 
+async def router_node(state: dict[str, Any]) -> dict[str, Any]:
+    """Entry-point node: decide whether to resume, replan, or start fresh.
+
+    Returns state updates that downstream conditional edges read via
+    :func:`route_entry`.
+    """
+    plan_status = state.get("plan_status", "")
+    plan_steps = state.get("plan_steps", [])
+    messages = state.get("messages", [])
+
+    # Extract the latest user message text
+    last_text = ""
+    if messages:
+        content = getattr(messages[-1], "content", "")
+        if isinstance(content, list):
+            last_text = " ".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+        else:
+            last_text = str(content)
+    last_text_lower = last_text.strip().lower()
+
+    has_active_plan = plan_status == "awaiting_continue" and len(plan_steps) > 0
+    is_continue = last_text_lower in _CONTINUE_PHRASES
+
+    if has_active_plan and is_continue:
+        # Resume: mark next pending step as running
+        current_step = state.get("current_step", 0)
+        if current_step < len(plan_steps):
+            plan_steps = list(plan_steps)  # copy for mutation
+            plan_steps[current_step] = {**plan_steps[current_step], "status": "running"}
+        logger.info(
+            "Router: RESUME plan at step %d/%d (plan_status=%s)",
+            current_step + 1, len(plan_steps), plan_status,
+        )
+        return {
+            "_route": "resume",
+            "plan_steps": plan_steps,
+            "plan_status": "executing",
+        }
+    elif has_active_plan:
+        # Replan: new instruction arrives while plan exists
+        logger.info(
+            "Router: REPLAN — new message while plan active (plan_status=%s, steps=%d)",
+            plan_status, len(plan_steps),
+        )
+        return {
+            "_route": "replan",
+            "plan_status": "executing",
+            "original_request": last_text,
+        }
+    else:
+        # New: no active plan
+        logger.info("Router: NEW plan (plan_status=%s)", plan_status)
+        return {
+            "_route": "new",
+            "plan_status": "executing",
+            "original_request": last_text,
+        }
+
+
+def route_entry(state: dict[str, Any]) -> str:
+    """Conditional edge from router: resume → executor, else → planner."""
+    route = state.get("_route", "new")
+    if route == "resume":
+        return "resume"
+    return "plan"  # both "replan" and "new" go to planner
+
+
 def _is_trivial_text_request(messages: list) -> bool:
     """Detect requests that need no tools — just a text response.
 
@@ -397,20 +525,40 @@ async def planner_node(
     iteration = state.get("iteration", 0)
     step_results = state.get("step_results", [])
 
+    prev_plan_steps = state.get("plan_steps", [])
+
     # Fast-path: trivial text-only requests skip the planner LLM call entirely
-    if iteration == 0 and _is_trivial_text_request(messages):
+    if iteration == 0 and not prev_plan_steps and _is_trivial_text_request(messages):
         logger.info("Fast-path: trivial text request — single-step plan, no LLM call")
+        trivial_steps = _make_plan_steps(["Respond to the user."], iteration=0)
         return {
             "plan": ["Respond to the user."],
+            "plan_steps": trivial_steps,
+            "plan_version": 1,
             "current_step": 0,
             "iteration": 1,
             "done": False,
         }
 
-    # Build context for the planner — include original plan + tool history on replan
+    # Build context for the planner — include previous plan with per-step status
     context_parts = []
-    if iteration > 0:
-        # Show the original plan so the planner knows what was planned
+    if prev_plan_steps:
+        # Show the structured plan with per-step status
+        context_parts.append("Previous plan (with status):")
+        for ps in prev_plan_steps:
+            idx = ps.get("index", 0)
+            desc = ps.get("description", "")
+            status = ps.get("status", "pending").upper()
+            result = ps.get("result_summary", "")
+            line = f"  {idx+1}. [{status}] {desc}"
+            if result:
+                line += f" — {result[:150]}"
+            context_parts.append(line)
+        done_count = sum(1 for s in prev_plan_steps if s.get("status") == "done")
+        context_parts.append(f"Progress: {done_count}/{len(prev_plan_steps)} steps completed.")
+        context_parts.append("")
+    elif iteration > 0:
+        # Fallback: use flat plan list for backward compat
         original_plan = state.get("plan", [])
         current_step = state.get("current_step", 0)
         if original_plan:
@@ -421,10 +569,10 @@ async def planner_node(
             context_parts.append(f"Progress: {current_step}/{len(original_plan)} steps completed.")
             context_parts.append("")
 
+    if iteration > 0 or prev_plan_steps:
         # Extract tool call history from messages
         tool_history = []
         for msg in messages:
-            # AIMessage with tool_calls
             tool_calls = getattr(msg, "tool_calls", None)
             if tool_calls:
                 for tc in tool_calls:
@@ -432,14 +580,13 @@ async def planner_node(
                     args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
                     args_str = str(args)[:100]
                     tool_history.append(f"  CALLED: {name}({args_str})")
-            # ToolMessage with result
             if hasattr(msg, "name") and hasattr(msg, "content") and getattr(msg, "type", "") == "tool":
                 output = str(getattr(msg, "content", ""))[:200]
                 tool_history.append(f"  RESULT ({msg.name}): {output}")
 
         if tool_history:
             context_parts.append("Tool calls already executed (DO NOT repeat these):")
-            context_parts.extend(tool_history[-20:])  # Last 20 entries
+            context_parts.extend(tool_history[-20:])
             context_parts.append("")
 
         if step_results:
@@ -471,12 +618,17 @@ async def planner_node(
 
     # Parse numbered steps from the response
     plan = _parse_plan(response.content)
+    plan_version = state.get("plan_version", 0) + 1
+    new_plan_steps = _make_plan_steps(plan, iteration=iteration)
 
-    logger.info("Planner produced %d steps (iteration %d): %s", len(plan), iteration, plan)
+    logger.info("Planner produced %d steps (iteration %d, version %d): %s",
+                len(plan), iteration, plan_version, plan)
 
     return {
         "messages": [response],
         "plan": plan,
+        "plan_steps": new_plan_steps,
+        "plan_version": plan_version,
         "current_step": 0,
         "iteration": iteration + 1,
         "done": False,
@@ -637,17 +789,25 @@ async def reflector_node(
     if done:
         return {"done": True}
 
-    # Budget guard — force termination if iterations exceeded
-    if iteration >= budget.max_iterations:
-        logger.warning(
-            "Budget exceeded: %d/%d iterations used — forcing done",
-            iteration, budget.max_iterations,
-        )
+    def _force_done(reason: str) -> dict[str, Any]:
+        """Helper for early termination — marks current step failed, rest skipped."""
+        ps = list(state.get("plan_steps", []))
+        if current_step < len(ps):
+            ps[current_step] = {**ps[current_step], "status": "failed"}
+        for i in range(current_step + 1, len(ps)):
+            if ps[i].get("status") == "pending":
+                ps[i] = {**ps[i], "status": "skipped"}
+        logger.warning("%s — forcing done", reason)
         return {
             "step_results": step_results,
+            "plan_steps": ps,
             "current_step": current_step + 1,
             "done": True,
         }
+
+    # Budget guard — force termination if iterations exceeded
+    if iteration >= budget.max_iterations:
+        return _force_done(f"Budget exceeded: {iteration}/{budget.max_iterations} iterations used")
 
     # Count tool calls in this iteration (from executor's last message)
     messages = state["messages"]
@@ -670,7 +830,7 @@ async def reflector_node(
     decisions_since_replan = []
     for d in reversed(recent_decisions):
         if d == "replan":
-            break  # Stop at the last replan boundary
+            break
         decisions_since_replan.insert(0, d)
 
     # 1. Two consecutive no-tool iterations since last replan → stuck
@@ -681,38 +841,16 @@ async def reflector_node(
         else:
             break
     if no_tool_recent >= 2 and tool_calls_this_iter == 0:
-        logger.warning(
-            "Stall detected: %d consecutive iterations with 0 tool calls — forcing done",
-            no_tool_recent + 1,  # +1 for the current iteration
-        )
-        return {
-            "step_results": step_results,
-            "current_step": current_step + 1,
-            "done": True,
-        }
+        return _force_done(f"Stall: {no_tool_recent + 1} consecutive iterations with 0 tool calls")
 
     # 2. Three consecutive "replan" decisions → planning loop, no progress
     replan_tail = [d for d in recent_decisions[-3:] if d == "replan"]
     if len(replan_tail) >= 3 and len(recent_decisions) >= 3:
-        logger.warning(
-            "Stall detected: 3 consecutive replan decisions — forcing done",
-        )
-        return {
-            "step_results": step_results,
-            "current_step": current_step + 1,
-            "done": True,
-        }
+        return _force_done("Stall: 3 consecutive replan decisions")
 
     # 3. Identical executor output across 2 consecutive iterations → stuck
     if step_results and last_content[:500] == step_results[-1]:
-        logger.warning(
-            "Stall detected: executor output identical to previous iteration — forcing done",
-        )
-        return {
-            "step_results": step_results,
-            "current_step": current_step + 1,
-            "done": True,
-        }
+        return _force_done("Stall: executor output identical to previous iteration")
 
     step_results.append(last_content[:500])
 
@@ -743,61 +881,83 @@ async def reflector_node(
 
     decision = _parse_decision(response.content)
     recent_decisions.append(decision)
-    # Keep only last 10 decisions to avoid unbounded growth
     recent_decisions = recent_decisions[-10:]
+
+    # Update plan_steps with per-step status
+    plan_steps = list(state.get("plan_steps", []))
+    # Extract tool names used in this step from messages
+    step_tools: list[str] = []
+    for msg in messages:
+        for tc in getattr(msg, "tool_calls", []) or []:
+            name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+            if name not in step_tools:
+                step_tools.append(name)
+
+    if current_step < len(plan_steps):
+        ps = {**plan_steps[current_step]}
+        ps["tool_calls"] = step_tools
+        ps["result_summary"] = last_content[:200]
+        plan_steps[current_step] = ps
+
     logger.info(
         "Reflector decision: %s (step %d/%d, iter %d, tools=%d, recent=%s)",
         decision, current_step + 1, len(plan), iteration, tool_calls_this_iter,
         recent_decisions[-3:],
     )
 
+    base_result = {
+        "messages": [response],
+        "step_results": step_results,
+        "recent_decisions": recent_decisions,
+        "plan_steps": plan_steps,
+        "prompt_tokens": prompt_tokens,
+        "completion_tokens": completion_tokens,
+    }
+
     if decision == "done":
+        # Mark current step done, remaining as skipped
+        if current_step < len(plan_steps):
+            plan_steps[current_step] = {**plan_steps[current_step], "status": "done"}
+        for i in range(current_step + 1, len(plan_steps)):
+            if plan_steps[i].get("status") == "pending":
+                plan_steps[i] = {**plan_steps[i], "status": "skipped"}
         return {
-            "messages": [response],
-            "step_results": step_results,
-            "recent_decisions": recent_decisions,
+            **base_result,
+            "plan_steps": plan_steps,
             "current_step": current_step + 1,
             "done": True,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
         }
     elif decision == "replan":
-        # Replan: go back to planner with current context.
-        # Do NOT advance current_step — the planner will reassess.
+        # Mark current step failed
+        if current_step < len(plan_steps):
+            plan_steps[current_step] = {**plan_steps[current_step], "status": "failed"}
         return {
-            "messages": [response],
-            "step_results": step_results,
-            "recent_decisions": recent_decisions,
+            **base_result,
+            "plan_steps": plan_steps,
             "done": False,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
         }
     else:
-        # Continue: advance to next step if available, otherwise replan.
-        # The reflector is the authority — step count doesn't force done.
+        # Continue: mark current step done, advance
+        if current_step < len(plan_steps):
+            plan_steps[current_step] = {**plan_steps[current_step], "status": "done"}
         next_step = current_step + 1
+        if next_step < len(plan_steps):
+            plan_steps[next_step] = {**plan_steps[next_step], "status": "running"}
         if next_step >= len(plan):
-            # All planned steps executed — ask planner if more work needed
             logger.info(
                 "All %d planned steps completed — routing to planner for reassessment",
                 len(plan),
             )
             return {
-                "messages": [response],
-                "step_results": step_results,
-                "recent_decisions": recent_decisions,
-                "done": False,  # Planner will decide if truly done
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
+                **base_result,
+                "plan_steps": plan_steps,
+                "done": False,
             }
         return {
-            "messages": [response],
-            "step_results": step_results,
-            "recent_decisions": recent_decisions,
+            **base_result,
+            "plan_steps": plan_steps,
             "current_step": next_step,
             "done": False,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
         }
 
 
@@ -805,9 +965,31 @@ async def reporter_node(
     state: dict[str, Any],
     llm: Any,
 ) -> dict[str, Any]:
-    """Format accumulated step results into a final answer."""
+    """Format accumulated step results into a final answer.
+
+    Sets ``plan_status`` based on how the loop ended:
+    - All steps done → ``"completed"``
+    - Stall/budget forced done → ``"failed"`` (with ``awaiting_continue``
+      so user/looper can retry)
+    - Plan steps remain → ``"awaiting_continue"``
+    """
     plan = state.get("plan", [])
     step_results = state.get("step_results", [])
+    plan_steps = state.get("plan_steps", [])
+
+    # Determine terminal plan_status based on step outcomes
+    if plan_steps:
+        done_count = sum(1 for s in plan_steps if s.get("status") == "done")
+        failed_count = sum(1 for s in plan_steps if s.get("status") == "failed")
+        total = len(plan_steps)
+        if done_count == total:
+            terminal_status = "completed"
+        elif failed_count > 0 or done_count < total:
+            terminal_status = "awaiting_continue"
+        else:
+            terminal_status = "completed"
+    else:
+        terminal_status = "completed"
 
     # Filter out internal dedup sentinel from step_results so it never
     # reaches the reporter prompt or the final answer.
@@ -834,10 +1016,10 @@ async def reporter_node(
             # (e.g. budget exhaustion forces done with "continue"),
             # fall through to LLM-based summary from step_results.
             elif not _BARE_DECISION_RE.match(text.strip()):
-                return {"final_answer": text}
+                return {"final_answer": text, "plan_status": terminal_status}
             # Fall through to LLM-based summary below
         elif not step_results:
-            return {"final_answer": "No response generated."}
+            return {"final_answer": "No response generated.", "plan_status": terminal_status}
 
     plan_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(plan))
     results_text = "\n".join(
@@ -872,9 +1054,16 @@ async def reporter_node(
     else:
         text = str(content)
 
+    logger.info("Reporter: plan_status=%s (done=%d, failed=%d, total=%d)",
+                terminal_status,
+                sum(1 for s in plan_steps if s.get("status") == "done"),
+                sum(1 for s in plan_steps if s.get("status") == "failed"),
+                len(plan_steps))
+
     return {
         "messages": [response],
         "final_answer": text,
+        "plan_status": terminal_status,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
     }

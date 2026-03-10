@@ -34,11 +34,14 @@ from sandbox_agent.budget import AgentBudget
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.reasoning import (
+    PlanStep,
     executor_node,
     planner_node,
     reflector_node,
     reporter_node,
+    route_entry,
     route_reflector,
+    router_node,
 )
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
@@ -62,7 +65,17 @@ class SandboxState(MessagesState):
     final_answer:
         The agent's final answer (set when the graph completes).
     plan:
-        Numbered plan steps produced by the planner node.
+        Flat list of step descriptions (backward compat with serializer).
+    plan_steps:
+        Structured per-step tracking with status, tool calls, results.
+        This is the source of truth; ``plan`` is derived from it.
+    plan_status:
+        Lifecycle status of the plan across A2A turns:
+        ``"executing"`` | ``"completed"`` | ``"failed"`` | ``"awaiting_continue"``
+    plan_version:
+        Incremented on each replan.
+    original_request:
+        The user's first message that created this plan.
     current_step:
         Index of the plan step currently being executed (0-based).
     step_results:
@@ -73,14 +86,18 @@ class SandboxState(MessagesState):
         Flag set by reflector when the task is complete.
     skill_instructions:
         Optional skill content loaded from a ``.claude/skills/`` file.
-        When present, prepended to all system prompts so the agent
-        follows skill-specific instructions.
+    _route:
+        Internal routing signal from the router node (not persisted).
     """
 
     context_id: str
     workspace_path: str
     final_answer: str
     plan: list[str]
+    plan_steps: list[PlanStep]
+    plan_status: str
+    plan_version: int
+    original_request: str
     current_step: int
     step_results: list[str]
     iteration: int
@@ -88,6 +105,7 @@ class SandboxState(MessagesState):
     skill_instructions: str
     prompt_tokens: int
     completion_tokens: int
+    _route: str
 
 
 # ---------------------------------------------------------------------------
@@ -530,9 +548,12 @@ def build_graph(
     # -- Budget -------------------------------------------------------------
     budget = AgentBudget()
 
-    # -- Graph nodes (plan-execute-reflect) ---------------------------------
+    # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
     # in closures that capture the appropriate LLM instance.
+
+    async def _router(state: SandboxState) -> dict[str, Any]:
+        return await router_node(state)
 
     async def _planner(state: SandboxState) -> dict[str, Any]:
         return await planner_node(state, llm)
@@ -582,15 +603,26 @@ def build_graph(
             return {"messages": error_msgs}
 
     # -- Assemble graph -----------------------------------------------------
+    #
+    # Topology:
+    #   router → [resume] → executor ⇄ tools → reflector → [done] → reporter → END
+    #            [plan]   → planner → executor ...          [cont] → planner
+    #
     graph = StateGraph(SandboxState)
+    graph.add_node("router", _router)
     graph.add_node("planner", _planner)
     graph.add_node("executor", _executor)
     graph.add_node("tools", _safe_tools)
     graph.add_node("reflector", _reflector)
     graph.add_node("reporter", _reporter)
 
-    # Entry: planner decomposes the request into steps
-    graph.set_entry_point("planner")
+    # Entry: router decides resume vs plan
+    graph.set_entry_point("router")
+    graph.add_conditional_edges(
+        "router",
+        route_entry,
+        {"resume": "executor", "plan": "planner"},
+    )
     graph.add_edge("planner", "executor")
 
     # Executor → tools (if tool_calls) or → reflector (if no tool_calls)
