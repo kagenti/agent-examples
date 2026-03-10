@@ -574,14 +574,18 @@ async def executor_node(
                 "Dedup: skipped %d already-executed tool call(s)", skipped,
             )
             if not new_calls:
-                # All calls already executed — return text so tools_condition
-                # routes to reflector instead of looping back to tools.
+                # All calls already executed — signal reflector to advance
+                # or replan rather than looping back to tools.
+                logger.info(
+                    "All tool calls deduped for step %d — signaling step complete",
+                    state.get("current_step", 0),
+                )
                 return {
                     "messages": [
                         AIMessage(
                             content=(
-                                "All tool calls for this step have already "
-                                "been executed. Proceeding to review results."
+                                "Step completed — all requested tool calls "
+                                "have been executed and results are available."
                             ),
                         )
                     ]
@@ -752,7 +756,7 @@ async def reflector_node(
         recent_decisions[-3:],
     )
 
-    if decision == "done" or (decision != "replan" and current_step + 1 >= len(plan)):
+    if decision == "done":
         return {
             "messages": [response],
             "step_results": step_results,
@@ -763,6 +767,8 @@ async def reflector_node(
             "completion_tokens": completion_tokens,
         }
     elif decision == "replan":
+        # Replan: go back to planner with current context.
+        # Do NOT advance current_step — the planner will reassess.
         return {
             "messages": [response],
             "step_results": step_results,
@@ -772,12 +778,28 @@ async def reflector_node(
             "completion_tokens": completion_tokens,
         }
     else:
-        # continue — advance to next step
+        # Continue: advance to next step if available, otherwise replan.
+        # The reflector is the authority — step count doesn't force done.
+        next_step = current_step + 1
+        if next_step >= len(plan):
+            # All planned steps executed — ask planner if more work needed
+            logger.info(
+                "All %d planned steps completed — routing to planner for reassessment",
+                len(plan),
+            )
+            return {
+                "messages": [response],
+                "step_results": step_results,
+                "recent_decisions": recent_decisions,
+                "done": False,  # Planner will decide if truly done
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            }
         return {
             "messages": [response],
             "step_results": step_results,
             "recent_decisions": recent_decisions,
-            "current_step": current_step + 1,
+            "current_step": next_step,
             "done": False,
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
