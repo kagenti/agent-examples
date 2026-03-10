@@ -48,10 +48,7 @@ _DEDUP_SENTINEL = (
     "have been executed and results are available."
 )
 
-# Maximum number of replan cycles before the reflector forces "done".
-# Configurable via SANDBOX_MAX_REPLANS environment variable.
 import os as _os
-MAX_REPLAN_COUNT = int(_os.environ.get("SANDBOX_MAX_REPLANS", "3"))
 
 # Messages that trigger plan resumption rather than replanning.
 _CONTINUE_PHRASES = frozenset({
@@ -404,30 +401,27 @@ Current step ({current_step}): {step_text}
 Step result: {step_result}
 
 Iteration: {iteration} of {max_iterations}
-Replan count: {replan_count} of {max_replans} (HARD LIMIT — after {max_replans} replans you MUST output "done")
+Replan count so far: {replan_count} (higher counts mean more rework — weigh this when deciding)
 Tool calls this iteration: {tool_calls_this_iter}
 Recent decisions: {recent_decisions}
 {replan_history}
 
 STALL DETECTION:
-- If the executor made 0 tool calls, the step likely FAILED. After 2
-  consecutive iterations with 0 tool calls, output "done" to stop looping.
-- If recent decisions show 3+ consecutive "replan", output "done" — the
-  agent is stuck and cannot make progress.
+- If the executor made 0 tool calls, the step likely FAILED.
 - If the step result is just text describing what WOULD be done (not actual
   tool output), that means the executor did not call any tools. Treat as failure.
-- If replan count has reached {max_replans}, you MUST output "done" — do NOT
-  output "replan" again. Summarize whatever partial results exist.
 
 REPLAN RULES:
 - Do NOT replan with the same approach that already failed. If prior replans
   failed for the same reason, choose "done" instead.
 - Each replan should try a fundamentally different strategy, not repeat the same steps.
+- A high replan count suggests diminishing returns — consider "done" with
+  partial results if you have already tried multiple distinct approaches.
 
 Decide ONE of the following (output ONLY the decision word):
 - **continue** — Step succeeded with real tool output; move to the next step.
 - **replan** — Step failed or revealed new information; re-plan remaining work.
-  (Only if replan count < {max_replans} AND you have a NEW approach to try.)
+  (Only if you have a genuinely NEW approach to try.)
 - **done** — All steps are complete, task is answered, OR agent is stuck.
 - **hitl** — Human input is needed to proceed.
 
@@ -940,12 +934,6 @@ async def reflector_node(
     if iteration >= budget.max_iterations:
         return _force_done(f"Budget exceeded: {iteration}/{budget.max_iterations} iterations used")
 
-    # Replan limit guard — force termination if too many replans
-    if replan_count >= MAX_REPLAN_COUNT:
-        return _force_done(
-            f"Replan limit reached: {replan_count}/{MAX_REPLAN_COUNT} replans exhausted"
-        )
-
     # Count tool calls in this iteration (from executor's last message)
     messages = state["messages"]
     tool_calls_this_iter = 0
@@ -980,11 +968,7 @@ async def reflector_node(
     if no_tool_recent >= 2 and tool_calls_this_iter == 0:
         return _force_done(f"Stall: {no_tool_recent + 1} consecutive iterations with 0 tool calls")
 
-    # 2. Three consecutive "replan" decisions → planning loop, no progress
-    if len(recent_decisions) >= 3 and all(d == "replan" for d in recent_decisions[-3:]):
-        return _force_done("Stall: 3 consecutive replan decisions")
-
-    # 3. Identical executor output across 2 consecutive iterations → stuck
+    # 2. Identical executor output across 2 consecutive iterations → stuck
     if step_results and last_content[:500] == step_results[-1]:
         return _force_done("Stall: executor output identical to previous iteration")
 
@@ -1043,7 +1027,6 @@ async def reflector_node(
         iteration=iteration,
         max_iterations=budget.max_iterations,
         replan_count=replan_count,
-        max_replans=MAX_REPLAN_COUNT,
         tool_calls_this_iter=tool_calls_this_iter,
         recent_decisions=recent_str,
         replan_history=replan_history_text,
@@ -1077,9 +1060,9 @@ async def reflector_node(
         plan_steps[current_step] = ps
 
     logger.info(
-        "Reflector decision: %s (step %d/%d, iter %d, replans=%d/%d, tools=%d, recent=%s)",
+        "Reflector decision: %s (step %d/%d, iter %d, replans=%d, tools=%d, recent=%s)",
         decision, current_step + 1, len(plan), iteration,
-        replan_count, MAX_REPLAN_COUNT, tool_calls_this_iter,
+        replan_count, tool_calls_this_iter,
         recent_decisions[-3:],
     )
 
@@ -1113,23 +1096,7 @@ async def reflector_node(
         # Mark current step failed
         if current_step < len(plan_steps):
             plan_steps[current_step] = {**plan_steps[current_step], "status": "failed"}
-        # If this replan would exceed the limit, force done instead
-        if new_replan_count >= MAX_REPLAN_COUNT:
-            logger.warning(
-                "Replan limit reached (%d/%d) — forcing done instead of replan",
-                new_replan_count, MAX_REPLAN_COUNT,
-            )
-            for i in range(current_step + 1, len(plan_steps)):
-                if plan_steps[i].get("status") == "pending":
-                    plan_steps[i] = {**plan_steps[i], "status": "skipped"}
-            return {
-                **base_result,
-                "plan_steps": plan_steps,
-                "current_step": current_step + 1,
-                "done": True,
-                "replan_count": new_replan_count,
-            }
-        logger.info("Replan %d/%d — routing back to planner", new_replan_count, MAX_REPLAN_COUNT)
+        logger.info("Replan %d — routing back to planner", new_replan_count)
         return {
             **base_result,
             "plan_steps": plan_steps,
