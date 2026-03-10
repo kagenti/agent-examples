@@ -130,6 +130,9 @@ class WorkspaceManager:
         cleaned: list[str] = []
 
         for entry in root.iterdir():
+            # Skip filesystem metadata dirs (ext4 lost+found, etc.)
+            if entry.name in ("lost+found",):
+                continue
             context_file = entry / ".context.json"
             if not entry.is_dir() or not context_file.exists():
                 continue
