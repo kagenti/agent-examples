@@ -554,6 +554,8 @@ def build_graph(
         model=config.llm_model,
         base_url=config.llm_api_base,
         api_key=config.llm_api_key,
+        timeout=120,          # 2 min per LLM call (LiteLLM proxy)
+        max_retries=3,        # Retry on transient LLM errors
         model_kwargs={
             "extra_body": {
                 "metadata": {
