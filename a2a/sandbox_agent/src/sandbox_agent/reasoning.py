@@ -844,22 +844,33 @@ async def executor_node(
             for tc in response.tool_calls
         ]
 
-    # If no tool calls after patching, the executor failed to act.
-    # Increment counter; after 2 consecutive no-tool runs, signal failure
-    # so the reflector can skip this step instead of looping.
+    # If no tool calls after patching, the executor is either:
+    # (a) Legitimately done with the step (summarizing results) — NORMAL
+    # (b) Stalled and unable to call tools — only if it never called ANY tool
+    #
+    # With micro-reflection, the executor may produce text after a failed
+    # tool call to summarize/report — that's valid step completion, not a stall.
     if not response.tool_calls:
-        no_tool_count += 1
-        logger.warning(
-            "Executor produced no tool calls for step %d (attempt %d/2)",
-            current_step, no_tool_count,
-        )
-        if no_tool_count >= 2:
-            logger.warning("Executor failed to call tools after 2 attempts — marking step failed")
-            return {
-                "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
-                "done": True if current_step + 1 >= len(plan) else False,
-                "_no_tool_count": 0,
-            }
+        if tool_call_count > 0:
+            # Executor already called tools this step — text response means
+            # it's done summarizing. This is normal completion, not a stall.
+            logger.info(
+                "Executor produced text response after %d tool calls for step %d — step complete",
+                tool_call_count, current_step,
+            )
+        else:
+            no_tool_count += 1
+            logger.warning(
+                "Executor produced no tool calls for step %d (attempt %d/2)",
+                current_step, no_tool_count,
+            )
+            if no_tool_count >= 2:
+                logger.warning("Executor failed to call tools after 2 attempts — marking step failed")
+                return {
+                    "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
+                    "done": True if current_step + 1 >= len(plan) else False,
+                    "_no_tool_count": 0,
+                }
     else:
         no_tool_count = 0  # reset on successful tool call
 
