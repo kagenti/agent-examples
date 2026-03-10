@@ -407,9 +407,20 @@ async def planner_node(
             "done": False,
         }
 
-    # Build context for the planner — include tool call history on replan
+    # Build context for the planner — include original plan + tool history on replan
     context_parts = []
     if iteration > 0:
+        # Show the original plan so the planner knows what was planned
+        original_plan = state.get("plan", [])
+        current_step = state.get("current_step", 0)
+        if original_plan:
+            context_parts.append("Original plan:")
+            for i, step in enumerate(original_plan):
+                status = "DONE" if i < current_step else "PENDING"
+                context_parts.append(f"  {i+1}. [{status}] {step}")
+            context_parts.append(f"Progress: {current_step}/{len(original_plan)} steps completed.")
+            context_parts.append("")
+
         # Extract tool call history from messages
         tool_history = []
         for msg in messages:
