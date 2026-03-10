@@ -503,11 +503,38 @@ class SandboxAgentExecutor(AgentExecutor):
                         "Graph event %d: nodes=%s (context=%s)",
                         event_count, node_names, context_id,
                     )
+
+                    # Skip __interrupt__ events (HITL pause) — these contain
+                    # tuples, not dicts, and shouldn't be serialized.
+                    if "__interrupt__" in event:
+                        logger.info(
+                            "Graph interrupted (HITL) at event %d: %s",
+                            event_count, event.get("__interrupt__"),
+                        )
+                        # Emit a structured HITL event for the frontend
+                        hitl_data = event.get("__interrupt__", ())
+                        hitl_msg = str(hitl_data[0]) if hitl_data else "Approval required"
+                        hitl_json = json.dumps({
+                            "type": "hitl_request",
+                            "loop_id": serializer._loop_id,
+                            "message": hitl_msg[:500],
+                        })
+                        await task_updater.update_status(
+                            TaskState.working,
+                            new_agent_text_message(
+                                hitl_json + "\n",
+                                task_updater.context_id,
+                                task_updater.task_id,
+                            ),
+                        )
+                        continue
+
                     # Send intermediate status updates as structured JSON
                     try:
                         serialized_lines = "\n".join(
                             serializer.serialize(key, value)
                             for key, value in event.items()
+                            if isinstance(value, dict)
                         ) + "\n"
                         await task_updater.update_status(
                             TaskState.working,
