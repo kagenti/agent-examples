@@ -88,10 +88,15 @@ class SandboxState(MessagesState):
         Summary of each completed step's output.
     iteration:
         Outer-loop iteration counter (planner → executor → reflector).
+    replan_count:
+        Number of times the reflector has chosen "replan". Used to cap
+        the replan loop and force termination after MAX_REPLAN_COUNT.
     done:
         Flag set by reflector when the task is complete.
     skill_instructions:
         Optional skill content loaded from a ``.claude/skills/`` file.
+    recent_decisions:
+        Rolling window of the last 10 reflector decisions (continue/replan/done).
     _route:
         Internal routing signal from the router node (not persisted).
     """
@@ -107,10 +112,12 @@ class SandboxState(MessagesState):
     current_step: int
     step_results: list[str]
     iteration: int
+    replan_count: int
     done: bool
     skill_instructions: str
     prompt_tokens: int
     completion_tokens: int
+    recent_decisions: list[str]
     _route: str
 
 
