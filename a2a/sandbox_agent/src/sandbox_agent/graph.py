@@ -118,6 +118,7 @@ class SandboxState(MessagesState):
     prompt_tokens: int
     completion_tokens: int
     recent_decisions: list[str]
+    _tool_call_count: int
     _route: str
 
 

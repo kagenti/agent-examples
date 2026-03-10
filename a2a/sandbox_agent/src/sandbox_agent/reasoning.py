@@ -362,6 +362,7 @@ _EXECUTOR_SYSTEM = """\
 You are a sandboxed coding assistant executing step {current_step} of a plan.
 
 Current step: {step_text}
+Tool calls so far this step: {tool_call_count}/{max_tool_calls}
 
 Available tools:
 - **shell**: Execute a shell command. Returns stdout+stderr and exit code.
@@ -373,20 +374,24 @@ Available tools:
 - **explore**: Spawn a read-only sub-agent for codebase research.
 - **delegate**: Spawn a child agent session for a delegated task.
 
+EXECUTION MODEL — step-by-step with micro-reflection:
+You operate in a loop: call ONE tool → see the result → decide what to do next.
+After each tool result, THINK about what happened before calling the next tool.
+- Did the command succeed? Check the exit code and output.
+- If it failed, adapt your approach — don't blindly retry the same thing.
+- If it succeeded, what's the logical next action for this step?
+
 CRITICAL RULES:
-- You MUST use the function/tool calling API to execute actions.
-  This means generating a proper function call, NOT writing text like
-  "shell(command='ls')" or "[tool_name]{{...}}" or code blocks.
-- DO NOT describe what tools you would call. Actually CALL them.
+- Call exactly ONE tool per response. You will see the result and can call another.
+- You MUST use the function/tool calling API — not text descriptions of calls.
 - DO NOT write or invent command output. Call the tool, wait for the result.
 - If a tool call fails, report the ACTUAL error — do not invent output.
-- Call ONE tool at a time. Wait for the result before the next call.
 - Slash commands like /rca:ci are for humans, not for you. You use tools.
 - If you cannot call a tool for any reason, respond with exactly:
   CANNOT_CALL_TOOL: <reason>
 
-Execute ONLY this step. You MUST make at least one tool call.
-When done, summarize what you accomplished with the actual tool output.
+When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
+tools and summarize what you accomplished with the actual tool output.
 """
 
 _REFLECTOR_SYSTEM = """\
@@ -689,6 +694,9 @@ async def planner_node(
     }
 
 
+MAX_TOOL_CALLS_PER_STEP = int(_os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP", "20"))
+
+
 async def executor_node(
     state: dict[str, Any],
     llm_with_tools: Any,
@@ -696,6 +704,7 @@ async def executor_node(
     """Execute the current plan step using the LLM with bound tools."""
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
+    tool_call_count = state.get("_tool_call_count", 0)
 
     if current_step >= len(plan):
         # No more steps — signal completion to reflector
@@ -704,11 +713,24 @@ async def executor_node(
             "done": True,
         }
 
+    # Guard: too many tool calls for this step — force completion
+    if tool_call_count >= MAX_TOOL_CALLS_PER_STEP:
+        logger.warning(
+            "Step %d hit tool call limit (%d/%d) — forcing step completion",
+            current_step, tool_call_count, MAX_TOOL_CALLS_PER_STEP,
+        )
+        return {
+            "messages": [AIMessage(content=f"Step {current_step + 1} reached tool call limit ({MAX_TOOL_CALLS_PER_STEP}). Moving to reflection.")],
+            "_tool_call_count": 0,
+        }
+
     step_text = plan[current_step]
     system_content = _safe_format(
         _EXECUTOR_SYSTEM,
         current_step=current_step + 1,
         step_text=step_text,
+        tool_call_count=tool_call_count,
+        max_tool_calls=MAX_TOOL_CALLS_PER_STEP,
     )
 
     # Prepend skill instructions when a skill was loaded from metadata.
@@ -737,6 +759,19 @@ async def executor_node(
     pre_patch_content = response.content
     had_structured_tools = bool(response.tool_calls)
     response = maybe_patch_tool_calls(response)
+
+    # -- Enforce single tool call (micro-reflection pattern) -------------------
+    # Keep only the first tool call so the LLM sees each result before
+    # deciding the next action. This prevents blind batching of N commands.
+    if len(response.tool_calls) > 1:
+        logger.info(
+            "Executor returned %d tool calls — keeping only the first (micro-reflection)",
+            len(response.tool_calls),
+        )
+        response = AIMessage(
+            content=response.content,
+            tool_calls=[response.tool_calls[0]],
+        )
 
     # -- Detect unparsed text tool call attempts (stall signal) ----------------
     # If the model wrote text that looks like a tool call but wasn't parsed,
@@ -828,6 +863,9 @@ async def executor_node(
     else:
         no_tool_count = 0  # reset on successful tool call
 
+    # Increment tool call count for micro-reflection tracking
+    new_tool_call_count = tool_call_count + len(response.tool_calls)
+
     result: dict[str, Any] = {
         "messages": [response],
         "prompt_tokens": prompt_tokens,
@@ -835,6 +873,7 @@ async def executor_node(
         "_system_prompt": system_content[:3000],
         "_prompt_messages": _summarize_messages(messages),
         "_no_tool_count": no_tool_count,
+        "_tool_call_count": new_tool_call_count,
     }
     if parsed_tools:
         result["parsed_tools"] = parsed_tools
@@ -1103,6 +1142,7 @@ async def reflector_node(
                 "plan_steps": plan_steps,
                 "done": False,
                 "replan_count": replan_count,
+                "_tool_call_count": 0,
             }
         return {
             **base_result,
@@ -1110,6 +1150,7 @@ async def reflector_node(
             "current_step": next_step,
             "done": False,
             "replan_count": replan_count,
+            "_tool_call_count": 0,
         }
 
 
