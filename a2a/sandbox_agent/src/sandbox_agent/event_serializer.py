@@ -257,9 +257,20 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "output": str(content)[:2000],
         })
 
+    @staticmethod
+    def _extract_prompt_data(value: dict) -> dict:
+        """Extract prompt visibility fields from node output."""
+        data: dict = {}
+        sp = value.get("_system_prompt", "")
+        if sp:
+            data["system_prompt"] = sp[:3000]
+        pm = value.get("_prompt_messages")
+        if pm:
+            data["prompt_messages"] = pm[:30]  # max 30 messages
+        return data
+
     def _serialize_planner(self, value: dict) -> str:
         """Serialize a planner node output — emits planner_output + legacy plan."""
-        # Prefer plan_steps descriptions, fall back to flat plan
         plan_steps = value.get("plan_steps", [])
         plan = [s.get("description", "") for s in plan_steps] if plan_steps else value.get("plan", [])
         iteration = value.get("iteration", 1)

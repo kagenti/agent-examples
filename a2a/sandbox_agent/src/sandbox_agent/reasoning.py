@@ -70,6 +70,37 @@ class PlanStep(TypedDict, total=False):
     iteration_added: int
 
 
+def _summarize_messages(messages: list) -> list[dict[str, str]]:
+    """Summarize a message list for prompt visibility in the UI.
+
+    Returns a list of {role, content_preview} dicts showing what
+    was sent to the LLM.
+    """
+    result = []
+    for msg in messages:
+        role = getattr(msg, "type", "unknown")
+        content = getattr(msg, "content", "")
+        if isinstance(content, list):
+            content = " ".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            )
+        text = str(content)
+        # Tool calls
+        tool_calls = getattr(msg, "tool_calls", None)
+        if tool_calls:
+            tc_names = [tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?") for tc in tool_calls]
+            text = f"[tool_calls: {', '.join(tc_names)}] {text[:200]}"
+        # ToolMessage
+        tool_name = getattr(msg, "name", None)
+        if role == "tool" and tool_name:
+            text = f"[{tool_name}] {text[:300]}"
+        else:
+            text = text[:500]
+        result.append({"role": role, "preview": text})
+    return result
+
+
 def _make_plan_steps(
     descriptions: list[str], iteration: int = 0
 ) -> list[PlanStep]:
@@ -614,12 +645,10 @@ async def planner_node(
     plan_messages = [SystemMessage(content=system_content)] + messages
     response = await llm.ainvoke(plan_messages)
 
-    # Extract token usage from the LLM response
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
 
-    # Parse numbered steps from the response
     plan = _parse_plan(response.content)
     plan_version = state.get("plan_version", 0) + 1
     new_plan_steps = _make_plan_steps(plan, iteration=iteration)
@@ -637,6 +666,8 @@ async def planner_node(
         "done": False,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_system_prompt": system_content[:3000],
+        "_prompt_messages": _summarize_messages(plan_messages),
     }
 
 
@@ -670,6 +701,11 @@ async def executor_node(
     # Include the conversation history so the executor has full context
     messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
+
+    # Track no-tool executions — if the LLM produces text instead of
+    # tool calls, increment counter. After 2 consecutive no-tool runs
+    # for the same step, mark the step as failed and advance.
+    no_tool_count = state.get("_no_tool_count", 0)
 
     # Extract token usage from the LLM response
     usage = getattr(response, 'usage_metadata', None) or {}
@@ -755,10 +791,32 @@ async def executor_node(
             for tc in response.tool_calls
         ]
 
+    # If no tool calls after patching, the executor failed to act.
+    # Increment counter; after 2 consecutive no-tool runs, signal failure
+    # so the reflector can skip this step instead of looping.
+    if not response.tool_calls:
+        no_tool_count += 1
+        logger.warning(
+            "Executor produced no tool calls for step %d (attempt %d/2)",
+            current_step, no_tool_count,
+        )
+        if no_tool_count >= 2:
+            logger.warning("Executor failed to call tools after 2 attempts — marking step failed")
+            return {
+                "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
+                "done": True if current_step + 1 >= len(plan) else False,
+                "_no_tool_count": 0,
+            }
+    else:
+        no_tool_count = 0  # reset on successful tool call
+
     result: dict[str, Any] = {
         "messages": [response],
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_system_prompt": system_content[:3000],
+        "_prompt_messages": _summarize_messages(messages),
+        "_no_tool_count": no_tool_count,
     }
     if parsed_tools:
         result["parsed_tools"] = parsed_tools
@@ -933,6 +991,8 @@ async def reflector_node(
         "plan_steps": plan_steps,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_system_prompt": system_content[:3000],
+        "_prompt_messages": _summarize_messages(reflect_messages),
     }
 
     if decision == "done":
@@ -1101,6 +1161,8 @@ async def reporter_node(
         "plan_status": terminal_status,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_system_prompt": system_content[:3000],
+        "_prompt_messages": _summarize_messages(messages),
     }
 
 
