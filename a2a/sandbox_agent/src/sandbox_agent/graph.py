@@ -655,7 +655,7 @@ def build_graph(
     graph.add_conditional_edges(
         "reflector",
         route_reflector,
-        {"done": "reporter", "continue": "executor", "replan": "planner"},
+        {"done": "reporter", "execute": "executor", "replan": "planner"},
     )
     graph.add_edge("reporter", "__end__")
 

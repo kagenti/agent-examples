@@ -1291,7 +1291,7 @@ def route_reflector(state: dict[str, Any]) -> str:
     decision = (state.get("recent_decisions") or ["continue"])[-1]
     if decision == "replan":
         return "replan"
-    return "continue"
+    return "execute"
 
 
 # ---------------------------------------------------------------------------
