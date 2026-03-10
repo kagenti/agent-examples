@@ -25,6 +25,14 @@ from sandbox_agent.budget import AgentBudget
 
 logger = logging.getLogger(__name__)
 
+# Sentinel text returned by the executor when all tool calls in a step have
+# already been executed (dedup logic).  This is an internal coordination
+# message and must never appear in user-visible output.
+_DEDUP_SENTINEL = (
+    "Step completed — all requested tool calls "
+    "have been executed and results are available."
+)
+
 
 def _safe_format(template: str, **kwargs: Any) -> str:
     """Format a prompt template, falling back to raw template on errors."""
@@ -574,12 +582,7 @@ async def executor_node(
                 )
                 return {
                     "messages": [
-                        AIMessage(
-                            content=(
-                                "Step completed — all requested tool calls "
-                                "have been executed and results are available."
-                            ),
-                        )
+                        AIMessage(content=_DEDUP_SENTINEL)
                     ]
                 }
             # Keep only genuinely new calls
@@ -806,6 +809,10 @@ async def reporter_node(
     plan = state.get("plan", [])
     step_results = state.get("step_results", [])
 
+    # Filter out internal dedup sentinel from step_results so it never
+    # reaches the reporter prompt or the final answer.
+    step_results = [r for r in step_results if _DEDUP_SENTINEL not in r]
+
     # For single-step plans, just pass through the last message
     if len(plan) <= 1:
         messages = state["messages"]
@@ -819,10 +826,14 @@ async def reporter_node(
                 )
             else:
                 text = str(content)
+            # Guard: skip internal dedup sentinel — fall through to
+            # LLM-based summary which uses real step_results instead.
+            if _DEDUP_SENTINEL in text:
+                pass  # fall through
             # Guard: if text is a bare reflector decision keyword
             # (e.g. budget exhaustion forces done with "continue"),
             # fall through to LLM-based summary from step_results.
-            if not _BARE_DECISION_RE.match(text.strip()):
+            elif not _BARE_DECISION_RE.match(text.strip()):
                 return {"final_answer": text}
             # Fall through to LLM-based summary below
         elif not step_results:
@@ -838,7 +849,13 @@ async def reporter_node(
         plan_text=plan_text,
         results_text=results_text,
     )
-    messages = [SystemMessage(content=system_content)] + state["messages"]
+    # Filter dedup sentinel messages from conversation history passed to the
+    # reporter LLM so it cannot echo them in the final answer.
+    filtered_msgs = [
+        m for m in state["messages"]
+        if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
+    ]
+    messages = [SystemMessage(content=system_content)] + filtered_msgs
     response = await llm.ainvoke(messages)
 
     # Extract token usage from the LLM response
