@@ -418,9 +418,8 @@ def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
     async def web_fetch(url: str) -> str:
         """Fetch content from a URL.
 
-        Only URLs whose domain is in the allowed_domains list (sources.json)
-        can be accessed. Use this to read GitHub issues, pull requests,
-        documentation pages, and other web resources.
+        Domain filtering is handled by the outbound Squid proxy at the
+        network level. This tool fetches any URL the proxy allows.
 
         Args:
             url: The full URL to fetch (e.g. https://github.com/org/repo/issues/1).
@@ -437,11 +436,9 @@ def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
         if not sources_config.is_web_access_enabled():
             return "Error: web access is disabled in sources.json."
 
-        if not sources_config.is_domain_allowed(domain):
-            return (
-                f"Error: domain '{domain}' is not in the allowed domains list. "
-                f"Check sources.json web_access.allowed_domains."
-            )
+        # Domain filtering is delegated to the Squid proxy.
+        # Log the domain for observability but don't block.
+        logger.info("web_fetch: domain=%s url=%s", domain, url[:200])
 
         try:
             async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
