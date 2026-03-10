@@ -852,11 +852,29 @@ async def reflector_node(
     if step_results and last_content[:500] == step_results[-1]:
         return _force_done("Stall: executor output identical to previous iteration")
 
+    # If last_content is the dedup sentinel, recover the actual last tool
+    # result from the message history so the reflector sees real output.
+    if _DEDUP_SENTINEL in last_content:
+        for msg in reversed(messages):
+            if isinstance(msg, ToolMessage):
+                last_content = str(getattr(msg, "content", ""))
+                logger.info("Reflector: substituted dedup sentinel with last tool result (%d chars)",
+                            len(last_content))
+                break
+
     step_results.append(last_content[:500])
 
     step_text = plan[current_step] if current_step < len(plan) else "N/A"
     plan_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(plan))
     results_text = last_content[:1000]
+
+    # Hint: if the step result contains error signals, prepend a note
+    error_signals = ("error", "fatal", "failed", "exit_code", "stderr", "denied", "cannot")
+    if any(sig in results_text.lower() for sig in error_signals):
+        results_text = (
+            "[NOTE: The step result below contains error indicators. "
+            "Consider 'replan' to try a different approach.]\n\n" + results_text
+        )
 
     # Ask LLM to reflect
     recent_str = ", ".join(recent_decisions[-5:]) if recent_decisions else "none"
