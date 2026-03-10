@@ -584,11 +584,42 @@ class SandboxAgentExecutor(AgentExecutor):
                         await asyncio.wait_for(graph_task, timeout=300)
                     except (asyncio.TimeoutError, asyncio.CancelledError):
                         logger.warning("Graph background task timed out or cancelled (context=%s)", context_id)
-                    # Drain remaining events for output extraction
+                    # Drain remaining events — serialize and persist them
+                    # since the SSE consumer was cancelled and missed these.
+                    bg_event_count = 0
+                    bg_serialized_lines: list[str] = []
                     while not event_queue.empty():
                         ev = event_queue.get_nowait()
-                        if ev is not _SENTINEL and "_error" not in ev:
-                            output = ev
+                        if ev is _SENTINEL or "_error" in ev:
+                            continue
+                        output = ev
+                        bg_event_count += 1
+                        # Serialize each event so it can be persisted
+                        try:
+                            for key, value in ev.items():
+                                if isinstance(value, dict):
+                                    serialized = serializer.serialize(key, value)
+                                    bg_serialized_lines.append(serialized)
+                        except Exception as ser_err:
+                            logger.warning("Failed to serialize bg event %d: %s", bg_event_count, ser_err)
+                    if bg_event_count > 0:
+                        logger.info(
+                            "Drained %d background events for context=%s, serialized %d lines",
+                            bg_event_count, context_id, len(bg_serialized_lines),
+                        )
+                        # Persist via task_updater so the events appear in history
+                        for line_block in bg_serialized_lines:
+                            try:
+                                await task_updater.update_status(
+                                    TaskState.working,
+                                    new_agent_text_message(
+                                        line_block + "\n",
+                                        task_updater.context_id,
+                                        task_updater.task_id,
+                                    ),
+                                )
+                            except Exception:
+                                pass  # best-effort
 
                 # Extract final answer from the last event.
                 # The reporter node sets {"final_answer": "..."}.
