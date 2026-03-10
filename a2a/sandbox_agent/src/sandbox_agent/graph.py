@@ -28,7 +28,13 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.types import interrupt
+from langgraph.types import Send, interrupt
+
+try:
+    from langgraph.errors import GraphInterrupt
+except ImportError:
+    # Fallback for older langgraph versions
+    GraphInterrupt = type("GraphInterrupt", (Exception,), {})
 
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
@@ -575,10 +581,15 @@ def build_graph(
 
         If ToolNode crashes, return an error ToolMessage so the agent
         sees the error and can adapt, instead of crashing the graph.
+
+        GraphInterrupt (from HITL interrupt()) is re-raised so the graph
+        runner can transition the A2A task to INPUT_REQUIRED.
         """
         from langchain_core.messages import ToolMessage
         try:
             return await _tool_node.ainvoke(state)
+        except (GraphInterrupt, KeyboardInterrupt, SystemExit):
+            raise  # Let HITL interrupts and system exits propagate
         except Exception as exc:
             logger.error("ToolNode error: %s", exc, exc_info=True)
             # Find tool_calls from the last message to generate error responses
