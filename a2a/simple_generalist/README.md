@@ -1,8 +1,8 @@
 # Simple Generalist Agent
 
-This service exposes an A2A-compatible agent server that runs an AG2 agent and can optionally use MCP tools.
+This service exposes an A2A-compatible agent server that runs an [AG2](https://pypi.org/project/ag2/) agent and can optionally use MCP tools.
 
-It was created to test the AppWorld MCP server. The agent prompt in `src/simple_generalist/agent/prompts.py` is geared toward using AppWorld as the MCP server.
+It was created to test the [AppWorld](https://github.com/StonyBrookNLP/appworld) MCP server. The agent prompt in `src/simple_generalist/agent/prompts.py` is geared toward using AppWorld as the MCP server.
 
 ## What It Actually Does
 
