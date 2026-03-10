@@ -651,11 +651,11 @@ def build_graph(
     # results and decide on next actions (or signal completion).
     graph.add_edge("tools", "executor")
 
-    # Reflector → reporter (done) or → planner (continue/replan)
+    # Reflector → reporter (done), executor (continue), or planner (replan)
     graph.add_conditional_edges(
         "reflector",
         route_reflector,
-        {"done": "reporter", "continue": "planner"},
+        {"done": "reporter", "continue": "executor", "replan": "planner"},
     )
     graph.add_edge("reporter", "__end__")
 

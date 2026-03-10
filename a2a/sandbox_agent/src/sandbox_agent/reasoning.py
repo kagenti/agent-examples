@@ -1279,9 +1279,18 @@ async def reporter_node(
 
 
 def route_reflector(state: dict[str, Any]) -> str:
-    """Route from reflector: ``done`` → reporter, otherwise → planner."""
+    """Route from reflector based on decision.
+
+    ``done``     → reporter (final answer)
+    ``replan``   → planner (create new plan)
+    ``continue`` → executor (execute next step)
+    """
     if state.get("done", False):
         return "done"
+    # Check the reflector's decision to distinguish continue vs replan
+    decision = (state.get("recent_decisions") or ["continue"])[-1]
+    if decision == "replan":
+        return "replan"
     return "continue"
 
 
