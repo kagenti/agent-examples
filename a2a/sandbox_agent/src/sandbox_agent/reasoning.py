@@ -213,48 +213,40 @@ numbered plan.  Each step should be a single actionable item that can be
 executed with the available tools (shell, file_read, file_write, grep, glob,
 web_fetch, explore, delegate).
 
+IMPORTANT: Almost every request requires tools. The user is asking you to DO
+things, not just talk. Create file = file_write. Run command = shell.
+Clone repo = shell. Read file = file_read. Search code = grep/glob.
+
 Rules:
-- If the request needs NO tools (just a text answer, saying something,
-  answering a question from memory, or repeating text), output EXACTLY:
-  1. Respond to the user.
-  DO NOT add extra steps for thinking, analyzing, or verifying.
-- If the request is a single command or a trivial file operation,
-  output EXACTLY one step.
-- NEVER create multi-step plans for simple requests. One command = one step.
+- Every step should name the specific tool to use.
 - Keep steps concrete and tool-oriented — no vague "analyze" or "think" steps.
 - For multi-step analysis, debugging, or investigation tasks, add a final
   step: "Write findings summary to report.md" with sections: Problem,
   Investigation, Root Cause, Resolution.
 - For complex investigations that can be parallelized, use the **delegate**
-  tool to spawn child agent sessions for independent research tasks. Each
-  child session runs in its own workspace and reports back results.
+  tool to spawn child agent sessions for independent research tasks.
 - Number each step starting at 1.
 - Output ONLY the numbered list, nothing else.
 
-Example for a text-only request ("Say exactly: hello world"):
-1. Respond to the user.
+Example ("create a file hello.txt with 'hello world'"):
+1. Use file_write to create /workspace/hello.txt with content "hello world".
 
-Example for a question ("What was the marker text?"):
-1. Respond to the user.
+Example ("list files"):
+1. Run `ls -la` in the workspace using shell.
 
-Example for a simple request ("list files"):
-1. Run `ls -la` in the workspace.
+Example ("create a Python project with tests"):
+1. Create directory structure: shell(`mkdir -p src tests`).
+2. Write src/main.py using file_write.
+3. Write tests/test_main.py using file_write.
+4. Run tests: shell(`python -m pytest tests/`).
 
-Example for a single command ("run echo test"):
-1. Run `echo test` in the shell.
-
-Example for a complex request ("create a Python project with tests"):
-1. Create the directory structure with `mkdir -p src tests`.
-2. Write `src/main.py` with the main module code.
-3. Write `tests/test_main.py` with pytest tests.
-4. Run `python -m pytest tests/` to verify tests pass.
-
-Example for an RCA/CI investigation ("analyze CI failures for owner/repo PR #758"):
-1. Clone and set up remotes: `git clone https://github.com/owner/repo.git repos/repo && cd repos/repo && git remote set-url origin https://github.com/owner/repo.git`.
-2. From the repo dir, list failures: `cd repos/repo && gh run list --status failure --limit 5`.
-3. Download failure logs: `cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`.
-4. Extract errors: `grep -C 5 'FAILED\\|ERROR\\|AssertionError' output/ci-run.log`.
-5. Write findings to report.md with sections: Root Cause, Impact, Fix.
+Example ("analyze CI failures for owner/repo PR #758"):
+1. Set up GitHub auth: shell(`export GH_TOKEN=$GITHUB_PAT_TOKEN`).
+2. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
+3. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
+4. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`).
+5. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
+6. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
 IMPORTANT for gh CLI:
 - Always clone the target repo FIRST into repos/, then `cd repos/<name>` before gh commands.
