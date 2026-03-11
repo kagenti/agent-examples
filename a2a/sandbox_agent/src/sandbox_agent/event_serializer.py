@@ -97,6 +97,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         import uuid
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
+        self._micro_step: int = 0
         self._context_id = context_id or "unknown"
 
     def serialize(self, key: str, value: dict) -> str:
@@ -196,6 +197,12 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         parts = []
 
+        # Emit micro_reasoning for subsequent executor calls within the same step
+        if self._micro_step > 0:
+            parts.append(self._serialize_micro_reasoning(msg, value or {}))
+
+        self._micro_step += 1
+
         _v = value or {}
         plan = _v.get("plan", [])
         model = _v.get("model", "")
@@ -247,6 +254,30 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         return "\n".join(parts)
 
+    def _serialize_micro_reasoning(self, msg: Any, value: dict) -> str:
+        """Emit a micro_reasoning event capturing the LLM's intermediate reasoning."""
+        content = getattr(msg, "content", "")
+        if isinstance(content, list):
+            text = self._extract_text_blocks(content)
+        else:
+            text = str(content)[:5000] if content else ""
+
+        tool_calls = getattr(msg, "tool_calls", [])
+        next_action = "tool_call" if tool_calls else "done"
+
+        return json.dumps({
+            "type": "micro_reasoning",
+            "loop_id": self._loop_id,
+            "step": self._step_index,
+            "micro_step": self._micro_step,
+            "reasoning": text[:5000],
+            "next_action": next_action,
+            "model": value.get("model", ""),
+            "prompt_tokens": value.get("prompt_tokens", 0),
+            "completion_tokens": value.get("completion_tokens", 0),
+            **self._extract_prompt_data(value),
+        })
+
     def _serialize_tool_result(self, msg: Any) -> str:
         """Serialize a tool node output with loop_id."""
         name = getattr(msg, "name", "unknown")
@@ -265,10 +296,10 @@ class LangGraphSerializer(FrameworkEventSerializer):
         data: dict = {}
         sp = value.get("_system_prompt", "")
         if sp:
-            data["system_prompt"] = sp[:3000]
+            data["system_prompt"] = sp[:5000]
         pm = value.get("_prompt_messages")
         if pm:
-            data["prompt_messages"] = pm[:30]  # max 30 messages
+            data["prompt_messages"] = pm[:100]  # max 100 messages
         return data
 
     def _serialize_planner(self, value: dict) -> str:
@@ -329,6 +360,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         # Advance step index when reflector completes a step
         self._step_index = current_step
+        self._micro_step = 0
 
         model = value.get("model", "")
         prompt_tokens = value.get("prompt_tokens", 0)

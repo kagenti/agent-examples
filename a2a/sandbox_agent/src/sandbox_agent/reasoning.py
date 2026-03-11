@@ -92,13 +92,13 @@ def _summarize_messages(messages: list) -> list[dict[str, str]]:
         tool_calls = getattr(msg, "tool_calls", None)
         if tool_calls:
             tc_names = [tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?") for tc in tool_calls]
-            text = f"[tool_calls: {', '.join(tc_names)}] {text[:200]}"
+            text = f"[tool_calls: {', '.join(tc_names)}] {text[:2000]}"
         # ToolMessage
         tool_name = getattr(msg, "name", None)
         if role == "tool" and tool_name:
-            text = f"[{tool_name}] {text[:300]}"
+            text = f"[{tool_name}] {text[:3000]}"
         else:
-            text = text[:500]
+            text = text[:5000]
         result.append({"role": role, "preview": text})
     return result
 
@@ -665,6 +665,7 @@ async def planner_node(
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
 
     plan = _parse_plan(response.content)
     plan_version = state.get("plan_version", 0) + 1
@@ -681,9 +682,10 @@ async def planner_node(
         "current_step": 0,
         "iteration": iteration + 1,
         "done": False,
+        "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "_system_prompt": system_content[:3000],
+        "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(plan_messages),
     }
 
@@ -745,6 +747,7 @@ async def executor_node(
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
 
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
@@ -890,9 +893,10 @@ async def executor_node(
 
     result: dict[str, Any] = {
         "messages": [response],
+        "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "_system_prompt": system_content[:3000],
+        "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(messages),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
@@ -1055,6 +1059,7 @@ async def reflector_node(
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
 
     decision = _parse_decision(response.content)
     recent_decisions.append(decision)
@@ -1088,9 +1093,10 @@ async def reflector_node(
         "step_results": step_results,
         "recent_decisions": recent_decisions,
         "plan_steps": plan_steps,
+        "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "_system_prompt": system_content[:3000],
+        "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(reflect_messages),
     }
 
@@ -1246,6 +1252,7 @@ async def reporter_node(
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
+    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
 
     content = response.content
     if isinstance(content, list):
@@ -1266,9 +1273,10 @@ async def reporter_node(
         "messages": [response],
         "final_answer": text,
         "plan_status": terminal_status,
+        "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
-        "_system_prompt": system_content[:3000],
+        "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(messages),
     }
 
