@@ -148,6 +148,9 @@ class SandboxState(MessagesState):
     recent_decisions: list[str]
     _tool_call_count: int
     _route: str
+    _system_prompt: str
+    _prompt_messages: list[dict]
+    model: str
 
 
 # ---------------------------------------------------------------------------
