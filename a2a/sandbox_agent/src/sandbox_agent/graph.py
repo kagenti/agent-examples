@@ -600,16 +600,16 @@ def build_graph(
         return await router_node(state)
 
     async def _planner(state: SandboxState) -> dict[str, Any]:
-        return await planner_node(state, llm)
+        return await planner_node(state, llm, budget=budget)
 
     async def _executor(state: SandboxState) -> dict[str, Any]:
-        return await executor_node(state, llm_with_tools)
+        return await executor_node(state, llm_with_tools, budget=budget)
 
     async def _reflector(state: SandboxState) -> dict[str, Any]:
         return await reflector_node(state, llm, budget=budget)
 
     async def _reporter(state: SandboxState) -> dict[str, Any]:
-        return await reporter_node(state, llm)
+        return await reporter_node(state, llm, budget=budget)
 
     # -- Safe ToolNode wrapper — never crashes the graph --------------------
     _tool_node = ToolNode(tools)

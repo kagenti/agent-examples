@@ -573,12 +573,15 @@ def _is_trivial_text_request(messages: list) -> bool:
 async def planner_node(
     state: dict[str, Any],
     llm: Any,
+    budget: AgentBudget | None = None,
 ) -> dict[str, Any]:
     """Decompose the user request into a numbered plan.
 
     On re-entry (iteration > 0), the planner also sees prior step results so
     it can adjust the remaining plan.
     """
+    if budget is None:
+        budget = DEFAULT_BUDGET
     messages = state["messages"]
     iteration = state.get("iteration", 0)
     step_results = state.get("step_results", [])
@@ -673,6 +676,7 @@ async def planner_node(
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    budget.add_tokens(prompt_tokens + completion_tokens)
 
     plan = _parse_plan(response.content)
     plan_version = state.get("plan_version", 0) + 1
@@ -692,6 +696,7 @@ async def planner_node(
         "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_budget_summary": budget.summary(),
         "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(plan_messages),
     }
@@ -703,8 +708,11 @@ MAX_TOOL_CALLS_PER_STEP = int(_os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP",
 async def executor_node(
     state: dict[str, Any],
     llm_with_tools: Any,
+    budget: AgentBudget | None = None,
 ) -> dict[str, Any]:
     """Execute the current plan step using the LLM with bound tools."""
+    if budget is None:
+        budget = DEFAULT_BUDGET
     plan = state.get("plan", [])
     current_step = state.get("current_step", 0)
     tool_call_count = state.get("_tool_call_count", 0)
@@ -741,6 +749,11 @@ async def executor_node(
     if skill_instructions:
         system_content = skill_instructions + "\n\n" + system_content
 
+    # Check budget before making the LLM call
+    if budget.exceeded:
+        logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
+        return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "done": True}
+
     # Include the conversation history so the executor has full context
     messages = [SystemMessage(content=system_content)] + state["messages"]
     response = await llm_with_tools.ainvoke(messages)
@@ -755,6 +768,7 @@ async def executor_node(
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    budget.add_tokens(prompt_tokens + completion_tokens)
 
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
@@ -903,6 +917,7 @@ async def executor_node(
         "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_budget_summary": budget.summary(),
         "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(messages),
         "_no_tool_count": no_tool_count,
@@ -1067,6 +1082,7 @@ async def reflector_node(
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    budget.add_tokens(prompt_tokens + completion_tokens)
 
     decision = _parse_decision(response.content)
     recent_decisions.append(decision)
@@ -1103,6 +1119,7 @@ async def reflector_node(
         "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_budget_summary": budget.summary(),
         "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(reflect_messages),
     }
@@ -1165,6 +1182,7 @@ async def reflector_node(
 async def reporter_node(
     state: dict[str, Any],
     llm: Any,
+    budget: AgentBudget | None = None,
 ) -> dict[str, Any]:
     """Format accumulated step results into a final answer.
 
@@ -1174,6 +1192,8 @@ async def reporter_node(
       so user/looper can retry)
     - Plan steps remain → ``"awaiting_continue"``
     """
+    if budget is None:
+        budget = DEFAULT_BUDGET
     plan = state.get("plan", [])
     step_results = state.get("step_results", [])
     plan_steps = state.get("plan_steps", [])
@@ -1260,6 +1280,7 @@ async def reporter_node(
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    budget.add_tokens(prompt_tokens + completion_tokens)
 
     content = response.content
     if isinstance(content, list):
@@ -1283,6 +1304,7 @@ async def reporter_node(
         "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
+        "_budget_summary": budget.summary(),
         "_system_prompt": system_content[:10000],
         "_prompt_messages": _summarize_messages(messages),
     }
