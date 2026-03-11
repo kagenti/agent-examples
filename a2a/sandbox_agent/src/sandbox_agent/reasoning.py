@@ -38,10 +38,6 @@ from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from sandbox_agent.budget import AgentBudget
 
-# Debug prompts: include full system prompt + message history in events.
-# Disabled by default to reduce event size and prevent OOM on large sessions.
-_DEBUG_PROMPTS = _os.environ.get("SANDBOX_DEBUG_PROMPTS", "1") == "1"
-
 logger = logging.getLogger(__name__)
 
 # Sentinel text returned by the executor when all tool calls in a step have
@@ -53,6 +49,10 @@ _DEDUP_SENTINEL = (
 )
 
 import os as _os
+
+# Debug prompts: include full system prompt + message history in events.
+# Disabled by default to reduce event size and prevent OOM on large sessions.
+_DEBUG_PROMPTS = _os.environ.get("SANDBOX_DEBUG_PROMPTS", "1") == "1"
 
 # Messages that trigger plan resumption rather than replanning.
 _CONTINUE_PHRASES = frozenset({
