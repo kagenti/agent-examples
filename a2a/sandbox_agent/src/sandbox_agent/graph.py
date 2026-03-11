@@ -595,10 +595,11 @@ def build_graph(
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
-    # tool_choice="any" forces the LLM to always call at least one tool.
-    # Without this, some models (e.g. Llama 4 Scout) write text descriptions
-    # of tool invocations instead of using the function calling API.
-    llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+    # Don't force tool_choice="any" — the executor must be able to produce
+    # text-only responses to signal step completion and return to reflector.
+    # If the LLM writes text descriptions of tool calls instead of using
+    # the API, the executor's text-tool parser handles it.
+    llm_with_tools = llm.bind_tools(tools)
 
     # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
@@ -620,36 +621,98 @@ def build_graph(
         return await reporter_node(state, llm, budget=budget)
 
     async def _step_selector(state: SandboxState) -> dict[str, Any]:
-        """Pick the next unfinished plan step for the executor.
+        """Pick the next step and prepare focused context for the executor.
 
-        No LLM call — pure state logic. Reads plan_steps, finds the first
-        step with status != 'done', sets current_step and resets tool counter.
+        Uses a lightweight LLM call to review plan progress and write
+        a targeted brief for the executor — what to do, what worked/failed
+        before, and what to avoid.
         """
+        from langchain_core.messages import SystemMessage as SM, HumanMessage as HM
+
         plan = state.get("plan", [])
         plan_steps = list(state.get("plan_steps", []))
         current = state.get("current_step", 0)
+        messages = state.get("messages", [])
 
-        # Find next non-done step starting from current
+        # Find next non-done step
         next_step = current
         for i in range(current, len(plan_steps)):
-            status = plan_steps[i].get("status", "pending") if isinstance(plan_steps[i], dict) else "pending"
+            ps = plan_steps[i]
+            status = ps.get("status", "pending") if isinstance(ps, dict) else "pending"
             if status != "done":
                 next_step = i
                 break
         else:
-            # All steps done — advance past the end (triggers done in reflector)
             next_step = len(plan)
 
-        # Mark the selected step as running
-        if next_step < len(plan_steps):
-            if isinstance(plan_steps[next_step], dict):
-                plan_steps[next_step] = {**plan_steps[next_step], "status": "running"}
+        # Mark selected step as running
+        if next_step < len(plan_steps) and isinstance(plan_steps[next_step], dict):
+            plan_steps[next_step] = {**plan_steps[next_step], "status": "running"}
 
-        logger.info("StepSelector: advancing to step %d/%d (was %d)", next_step + 1, len(plan), current + 1)
+        # Build plan status summary
+        plan_summary = []
+        for i, step in enumerate(plan):
+            ps = plan_steps[i] if i < len(plan_steps) else {}
+            status = ps.get("status", "pending") if isinstance(ps, dict) else "pending"
+            marker = "✓" if status == "done" else "→" if i == next_step else " "
+            result_hint = ""
+            if isinstance(ps, dict) and ps.get("result_summary"):
+                result_hint = f" — {ps['result_summary'][:100]}"
+            plan_summary.append(f"  {marker} {i+1}. [{status}] {step[:80]}{result_hint}")
+
+        # Gather recent tool results (last 3 ToolMessages)
+        recent_results = []
+        for m in reversed(messages[-10:]):
+            if hasattr(m, 'name') and getattr(m, 'type', '') == 'tool':
+                content = str(getattr(m, 'content', ''))[:300]
+                recent_results.insert(0, f"  [{m.name}] {content}")
+                if len(recent_results) >= 3:
+                    break
+
+        if next_step >= len(plan):
+            # All done
+            logger.info("StepSelector: all %d steps complete", len(plan))
+            return {
+                "current_step": next_step,
+                "plan_steps": plan_steps,
+                "_tool_call_count": 0,
+                "done": True,
+            }
+
+        # Quick LLM call — write a focused brief for the executor
+        step_text = plan[next_step] if next_step < len(plan) else "N/A"
+        prompt = f"""You are a step coordinator. Write a 2-3 sentence brief for the executor.
+
+Plan progress:
+{chr(10).join(plan_summary)}
+
+Next step to execute: {next_step + 1}. {step_text}
+
+Recent tool results:
+{chr(10).join(recent_results) if recent_results else '(none yet)'}
+
+Write a brief: what EXACTLY to do for step {next_step + 1}, what context from previous steps is relevant, and what to watch out for. Be specific about commands/tools to use."""
+
+        try:
+            response = await llm.ainvoke([
+                SM(content="You are a concise step coordinator. Output ONLY the brief, no preamble."),
+                HM(content=prompt),
+            ])
+            brief = response.content.strip()
+            budget.add_tokens(
+                (getattr(response, 'usage_metadata', None) or {}).get('input_tokens', 0)
+                + (getattr(response, 'usage_metadata', None) or {}).get('output_tokens', 0)
+            )
+        except Exception as e:
+            logger.warning("StepSelector LLM call failed: %s — using default brief", e)
+            brief = f"Execute step {next_step + 1}: {step_text}"
+
+        logger.info("StepSelector: step %d/%d brief: %s", next_step + 1, len(plan), brief[:100])
         return {
             "current_step": next_step,
             "plan_steps": plan_steps,
             "_tool_call_count": 0,
+            "skill_instructions": f"STEP BRIEF FROM COORDINATOR:\n{brief}\n\n---\n",
         }
 
     # -- Safe ToolNode wrapper — never crashes the graph --------------------
