@@ -427,8 +427,9 @@ You are a reflection module reviewing the output of a plan step.
 Plan:
 {plan_text}
 
-Current step ({current_step}): {step_text}
+Current step ({current_step} of {total_steps}): {step_text}
 Step result: {step_result}
+Remaining steps: {remaining_steps}
 
 Iteration: {iteration} of {max_iterations}
 Replan count so far: {replan_count} (higher counts mean more rework — weigh this when deciding)
@@ -448,11 +449,15 @@ REPLAN RULES:
 - A high replan count suggests diminishing returns — consider "done" with
   partial results if you have already tried multiple distinct approaches.
 
+DECISION PROCESS:
+1. Did the current step succeed? Check tool output for real results (not just "no output").
+2. Are there remaining steps in the plan? If yes → continue to the next step.
+3. Only choose "done" when ALL plan steps are complete OR remaining steps are "NONE".
+
 Decide ONE of the following (output ONLY the decision word):
-- **continue** — Step succeeded with real tool output; move to the next step.
-- **replan** — Step failed or revealed new information; re-plan remaining work.
-  (Only if you have a genuinely NEW approach to try.)
-- **done** — All steps are complete, task is answered, OR agent is stuck.
+- **continue** — Current step done, remaining steps exist → move to next step.
+- **replan** — Step failed or needs a different approach (only if genuinely NEW).
+- **done** — ALL plan steps complete (remaining = NONE), task is fully answered.
 - **hitl** — Human input is needed to proceed.
 
 Output the single word: continue, replan, done, or hitl.
@@ -1109,12 +1114,18 @@ async def reflector_node(
 
     # Ask LLM to reflect
     recent_str = ", ".join(recent_decisions[-5:]) if recent_decisions else "none"
+    # Build remaining steps text so reflector knows what's left
+    remaining = [f"{i+1}. {plan[i]}" for i in range(current_step + 1, len(plan))]
+    remaining_text = ", ".join(remaining[:5]) if remaining else "NONE — all steps complete"
+
     system_content = _safe_format(
         _REFLECTOR_SYSTEM,
         plan_text=plan_text,
         current_step=current_step + 1,
+        total_steps=len(plan),
         step_text=step_text,
         step_result=results_text,
+        remaining_steps=remaining_text,
         iteration=iteration,
         max_iterations=budget.max_iterations,
         replan_count=replan_count,
