@@ -230,10 +230,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         prompt_data = self._extract_prompt_data(_v)
 
         # Emit executor_step event so UI shows which step is executing
+        current_plan_step = _v.get("current_step", 0)
         step_payload = {
             "type": "executor_step",
             "loop_id": self._loop_id,
             "step": self._step_index,
+            "plan_step": current_plan_step,
+            "iteration": _v.get("iteration", 0),
             "total_steps": len(plan) if plan else 0,
             "description": text[:200] if text else "",
             "reasoning": text[:2000] if text else "",
