@@ -1341,31 +1341,11 @@ async def reporter_node(
     # reaches the reporter prompt or the final answer.
     step_results = [r for r in step_results if _DEDUP_SENTINEL not in r]
 
-    # For single-step plans, just pass through the last message
-    if len(plan) <= 1:
-        messages = state["messages"]
-        if messages:
-            last = messages[-1]
-            content = getattr(last, "content", "")
-            if isinstance(content, list):
-                text = " ".join(
-                    b.get("text", "") for b in content
-                    if isinstance(b, dict) and b.get("type") == "text"
-                )
-            else:
-                text = str(content)
-            # Guard: skip internal dedup sentinel — fall through to
-            # LLM-based summary which uses real step_results instead.
-            if _DEDUP_SENTINEL in text:
-                pass  # fall through
-            # Guard: if text is a bare reflector decision keyword
-            # (e.g. budget exhaustion forces done with "continue"),
-            # fall through to LLM-based summary from step_results.
-            elif not _BARE_DECISION_RE.match(text.strip()):
-                return {"final_answer": text, "plan_status": terminal_status}
-            # Fall through to LLM-based summary below
-        elif not step_results:
-            return {"final_answer": "No response generated.", "plan_status": terminal_status}
+    # Always run LLM to produce a user-facing summary.
+    # Previous code had a shortcut for single-step plans that passed through
+    # the last message directly, but this leaked reflector reasoning text.
+    if not step_results and not state.get("messages"):
+        return {"final_answer": "No response generated.", "plan_status": terminal_status}
 
     plan_text = "\n".join(f"{i+1}. {s}" for i, s in enumerate(plan))
     results_text = "\n".join(
