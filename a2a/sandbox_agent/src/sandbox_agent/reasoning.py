@@ -272,9 +272,15 @@ def parse_text_tool_calls(content: str) -> list[dict[str, Any]]:
 
 
 def maybe_patch_tool_calls(response: AIMessage) -> AIMessage:
-    """If the response has no tool_calls but contains text-based calls, patch them in."""
+    """If the response has no tool_calls but contains text-based calls, patch them in.
+
+    Controlled by SANDBOX_TEXT_TOOL_PARSING env var (default: "1" = enabled).
+    """
     if response.tool_calls:
         # Model returned structured tool_calls — use as-is
+        return response
+
+    if _os.environ.get("SANDBOX_TEXT_TOOL_PARSING", "1") != "1":
         return response
 
     content = response.content
