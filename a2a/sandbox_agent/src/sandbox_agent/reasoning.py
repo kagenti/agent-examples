@@ -772,13 +772,33 @@ async def executor_node(
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
         return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "done": True}
 
-    # Include recent conversation history (windowed to prevent context blowout).
-    # Keep the first user message + last 20 messages for context.
+    # Token-aware message windowing to prevent context explosion.
+    # Keep the first user message + as many recent messages as fit in budget.
+    _MAX_CONTEXT_TOKENS = 30_000
+    _CHARS_PER_TOKEN = 4  # rough estimate
+
     all_msgs = state["messages"]
-    if len(all_msgs) > 20:
-        messages = [SystemMessage(content=system_content)] + all_msgs[:1] + all_msgs[-20:]
-    else:
-        messages = [SystemMessage(content=system_content)] + all_msgs
+    system_tokens = len(system_content) // _CHARS_PER_TOKEN
+    budget_chars = (_MAX_CONTEXT_TOKENS - system_tokens) * _CHARS_PER_TOKEN
+
+    # Always keep the first user message
+    first_msg = all_msgs[:1] if all_msgs else []
+    first_chars = sum(len(str(getattr(m, 'content', ''))) for m in first_msg)
+
+    # Walk backwards through remaining messages, accumulating until budget exhausted
+    remaining = all_msgs[1:]
+    windowed = []
+    used_chars = first_chars
+    for m in reversed(remaining):
+        msg_chars = len(str(getattr(m, 'content', '')))
+        if used_chars + msg_chars > budget_chars:
+            break
+        windowed.insert(0, m)
+        used_chars += msg_chars
+
+    messages = [SystemMessage(content=system_content)] + first_msg + windowed
+    logger.info("Executor context: %d messages, ~%dk tokens (from %d total)",
+                len(messages), used_chars // (_CHARS_PER_TOKEN * 1000), len(all_msgs))
     response = await llm_with_tools.ainvoke(messages)
 
     # Track no-tool executions — if the LLM produces text instead of

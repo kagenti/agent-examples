@@ -285,6 +285,9 @@ async def _complete_child_session(child_context_id: str, result: str) -> None:
 # ---------------------------------------------------------------------------
 
 
+_SUBAGENT_EXCLUDED_TOOLS = {"delegate", "explore"}
+
+
 async def _run_in_process(
     task: str,
     workspace: str,
@@ -296,6 +299,9 @@ async def _run_in_process(
     """Execute a task as an in-process LangGraph subgraph."""
     if tools_list is None:
         tools_list = _make_explore_tools(workspace)
+    else:
+        # Exclude delegate/explore tools to prevent recursive sub-agent spawning.
+        tools_list = [t for t in tools_list if getattr(t, "name", "") not in _SUBAGENT_EXCLUDED_TOOLS]
 
     llm_with_tools = llm.bind_tools(tools_list)
 
