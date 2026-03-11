@@ -967,6 +967,7 @@ async def executor_node(
 
     result: dict[str, Any] = {
         "messages": [response],
+        "current_step": current_step,
         "model": model_name,
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
