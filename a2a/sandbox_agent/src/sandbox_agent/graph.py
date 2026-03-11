@@ -619,6 +619,39 @@ def build_graph(
     async def _reporter(state: SandboxState) -> dict[str, Any]:
         return await reporter_node(state, llm, budget=budget)
 
+    async def _step_selector(state: SandboxState) -> dict[str, Any]:
+        """Pick the next unfinished plan step for the executor.
+
+        No LLM call — pure state logic. Reads plan_steps, finds the first
+        step with status != 'done', sets current_step and resets tool counter.
+        """
+        plan = state.get("plan", [])
+        plan_steps = list(state.get("plan_steps", []))
+        current = state.get("current_step", 0)
+
+        # Find next non-done step starting from current
+        next_step = current
+        for i in range(current, len(plan_steps)):
+            status = plan_steps[i].get("status", "pending") if isinstance(plan_steps[i], dict) else "pending"
+            if status != "done":
+                next_step = i
+                break
+        else:
+            # All steps done — advance past the end (triggers done in reflector)
+            next_step = len(plan)
+
+        # Mark the selected step as running
+        if next_step < len(plan_steps):
+            if isinstance(plan_steps[next_step], dict):
+                plan_steps[next_step] = {**plan_steps[next_step], "status": "running"}
+
+        logger.info("StepSelector: advancing to step %d/%d (was %d)", next_step + 1, len(plan), current + 1)
+        return {
+            "current_step": next_step,
+            "plan_steps": plan_steps,
+            "_tool_call_count": 0,
+        }
+
     # -- Safe ToolNode wrapper — never crashes the graph --------------------
     _tool_node = ToolNode(tools)
 
@@ -668,6 +701,7 @@ def build_graph(
     graph = StateGraph(SandboxState)
     graph.add_node("router", _router)
     graph.add_node("planner", _planner)
+    graph.add_node("step_selector", _step_selector)
     graph.add_node("executor", _executor)
     graph.add_node("tools", _safe_tools)
     graph.add_node("reflector", _reflector)
@@ -678,9 +712,10 @@ def build_graph(
     graph.add_conditional_edges(
         "router",
         route_entry,
-        {"resume": "executor", "plan": "planner"},
+        {"resume": "step_selector", "plan": "planner"},
     )
-    graph.add_edge("planner", "executor")
+    graph.add_edge("planner", "step_selector")
+    graph.add_edge("step_selector", "executor")
 
     # Executor → tools (if tool_calls) or → reflector (if no tool_calls)
     graph.add_conditional_edges(
@@ -692,11 +727,11 @@ def build_graph(
     # results and decide on next actions (or signal completion).
     graph.add_edge("tools", "executor")
 
-    # Reflector → reporter (done), executor (continue), or planner (replan)
+    # Reflector → reporter (done), step_selector (continue), or planner (replan)
     graph.add_conditional_edges(
         "reflector",
         route_reflector,
-        {"done": "reporter", "execute": "executor", "replan": "planner"},
+        {"done": "reporter", "execute": "step_selector", "replan": "planner"},
     )
     graph.add_edge("reporter", "__end__")
 
