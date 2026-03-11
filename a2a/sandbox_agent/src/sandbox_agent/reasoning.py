@@ -1097,9 +1097,19 @@ async def reflector_node(
         recent_decisions=recent_str,
         replan_history=replan_history_text,
     )
-    # Include last few messages so reflector can see actual tool outputs,
-    # not just the truncated step_result summary.
-    recent_msgs = [m for m in messages[-6:] if not isinstance(m, SystemMessage)]
+    # Include last tool call pairs (AIMessage with tool_calls + ToolMessage with result)
+    # so reflector sees WHAT was run and WHAT the output was.
+    # Walk backwards to find complete AI→Tool pairs (last 3 pairs = 6 messages).
+    recent_msgs = []
+    pair_count = 0
+    for m in reversed(messages):
+        if isinstance(m, SystemMessage):
+            continue
+        recent_msgs.insert(0, m)
+        if isinstance(m, AIMessage) and getattr(m, 'tool_calls', None):
+            pair_count += 1
+            if pair_count >= 3:
+                break
     reflect_messages = [SystemMessage(content=system_content)] + recent_msgs
     response = await llm.ainvoke(reflect_messages)
 
