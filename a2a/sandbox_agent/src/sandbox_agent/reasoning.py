@@ -761,6 +761,7 @@ async def executor_node(
         # No more steps — signal completion to reflector
         return {
             "messages": [AIMessage(content="All plan steps completed.")],
+            "current_step": current_step,
             "done": True,
         }
 
@@ -772,6 +773,7 @@ async def executor_node(
         )
         return {
             "messages": [AIMessage(content=f"Step {current_step + 1} reached tool call limit ({MAX_TOOL_CALLS_PER_STEP}). Moving to reflection.")],
+            "current_step": current_step,
             "_tool_call_count": 0,
         }
 
@@ -792,7 +794,7 @@ async def executor_node(
     # Check budget before making the LLM call
     if budget.exceeded:
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
-        return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "done": True}
+        return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "current_step": current_step, "done": True}
 
     # Token-aware message windowing to prevent context explosion.
     # Keep the first user message + as many recent messages as fit in budget.
@@ -927,7 +929,8 @@ async def executor_node(
                 return {
                     "messages": [
                         AIMessage(content=_DEDUP_SENTINEL)
-                    ]
+                    ],
+                    "current_step": current_step,
                 }
             # Keep only genuinely new calls
             response = AIMessage(
@@ -968,6 +971,7 @@ async def executor_node(
                 logger.warning("Executor failed to call tools after 2 attempts — marking step failed")
                 return {
                     "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
+                    "current_step": current_step,
                     "done": True if current_step + 1 >= len(plan) else False,
                     "_no_tool_count": 0,
                 }

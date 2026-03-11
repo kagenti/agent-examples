@@ -411,6 +411,24 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Derive the decision keyword from the text
         decision = "done" if done else self._extract_decision(text)
 
+        # Strip prompt echo from assessment — the LLM sometimes echoes the
+        # system prompt instructions.  Extract only the actual decision word
+        # or a brief justification, never the echoed prompt.
+        assessment = text.strip()
+
+        # If the response contains prompt markers, it's an echo — just use the decision.
+        prompt_markers = (
+            "Output the single word:",
+            "output ONLY the decision word",
+            "Decide ONE of the following",
+            "DECISION PROCESS:",
+            "STALL DETECTION:",
+            "REPLAN RULES:",
+        )
+        is_prompt_echo = any(marker in assessment for marker in prompt_markers)
+        if is_prompt_echo or not assessment or len(assessment) > 200:
+            assessment = decision
+
         # Reset micro_step counter for next iteration
         self._micro_step = 0
 
@@ -424,7 +442,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "type": "reflector_decision",
             "loop_id": self._loop_id,
             "decision": decision,
-            "assessment": text,
+            "assessment": assessment,
             "iteration": iteration,
             "done": done,
             "current_step": current_step,
