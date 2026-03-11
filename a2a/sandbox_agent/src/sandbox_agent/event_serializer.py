@@ -102,6 +102,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
+        # Each node invocation gets a unique step index for chronological rendering.
+        # Previously only the reflector incremented _step_index, causing all events
+        # to pile into step=0.
+        if key not in ("tools",):
+            # Don't increment for tools node — it shares the executor's step
+            self._step_index += 1
+
         # Reasoning-loop nodes may emit state fields instead of messages
         if key == "router":
             # Router is an internal node — emit minimal event for logging
@@ -390,8 +397,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Derive the decision keyword from the text
         decision = "done" if done else self._extract_decision(text)
 
-        # Advance step index when reflector completes a step
-        self._step_index = current_step
+        # Reset micro_step counter for next iteration
         self._micro_step = 0
 
         model = value.get("model", "")
