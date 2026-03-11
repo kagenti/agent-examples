@@ -123,6 +123,26 @@ class LangGraphSerializer(FrameworkEventSerializer):
             result = self._serialize_planner(value)
         elif key == "reflector":
             result = self._serialize_reflector(value)
+        elif key == "step_selector":
+            current_step = value.get("current_step", 0)
+            plan_steps = value.get("plan_steps", [])
+            step_desc = ""
+            if current_step < len(plan_steps):
+                ps = plan_steps[current_step]
+                step_desc = ps.get("description", "") if isinstance(ps, dict) else str(ps)
+            brief = value.get("skill_instructions", "")
+            # Strip the "STEP BRIEF FROM COORDINATOR:" prefix
+            if "STEP BRIEF" in brief:
+                brief = brief.split("---")[0].replace("STEP BRIEF FROM COORDINATOR:", "").strip()
+            result = json.dumps({
+                "type": "step_selector",
+                "loop_id": self._loop_id,
+                "step": self._step_index,
+                "current_step": current_step,
+                "description": f"Advancing to step {current_step + 1}: {step_desc[:80]}",
+                "brief": brief[:500],
+                "done": value.get("done", False),
+            })
         elif key == "reporter":
             result = self._serialize_reporter(value)
         else:
