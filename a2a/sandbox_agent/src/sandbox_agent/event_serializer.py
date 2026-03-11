@@ -267,7 +267,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         if isinstance(content, list):
             text = self._extract_text_blocks(content)
         else:
-            text = str(content)[:5000] if content else ""
+            text = str(content)[:50000] if content else ""
 
         tool_calls = getattr(msg, "tool_calls", [])
         next_action = "tool_call" if tool_calls else "done"
@@ -289,7 +289,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "step": self._step_index,
             "micro_step": self._micro_step,
             "after_call_id": self._last_call_id,
-            "reasoning": text[:5000],
+            "reasoning": text[:50000],
             "next_action": next_action,
             "model": value.get("model", ""),
             "prompt_tokens": value.get("prompt_tokens", 0),
@@ -328,7 +328,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         data: dict = {}
         sp = value.get("_system_prompt", "")
         if sp:
-            data["system_prompt"] = sp[:5000]
+            data["system_prompt"] = sp[:50000]
         pm = value.get("_prompt_messages")
         if pm:
             data["prompt_messages"] = pm[:100]  # max 100 messages
