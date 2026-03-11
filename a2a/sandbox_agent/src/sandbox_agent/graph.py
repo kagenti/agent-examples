@@ -595,11 +595,11 @@ def build_graph(
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
-    # Don't force tool_choice="any" — the executor must be able to produce
-    # text-only responses to signal step completion and return to reflector.
-    # If the LLM writes text descriptions of tool calls instead of using
-    # the API, the executor's text-tool parser handles it.
-    llm_with_tools = llm.bind_tools(tools)
+    # tool_choice="any" is REQUIRED for Llama 4 Scout — without it the model
+    # writes text descriptions of tool calls and fabricates output instead of
+    # using the function calling API. Step boundaries are enforced by
+    # max_tool_calls_per_step limit, which triggers the reflector.
+    llm_with_tools = llm.bind_tools(tools, tool_choice="any")
 
     # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
