@@ -150,6 +150,8 @@ class SandboxState(MessagesState):
     _route: str
     _system_prompt: str
     _prompt_messages: list[dict]
+    _budget_summary: dict
+    _no_tool_count: int
     model: str
 
 
