@@ -722,13 +722,69 @@ class SandboxAgentExecutor(AgentExecutor):
 # ---------------------------------------------------------------------------
 
 
+class _MergingDatabaseTaskStore(DatabaseTaskStore):
+    """DatabaseTaskStore that preserves backend-managed metadata fields.
+
+    The backend writes fields like ``owner``, ``agent_name``, ``loop_events``
+    to the ``metadata`` column. The default ``save()`` uses SQLAlchemy
+    ``merge()`` which overwrites the entire row, losing those fields.
+
+    This subclass reads existing metadata before writing and merges
+    backend-managed keys so they survive A2A SDK updates.
+    """
+
+    _BACKEND_KEYS = frozenset({
+        "owner", "visibility", "title", "agent_name", "loop_events",
+    })
+
+    async def save(self, task, context=None):
+        """Save task while preserving backend-managed metadata fields."""
+        await self._ensure_initialized()
+
+        # Read existing metadata before overwriting
+        existing_meta = {}
+        async with self.async_session_maker() as session:
+            from sqlalchemy import select
+            stmt = select(self.task_model).where(self.task_model.id == task.id)
+            result = await session.execute(stmt)
+            existing = result.scalar_one_or_none()
+            if existing and existing.task_metadata:
+                raw = existing.task_metadata
+                if isinstance(raw, dict):
+                    existing_meta = raw
+                elif isinstance(raw, str):
+                    import json
+                    try:
+                        existing_meta = json.loads(raw)
+                    except (json.JSONDecodeError, TypeError):
+                        pass
+
+        # Merge: start with new task metadata, overlay backend fields from existing
+        merged = dict(task.metadata or {}) if task.metadata else {}
+        for key in self._BACKEND_KEYS:
+            if key in existing_meta and key not in merged:
+                merged[key] = existing_meta[key]
+
+        # Update task metadata with merged result
+        task.metadata = merged if merged else task.metadata
+
+        # Call parent save (which does session.merge)
+        db_task = self._to_orm(task)
+        async with self.async_session_maker.begin() as session:
+            await session.merge(db_task)
+            logger.debug("Task %s saved with merged metadata (keys=%s)",
+                         task.id, list(merged.keys()) if merged else [])
+
+
 def _create_task_store():
     """Create the appropriate TaskStore based on configuration.
 
-    Uses A2A SDK's DatabaseTaskStore (PostgreSQL) when TASK_STORE_DB_URL
+    Uses _MergingDatabaseTaskStore (PostgreSQL) when TASK_STORE_DB_URL
     is set. Falls back to InMemoryTaskStore for dev/test.
 
-    This is A2A-generic — works for any agent framework, not just LangGraph.
+    The merging store preserves backend-managed metadata fields (owner,
+    agent_name, loop_events) that would otherwise be overwritten by
+    the A2A SDK's session.merge().
     """
     import os
 
@@ -743,8 +799,8 @@ def _create_task_store():
             pool_recycle=300,  # Recycle connections every 5 min
             pool_pre_ping=True,  # Verify connection before use
         )
-        store = DatabaseTaskStore(engine)
-        logger.info("Using PostgreSQL TaskStore: %s", db_url.split("@")[-1])
+        store = _MergingDatabaseTaskStore(engine)
+        logger.info("Using MergingDatabaseTaskStore: %s", db_url.split("@")[-1])
         return store
 
     logger.info("Using InMemoryTaskStore (set TASK_STORE_DB_URL for persistence)")
