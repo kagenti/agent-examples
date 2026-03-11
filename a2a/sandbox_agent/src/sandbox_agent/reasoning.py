@@ -392,6 +392,12 @@ CRITICAL RULES:
 - If you cannot call a tool for any reason, respond with exactly:
   CANNOT_CALL_TOOL: <reason>
 
+STEP BOUNDARY — CRITICAL:
+- You are ONLY executing step {current_step}: "{step_text}"
+- When THIS step is done, STOP calling tools immediately.
+- Do NOT start the next step. The reflector will advance you.
+- Summarize what you accomplished and stop.
+
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
