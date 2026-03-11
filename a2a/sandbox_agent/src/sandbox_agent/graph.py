@@ -595,11 +595,13 @@ def build_graph(
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
-    # tool_choice="any" is REQUIRED for Llama 4 Scout — without it the model
-    # writes text descriptions of tool calls and fabricates output instead of
-    # using the function calling API. Step boundaries are enforced by
-    # max_tool_calls_per_step limit, which triggers the reflector.
-    llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+    # tool_choice="any" forces structured tool calls. Required for models like
+    # Llama 4 Scout that fabricate output without it. Configurable via env var.
+    _force_tool_choice = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "1") == "1"
+    if _force_tool_choice:
+        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+    else:
+        llm_with_tools = llm.bind_tools(tools)
 
     # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
