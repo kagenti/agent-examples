@@ -778,11 +778,15 @@ async def executor_node(
             "Step %d hit tool call limit (%d/%d) — forcing step completion",
             current_step, tool_call_count, MAX_TOOL_CALLS_PER_STEP,
         )
-        return {
+        result: dict[str, Any] = {
             "messages": [AIMessage(content=f"Step {current_step + 1} reached tool call limit ({MAX_TOOL_CALLS_PER_STEP}). Moving to reflection.")],
             "current_step": current_step,
             "_tool_call_count": 0,
+            "_budget_summary": budget.summary(),
         }
+        if _DEBUG_PROMPTS:
+            result["_system_prompt"] = f"[Tool call limit reached — no LLM call]\nStep {current_step + 1}: {tool_call_count}/{MAX_TOOL_CALLS_PER_STEP} tool calls"
+        return result
 
     step_text = plan[current_step]
     system_content = _safe_format(
@@ -1095,14 +1099,19 @@ async def reflector_node(
             break
         decisions_since_replan.insert(0, d)
 
+    # Check if executor hit the per-step tool call limit (not a stall — step is done)
+    hit_tool_limit = "tool call limit" in last_content.lower() or "reached tool call limit" in last_content.lower()
+
     # 1. Two consecutive no-tool iterations since last replan → stuck
+    #    BUT: skip stall detection if the executor hit the tool call limit
+    #    (that's a legitimate step completion, not a stall)
     no_tool_recent = 0
     for d in reversed(decisions_since_replan[-3:]):
         if d in ("replan", "continue"):
             no_tool_recent += 1
         else:
             break
-    if no_tool_recent >= 2 and tool_calls_this_iter == 0:
+    if no_tool_recent >= 2 and tool_calls_this_iter == 0 and not hit_tool_limit:
         return _force_done(f"Stall: {no_tool_recent + 1} consecutive iterations with 0 tool calls")
 
     # 2. Identical executor output across 2 consecutive iterations → stuck
