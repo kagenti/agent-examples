@@ -717,6 +717,7 @@ async def planner_node(
         system_content = skill_instructions + "\n\n" + system_content
 
     plan_messages = [SystemMessage(content=system_content)] + messages
+    await budget.refresh_from_litellm()
     response = await llm.ainvoke(plan_messages)
 
     usage = getattr(response, 'usage_metadata', None) or {}
@@ -802,7 +803,8 @@ async def executor_node(
     if skill_instructions:
         system_content = skill_instructions + "\n\n" + system_content
 
-    # Check budget before making the LLM call
+    # Check budget before making the LLM call (refresh from LiteLLM first)
+    await budget.refresh_from_litellm()
     if budget.exceeded:
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
         result: dict[str, Any] = {
@@ -1072,6 +1074,7 @@ async def reflector_node(
         return result
 
     # Budget guard — force termination if ANY budget limit exceeded
+    await budget.refresh_from_litellm()
     if budget.exceeded:
         return _force_done(f"Budget exceeded: {budget.exceeded_reason}")
 
@@ -1387,6 +1390,7 @@ async def reporter_node(
         if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
     ]
     messages = [SystemMessage(content=system_content)] + filtered_msgs
+    await budget.refresh_from_litellm()
     response = await llm.ainvoke(messages)
 
     # Extract token usage from the LLM response

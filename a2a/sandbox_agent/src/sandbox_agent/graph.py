@@ -565,6 +565,7 @@ def build_graph(
     config = Configuration()  # type: ignore[call-arg]
     # -- Budget -------------------------------------------------------------
     budget = AgentBudget()
+    budget.set_session_id(context_id)
 
     llm = ChatOpenAI(
         model=config.llm_model,
