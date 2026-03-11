@@ -390,10 +390,28 @@ CRITICAL RULES:
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
+## Workspace Layout
+Your working directory is the session workspace. Pre-created subdirs:
+- **repos/** — clone repositories here
+- **output/** — write reports, logs, analysis results here
+- **data/** — intermediate data files
+- **scripts/** — generated scripts
+Use relative paths (e.g. `repos/kagenti`, `output/report.md`).
+Each shell command starts fresh from this workspace root — `cd` does NOT
+persist between calls. Chain commands: `cd repos/kagenti && git log`.
+
+## Handling Large Output
+Tool output is truncated to 10KB. For commands that produce large output:
+- Redirect to a file: `gh api ... > output/api-response.json`
+- Then analyze with grep: `grep 'failure' output/api-response.json`
+- Or extract specific fields: `cat output/api-response.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['total_count'])"`
+- NEVER run `gh api` or `curl` without redirecting or piping — the response will be truncated.
+
 ## Debugging Guidelines
-- If a path is not accessible or a file is not found, run `echo $PWD` to check your current directory
-- If a command fails with "unknown flag" or similar, run the command with `--help` to see correct parameters
-- If you get "Permission denied", check file permissions with `ls -la`
+- If a path is not accessible, run `ls` to check what exists in the workspace
+- If a command fails with "unknown flag", run `command --help` to see valid options
+- If you get "Permission denied", you may be writing outside the workspace
+- If disk is full, use `output/` dir (pre-created, writable)
 - After each tool call, analyze the output carefully before deciding the next action
 - If a command produces no output, it may have succeeded silently — verify with a follow-up check
 """
@@ -754,8 +772,13 @@ async def executor_node(
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
         return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "done": True}
 
-    # Include the conversation history so the executor has full context
-    messages = [SystemMessage(content=system_content)] + state["messages"]
+    # Include recent conversation history (windowed to prevent context blowout).
+    # Keep the first user message + last 20 messages for context.
+    all_msgs = state["messages"]
+    if len(all_msgs) > 20:
+        messages = [SystemMessage(content=system_content)] + all_msgs[:1] + all_msgs[-20:]
+    else:
+        messages = [SystemMessage(content=system_content)] + all_msgs
     response = await llm_with_tools.ainvoke(messages)
 
     # Track no-tool executions — if the LLM produces text instead of
@@ -1074,7 +1097,10 @@ async def reflector_node(
         recent_decisions=recent_str,
         replan_history=replan_history_text,
     )
-    reflect_messages = [SystemMessage(content=system_content)]
+    # Include last few messages so reflector can see actual tool outputs,
+    # not just the truncated step_result summary.
+    recent_msgs = [m for m in messages[-6:] if not isinstance(m, SystemMessage)]
+    reflect_messages = [SystemMessage(content=system_content)] + recent_msgs
     response = await llm.ainvoke(reflect_messages)
 
     # Extract token usage from the LLM response

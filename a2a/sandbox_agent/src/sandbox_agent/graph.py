@@ -278,8 +278,11 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
     return shell
 
 
+_MAX_TOOL_OUTPUT = 10_000  # chars — prevent context window blowout
+
+
 def _format_result(result: Any) -> str:
-    """Format an ExecutionResult into a string."""
+    """Format an ExecutionResult into a string, truncating large output."""
     parts: list[str] = []
     if result.stdout:
         parts.append(result.stdout)
@@ -287,7 +290,12 @@ def _format_result(result: Any) -> str:
         parts.append(f"STDERR: {result.stderr}")
     if result.exit_code != 0:
         parts.append(f"EXIT_CODE: {result.exit_code}")
-    return "\n".join(parts) if parts else "(no output)"
+    text = "\n".join(parts) if parts else "(no output)"
+    if len(text) > _MAX_TOOL_OUTPUT:
+        kept = text[:_MAX_TOOL_OUTPUT]
+        dropped = len(text) - _MAX_TOOL_OUTPUT
+        text = f"{kept}\n\n[OUTPUT TRUNCATED — {dropped:,} chars omitted. Redirect large output to a file: command > output/result.txt]"
+    return text
 
 
 def _is_rate_limited(output: str) -> bool:
