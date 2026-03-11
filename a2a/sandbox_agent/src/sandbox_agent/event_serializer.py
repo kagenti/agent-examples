@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
@@ -94,11 +95,11 @@ class LangGraphSerializer(FrameworkEventSerializer):
     """
 
     def __init__(self, loop_id: str | None = None, context_id: str | None = None) -> None:
-        import uuid
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
+        self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
         # Reasoning-loop nodes may emit state fields instead of messages
@@ -197,9 +198,9 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         parts = []
 
-        # Emit micro_reasoning for subsequent executor calls within the same step
-        if self._micro_step > 0:
-            parts.append(self._serialize_micro_reasoning(msg, value or {}))
+        # Always emit micro_reasoning — captures "why this tool?" for first call
+        # and "what did the result tell me?" for subsequent calls
+        parts.append(self._serialize_micro_reasoning(msg, value or {}))
 
         self._micro_step += 1
 
@@ -228,10 +229,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts.append(json.dumps(dict(step_payload, type="plan_step")))
 
         if tool_calls:
+            call_id = str(uuid.uuid4())[:8]
+            self._last_call_id = call_id
             parts.append(json.dumps({
                 "type": "tool_call",
                 "loop_id": self._loop_id,
                 "step": self._step_index,
+                "call_id": call_id,
                 "tools": [
                     _safe_tc(tc)
                     for tc in tool_calls
@@ -242,10 +246,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Emit tool_call event for text-parsed tools (no structured tool_calls)
         parsed_tools = _v.get("parsed_tools", [])
         if parsed_tools:
+            call_id = str(uuid.uuid4())[:8]
+            self._last_call_id = call_id
             parts.append(json.dumps({
                 "type": "tool_call",
                 "loop_id": self._loop_id,
                 "step": self._step_index,
+                "call_id": call_id,
                 "tools": [
                     {"name": t["name"], "args": t.get("args", {})}
                     for t in parsed_tools
@@ -281,6 +288,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "loop_id": self._loop_id,
             "step": self._step_index,
             "micro_step": self._micro_step,
+            "after_call_id": self._last_call_id,
             "reasoning": text[:5000],
             "next_action": next_action,
             "model": value.get("model", ""),
@@ -293,12 +301,25 @@ class LangGraphSerializer(FrameworkEventSerializer):
         """Serialize a tool node output with loop_id."""
         name = getattr(msg, "name", "unknown")
         content = getattr(msg, "content", "")
+        content_str = str(content)
+        is_error = (
+            content_str.startswith("STDERR:") or
+            content_str.startswith("\u274c") or
+            "Error:" in content_str or
+            "error:" in content_str[:100] or
+            "Permission denied" in content_str or
+            "command not found" in content_str or
+            "No such file" in content_str
+        )
+        status = "error" if is_error else "success"
         return json.dumps({
             "type": "tool_result",
             "loop_id": self._loop_id,
             "step": self._step_index,
+            "call_id": self._last_call_id,
             "name": str(name),
-            "output": str(content)[:2000],
+            "output": content_str[:2000],
+            "status": status,
         })
 
     @staticmethod

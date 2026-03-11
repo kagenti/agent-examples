@@ -389,6 +389,13 @@ CRITICAL RULES:
 
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
+
+## Debugging Guidelines
+- If a path is not accessible or a file is not found, run `echo $PWD` to check your current directory
+- If a command fails with "unknown flag" or similar, run the command with `--help` to see correct parameters
+- If you get "Permission denied", check file permissions with `ls -la`
+- After each tool call, analyze the output carefully before deciding the next action
+- If a command produces no output, it may have succeeded silently — verify with a follow-up check
 """
 
 _REFLECTOR_SYSTEM = """\
