@@ -265,6 +265,17 @@ class LangGraphSerializer(FrameworkEventSerializer):
         tool_calls = getattr(msg, "tool_calls", [])
         next_action = "tool_call" if tool_calls else "done"
 
+        # When the LLM responds with only tool calls and no text reasoning,
+        # generate a summary so the micro-reasoning block isn't empty.
+        if not text and tool_calls:
+            summaries = []
+            for tc in tool_calls[:5]:
+                name = tc.get("name", "?")
+                args = tc.get("args", {})
+                args_str = json.dumps(args, default=str)[:200]
+                summaries.append(f"→ {name}({args_str})")
+            text = "Decided next action:\n" + "\n".join(summaries)
+
         return json.dumps({
             "type": "micro_reasoning",
             "loop_id": self._loop_id,
