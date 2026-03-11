@@ -145,6 +145,17 @@ class LangGraphSerializer(FrameworkEventSerializer):
                         text = str(content)[:2000] if content else f"[{key}]"
                     result = json.dumps({"type": "llm_response", "content": text})
 
+        # Append budget_update event if _budget_summary is in the value dict
+        budget_summary = value.get("_budget_summary")
+        if budget_summary and isinstance(budget_summary, dict):
+            budget_event = json.dumps({
+                "type": "budget_update",
+                "loop_id": self._loop_id,
+                "step": self._step_index,
+                **budget_summary,
+            })
+            result = result + "\n" + budget_event
+
         # Log each serialized event for pipeline observability (Stage 1)
         for line in result.split("\n"):
             line = line.strip()

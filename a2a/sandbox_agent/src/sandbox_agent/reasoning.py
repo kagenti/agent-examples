@@ -973,9 +973,9 @@ async def reflector_node(
             "replan_count": replan_count,
         }
 
-    # Budget guard — force termination if iterations exceeded
-    if iteration >= budget.max_iterations:
-        return _force_done(f"Budget exceeded: {iteration}/{budget.max_iterations} iterations used")
+    # Budget guard — force termination if ANY budget limit exceeded
+    if budget.exceeded:
+        return _force_done(f"Budget exceeded: {budget.exceeded_reason}")
 
     # Count tool calls in this iteration (from executor's last message)
     messages = state["messages"]
