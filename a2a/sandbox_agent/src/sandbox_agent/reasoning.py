@@ -88,11 +88,16 @@ def _summarize_messages(messages: list) -> list[dict[str, str]]:
                 if isinstance(b, dict) and b.get("type") == "text"
             )
         text = str(content)
-        # Tool calls
+        # Tool calls — include name + args so the preview shows what was executed
         tool_calls = getattr(msg, "tool_calls", None)
         if tool_calls:
-            tc_names = [tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?") for tc in tool_calls]
-            text = f"[tool_calls: {', '.join(tc_names)}] {text[:2000]}"
+            tc_summaries = []
+            for tc in tool_calls:
+                name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                args_str = str(args)[:500] if args else ""
+                tc_summaries.append(f"{name}({args_str})" if args_str else name)
+            text = f"[tool_calls: {'; '.join(tc_summaries)}] {text[:2000]}"
         # ToolMessage
         tool_name = getattr(msg, "name", None)
         if role == "tool" and tool_name:
