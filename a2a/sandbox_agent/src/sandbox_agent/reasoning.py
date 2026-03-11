@@ -38,6 +38,10 @@ from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from sandbox_agent.budget import AgentBudget
 
+# Debug prompts: include full system prompt + message history in events.
+# Disabled by default to reduce event size and prevent OOM on large sessions.
+_DEBUG_PROMPTS = _os.environ.get("SANDBOX_DEBUG_PROMPTS", "1") == "1"
+
 logger = logging.getLogger(__name__)
 
 # Sentinel text returned by the executor when all tool calls in a step have
@@ -737,8 +741,8 @@ async def planner_node(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
-        "_system_prompt": system_content[:10000],
-        "_prompt_messages": _summarize_messages(plan_messages),
+        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+        **({"_prompt_messages": _summarize_messages(plan_messages)} if _DEBUG_PROMPTS else {}),
     }
 
 
@@ -988,8 +992,8 @@ async def executor_node(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
-        "_system_prompt": system_content[:10000],
-        "_prompt_messages": _summarize_messages(messages),
+        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+        **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
     }
@@ -1221,8 +1225,8 @@ async def reflector_node(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
-        "_system_prompt": system_content[:10000],
-        "_prompt_messages": _summarize_messages(reflect_messages),
+        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+        **({"_prompt_messages": _summarize_messages(reflect_messages)} if _DEBUG_PROMPTS else {}),
     }
 
     if decision == "done":
@@ -1406,8 +1410,8 @@ async def reporter_node(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
-        "_system_prompt": system_content[:10000],
-        "_prompt_messages": _summarize_messages(messages),
+        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+        **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
     }
 
 
