@@ -62,12 +62,12 @@ class AgentBudget:
         LangGraph recursion limit passed to graph invocation config.
     """
 
-    max_iterations: int = _env_int("SANDBOX_MAX_ITERATIONS", 200)
+    max_iterations: int = _env_int("SANDBOX_MAX_ITERATIONS", 100)
     max_tool_calls_per_step: int = _env_int("SANDBOX_MAX_TOOL_CALLS_PER_STEP", 10)
     max_tokens: int = _env_int("SANDBOX_MAX_TOKENS", 1_000_000)
     max_wall_clock_s: int = _env_int("SANDBOX_MAX_WALL_CLOCK_S", 600)
     hitl_interval: int = _env_int("SANDBOX_HITL_INTERVAL", 50)
-    recursion_limit: int = _env_int("SANDBOX_RECURSION_LIMIT", 50)
+    recursion_limit: int = _env_int("SANDBOX_RECURSION_LIMIT", 2000)
     llm_timeout: int = _env_int("SANDBOX_LLM_TIMEOUT", 300)
     llm_max_retries: int = _env_int("SANDBOX_LLM_MAX_RETRIES", 3)
 
