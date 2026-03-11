@@ -435,6 +435,9 @@ Tool output is truncated to 10KB. For commands that produce large output:
 - If disk is full, use `output/` dir (pre-created, writable)
 - After each tool call, analyze the output carefully before deciding the next action
 - If a command produces no output, it may have succeeded silently — verify with a follow-up check
+- Check error output (stderr) before retrying the same command
+- For `gh` CLI: use `gh <command> --help` to verify flags — do NOT guess flag names
+- For large API responses: redirect to a file first (`gh api ... > output/file.json`)
 """
 
 _REFLECTOR_SYSTEM = """\
@@ -798,7 +801,14 @@ async def executor_node(
     # Check budget before making the LLM call
     if budget.exceeded:
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
-        return {"messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")], "current_step": current_step, "done": True}
+        result: dict[str, Any] = {
+            "messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")],
+            "current_step": current_step,
+            "done": True,
+        }
+        if _DEBUG_PROMPTS:
+            result["_system_prompt"] = f"[Budget exceeded — no LLM call]\n{budget.exceeded_reason}"
+        return result
 
     # Token-aware message windowing to prevent context explosion.
     # Keep the first user message + as many recent messages as fit in budget.
@@ -1028,7 +1038,10 @@ async def reflector_node(
 
     # If executor signaled done (ran out of steps), go straight to done
     if done:
-        return {"done": True}
+        result: dict[str, Any] = {"done": True, "decision": "done", "assessment": "Executor signaled completion."}
+        if _DEBUG_PROMPTS:
+            result["_system_prompt"] = "[Executor signaled done — no LLM call]"
+        return result
 
     def _force_done(reason: str) -> dict[str, Any]:
         """Helper for early termination — marks current step failed, rest skipped."""
@@ -1039,13 +1052,20 @@ async def reflector_node(
             if ps[i].get("status") == "pending":
                 ps[i] = {**ps[i], "status": "skipped"}
         logger.warning("%s — forcing done", reason)
-        return {
+        result: dict[str, Any] = {
             "step_results": step_results,
             "plan_steps": ps,
             "current_step": current_step + 1,
             "done": True,
             "replan_count": replan_count,
+            "assessment": reason,
+            "decision": "done",
         }
+        # Include prompt context so the UI can show why the reflector
+        # terminated early (budget, stall, duplicate output).
+        if _DEBUG_PROMPTS:
+            result["_system_prompt"] = f"[Early termination — no LLM call]\n{reason}"
+        return result
 
     # Budget guard — force termination if ANY budget limit exceeded
     if budget.exceeded:
