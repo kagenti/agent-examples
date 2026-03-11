@@ -1157,6 +1157,18 @@ async def reflector_node(
     budget.add_tokens(prompt_tokens + completion_tokens)
 
     decision = _parse_decision(response.content)
+
+    # Guard: if the LLM says "done" but there are remaining plan steps,
+    # override to "continue". The LLM (esp. Llama 4 Scout) often confuses
+    # "step completed" with "task completed".
+    steps_remaining = len(plan) - (current_step + 1)
+    if decision == "done" and steps_remaining > 0:
+        logger.warning(
+            "Reflector said 'done' but %d plan steps remain — overriding to 'continue'",
+            steps_remaining,
+        )
+        decision = "continue"
+
     recent_decisions.append(decision)
     recent_decisions = recent_decisions[-10:]
 
