@@ -125,6 +125,17 @@ def setup_observability() -> None:
         W3CBaggagePropagator(),
     ]))
 
+    # Instrument httpx for automatic traceparent propagation on outgoing requests.
+    # langchain-mcp-adapters uses httpx for streamable_http transport, so each MCP
+    # tool call will automatically carry the current span's traceparent header
+    try:
+        from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+        HTTPXClientInstrumentor().instrument()
+        logger.info("httpx instrumented for automatic trace context propagation")
+    except ImportError:
+        logger.warning("opentelemetry-instrumentation-httpx not available - "
+                       "MCP tool calls will not propagate trace context")
+
     # Instrument OpenAI for GenAI semantic conventions
     try:
         from opentelemetry.instrumentation.openai import OpenAIInstrumentor
@@ -396,7 +407,7 @@ def create_tracing_middleware():
 
     async def tracing_middleware(request: Request, call_next):
         # Skip non-API paths (health checks, agent card, etc.)
-        if request.url.path in ["/health", "/ready", "/.well-known/agent-card.json"]:
+        if request.url.path in ["/health", "/ready", "/.well-known/agent-card.json", "/.well-known/agent.json"]:
             return await call_next(request)
 
         tracer = get_tracer()
@@ -421,10 +432,10 @@ def create_tracing_middleware():
         except Exception as e:
             logger.debug(f"Could not parse request body: {e}")
 
-        # Break parent chain to make this a true root span
-        # Without this, the span would inherit parent from W3C Trace Context headers
-        empty_ctx = context.Context()
-        detach_token = context.attach(empty_ctx)
+        # Extract incoming W3C Trace Context from request headers to connect
+        # agent spans to MCP gateway spans
+        incoming_ctx = extract(dict(request.headers))
+        detach_token = context.attach(incoming_ctx)
 
         try:
             # Create root span with correct GenAI naming convention

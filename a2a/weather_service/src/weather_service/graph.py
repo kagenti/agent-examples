@@ -13,6 +13,12 @@ class ExtendedMessagesState(MessagesState):
      final_answer: str = ""
 
 def get_mcpclient():
+    """Create an MCP client.
+
+    Trace context propagation (traceparent headers) to the MCP gateway is
+    handled automatically by opentelemetry-instrumentation-httpx, which
+    injects the current span's context on every outgoing HTTP request.
+    """
     return MultiServerMCPClient({
         "math": {
             "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
