@@ -1,18 +1,14 @@
 import logging
-
 from typing import Any
 from uuid import uuid4
 
 import httpx
-
 from a2a.client import A2ACardResolver, A2AClient
 from a2a.types import (
     AgentCard,
     MessageSendParams,
-    SendMessageRequest,
     SendStreamingMessageRequest,
 )
-
 
 PUBLIC_AGENT_CARD_PATH = "/.well-known/agent.json"
 EXTENDED_AGENT_CARD_PATH = "/agent/authenticatedExtendedCard"
@@ -40,21 +36,15 @@ async def main() -> None:
         # --8<-- [end:A2ACardResolver]
 
         # Fetch Public Agent Card and Initialize Client
-        final_agent_card_to_use: AgentCard | None = None
+        _final_agent_card_to_use: AgentCard | None = None
 
         try:
-            logger.info(
-                f"Attempting to fetch public agent card from: {base_url}{PUBLIC_AGENT_CARD_PATH}"
-            )
-            _public_card = (
-                await resolver.get_agent_card()
-            )  # Fetches from default public path
+            logger.info(f"Attempting to fetch public agent card from: {base_url}{PUBLIC_AGENT_CARD_PATH}")
+            _public_card = await resolver.get_agent_card()  # Fetches from default public path
             logger.info("Successfully fetched public agent card:")
             logger.info(_public_card.model_dump_json(indent=2, exclude_none=True))
-            final_agent_card_to_use = _public_card
-            logger.info(
-                "\nUsing PUBLIC agent card for client initialization (default)."
-            )
+            _final_agent_card_to_use = _public_card
+            logger.info("\nUsing PUBLIC agent card for client initialization (default).")
 
             if _public_card.supportsAuthenticatedExtendedCard:
                 try:
@@ -63,44 +53,26 @@ async def main() -> None:
                         "Attempting to fetch from: "
                         f"{base_url}{EXTENDED_AGENT_CARD_PATH}"
                     )
-                    auth_headers_dict = {
-                        "Authorization": "Bearer dummy-token-for-extended-card"
-                    }
+                    auth_headers_dict = {"Authorization": "Bearer dummy-token-for-extended-card"}
                     _extended_card = await resolver.get_agent_card(
                         relative_card_path=EXTENDED_AGENT_CARD_PATH,
                         http_kwargs={"headers": auth_headers_dict},
                     )
-                    logger.info(
-                        "Successfully fetched authenticated extended agent card:"
-                    )
-                    logger.info(
-                        _extended_card.model_dump_json(indent=2, exclude_none=True)
-                    )
-                    final_agent_card_to_use = (
-                        _extended_card  # Update to use the extended card
-                    )
-                    logger.info(
-                        "\nUsing AUTHENTICATED EXTENDED agent card for client "
-                        "initialization."
-                    )
+                    logger.info("Successfully fetched authenticated extended agent card:")
+                    logger.info(_extended_card.model_dump_json(indent=2, exclude_none=True))
+                    _final_agent_card_to_use = _extended_card  # Update to use the extended card
+                    logger.info("\nUsing AUTHENTICATED EXTENDED agent card for client initialization.")
                 except Exception as e_extended:
                     logger.warning(
-                        f"Failed to fetch extended agent card: {e_extended}. "
-                        "Will proceed with public card.",
+                        f"Failed to fetch extended agent card: {e_extended}. Will proceed with public card.",
                         exc_info=True,
                     )
             elif _public_card:  # supportsAuthenticatedExtendedCard is False or None
-                logger.info(
-                    "\nPublic card does not indicate support for an extended card. Using public card."
-                )
+                logger.info("\nPublic card does not indicate support for an extended card. Using public card.")
 
         except Exception as e:
-            logger.error(
-                f"Critical error fetching public agent card: {e}", exc_info=True
-            )
-            raise RuntimeError(
-                "Failed to fetch the public agent card. Cannot continue."
-            ) from e
+            logger.error(f"Critical error fetching public agent card: {e}", exc_info=True)
+            raise RuntimeError("Failed to fetch the public agent card. Cannot continue.") from e
 
         # --8<-- [start:send_message]
         client = A2AClient(

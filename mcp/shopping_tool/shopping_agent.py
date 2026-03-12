@@ -1,11 +1,12 @@
 """Shopping Agent MCP Tool - Uses SerpAPI for product search"""
 
 import argparse
-import os
-import sys
 import json
 import logging
+import os
+import sys
 from typing import Any, Dict, Optional, Union
+
 from fastmcp import FastMCP
 from serpapi import GoogleSearch
 
@@ -48,9 +49,7 @@ AGENT_CARD = {
 }
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def recommend_products(query: str, max_results: int = 10) -> str:
     """
     Recommend products based on natural language query (e.g., "good curtains under $40")
@@ -105,9 +104,7 @@ def recommend_products(query: str, max_results: int = 10) -> str:
             product = {
                 "name": item.get("title"),
                 "price": item.get("price"),
-                "description": item.get("snippet")
-                or item.get("description")
-                or "No description available",
+                "description": item.get("snippet") or item.get("description") or "No description available",
                 "url": item.get("link"),
                 "thumbnail": item.get("thumbnail"),
                 "source": item.get("source"),
@@ -137,9 +134,7 @@ def recommend_products(query: str, max_results: int = 10) -> str:
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def search_products(query: str, max_results: int = 10) -> str:
     """
     Search for products using standard Google Search (internal tool)
@@ -155,9 +150,7 @@ def search_products(query: str, max_results: int = 10) -> str:
     if not isinstance(query, str) or not query.strip():
         return json.dumps({"error": "Query parameter must be a non-empty string."})
     if len(query) > 256:
-        return json.dumps(
-            {"error": "Query parameter is too long (max 256 characters)."}
-        )
+        return json.dumps({"error": "Query parameter is too long (max 256 characters)."})
     logger.info(f"Searching products for query: '{query}'")
 
     if not SERPAPI_API_KEY:
@@ -305,15 +298,11 @@ def main() -> int:
     args = _parse_args()
 
     if SERPAPI_API_KEY is None:
-        logger.error(
-            "Please configure the SERPAPI_API_KEY environment variable before running the server"
-        )
+        logger.error("Please configure the SERPAPI_API_KEY environment variable before running the server")
         return 1
 
     logger.info("Starting Shopping Agent MCP Server with SerpAPI")
-    logger.info(
-        "Note: This server provides search results. The calling agent provides reasoning."
-    )
+    logger.info("Note: This server provides search results. The calling agent provides reasoning.")
 
     run_server(
         transport=args.transport,

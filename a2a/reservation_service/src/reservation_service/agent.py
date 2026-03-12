@@ -1,18 +1,18 @@
 import logging
 import os
-import uvicorn
 from textwrap import dedent
 
+import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from starlette.routing import Route
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
 
 from reservation_service.graph import get_graph, get_mcpclient
 
@@ -80,9 +80,7 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(
-        self, message: str, final: bool = False, failed: bool = False
-    ) -> None:
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
@@ -137,9 +135,7 @@ class ReservationExecutor(AgentExecutor):
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info(
-                    f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}"
-                )
+                logger.info(f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}")
             except Exception as tool_error:
                 logger.error(f"Failed to connect to MCP server: {tool_error}")
                 await event_emitter.emit_event(
@@ -164,14 +160,10 @@ class ReservationExecutor(AgentExecutor):
                 final_answer = output.get("assistant", {}).get("final_answer")
                 await event_emitter.emit_event(str(final_answer), final=True)
             else:
-                await event_emitter.emit_event(
-                    "No events produced by the graph.", final=True
-                )
+                await event_emitter.emit_event("No events produced by the graph.", final=True)
         except Exception as e:
             logger.error(f"Graph execution error: {e}")
-            await event_emitter.emit_event(
-                f"Error: Failed to process reservation request. {str(e)}", failed=True
-            )
+            await event_emitter.emit_event(f"Error: Failed to process reservation request. {str(e)}", failed=True)
             raise Exception(str(e))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

@@ -1,20 +1,20 @@
 import logging
-import uvicorn
 from textwrap import dedent
 
+import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from starlette.routing import Route
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
 
-from generic_agent.graph import get_graph, get_mcpclient, get_mcp_server_names
 from generic_agent.config import Configuration
+from generic_agent.graph import get_graph, get_mcp_server_names, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -32,9 +32,7 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         mcp_names = []
     mcp_section = ""
     if mcp_names:
-        mcp_section = "\n\nConnected MCP Servers:\n" + "\n".join(
-            f"- {name}" for name in mcp_names
-        )
+        mcp_section = "\n\nConnected MCP Servers:\n" + "\n".join(f"- {name}" for name in mcp_names)
 
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
@@ -71,9 +69,7 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(
-        self, message: str, final: bool = False, failed: bool = False
-    ) -> None:
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         """
         Emit an event to update task status.
 
@@ -166,21 +162,15 @@ class GenericExecutor(AgentExecutor):
                 output = event
                 logger.info(f"event: {event}")
 
-            final_answer = (
-                output.get("assistant", {}).get("final_answer") if output else None
-            )
+            final_answer = output.get("assistant", {}).get("final_answer") if output else None
             if final_answer is None:
                 logger.warning("No final answer received from graph execution")
-                await event_emitter.emit_event(
-                    "Task completed but no final answer was generated.", final=True
-                )
+                await event_emitter.emit_event("Task completed but no final answer was generated.", final=True)
             else:
                 await event_emitter.emit_event(str(final_answer), final=True)
         except Exception as e:
             logger.error(f"Graph execution error: {e}")
-            await event_emitter.emit_event(
-                f"Error: Failed to process request. {str(e)}", failed=True
-            )
+            await event_emitter.emit_event(f"Error: Failed to process request. {str(e)}", failed=True)
             raise Exception(str(e))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:

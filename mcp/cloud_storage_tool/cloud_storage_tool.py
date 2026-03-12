@@ -2,12 +2,13 @@ import json
 import logging
 import os
 import sys
-from typing import List, Dict, Any, Tuple
+from typing import Any, Dict, List, Tuple
+
+import boto3
+from azure.storage.blob import BlobServiceClient
 from fastmcp import FastMCP
 from google.cloud import storage
 from google.oauth2 import service_account
-import boto3
-from azure.storage.blob import BlobServiceClient
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -59,14 +60,10 @@ def get_gcs_client():
         if GCP_SERVICE_ACCOUNT_KEY.startswith("{"):
             # It's a JSON string
             credentials_info = json.loads(GCP_SERVICE_ACCOUNT_KEY)
-            credentials = service_account.Credentials.from_service_account_info(
-                credentials_info
-            )
+            credentials = service_account.Credentials.from_service_account_info(credentials_info)
         else:
             # It's a file path
-            credentials = service_account.Credentials.from_service_account_file(
-                GCP_SERVICE_ACCOUNT_KEY
-            )
+            credentials = service_account.Credentials.from_service_account_file(GCP_SERVICE_ACCOUNT_KEY)
 
         client = storage.Client(credentials=credentials, project=GCP_PROJECT_ID)
         logger.info("Successfully authenticated with GCP")
@@ -101,14 +98,10 @@ def get_azure_blob_service_client():
     """Create and return an Azure Blob Service client."""
     try:
         if AZURE_STORAGE_CONNECTION_STRING:
-            client = BlobServiceClient.from_connection_string(
-                AZURE_STORAGE_CONNECTION_STRING
-            )
+            client = BlobServiceClient.from_connection_string(AZURE_STORAGE_CONNECTION_STRING)
         elif AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY:
             account_url = f"https://{AZURE_STORAGE_ACCOUNT_NAME}.blob.core.windows.net"
-            client = BlobServiceClient(
-                account_url=account_url, credential=AZURE_STORAGE_ACCOUNT_KEY
-            )
+            client = BlobServiceClient(account_url=account_url, credential=AZURE_STORAGE_ACCOUNT_KEY)
         else:
             logger.error("Azure credentials not configured")
             return None
@@ -120,9 +113,7 @@ def get_azure_blob_service_client():
         return None
 
 
-def list_objects_unified(
-    provider: str, bucket_or_container: str
-) -> List[Dict[str, Any]]:
+def list_objects_unified(provider: str, bucket_or_container: str) -> List[Dict[str, Any]]:
     """List objects from any cloud provider."""
     objects = []
 
@@ -140,9 +131,7 @@ def list_objects_unified(
                     "name": blob.name,
                     "size": blob.size,
                     "content_type": blob.content_type,
-                    "created": blob.time_created.isoformat()
-                    if blob.time_created
-                    else None,
+                    "created": blob.time_created.isoformat() if blob.time_created else None,
                     "updated": blob.updated.isoformat() if blob.updated else None,
                     "storage_class": blob.storage_class,
                     "public_url": blob.public_url,
@@ -162,12 +151,8 @@ def list_objects_unified(
                         "name": obj["Key"],
                         "size": obj["Size"],
                         "content_type": None,
-                        "created": obj["LastModified"].isoformat()
-                        if "LastModified" in obj
-                        else None,
-                        "updated": obj["LastModified"].isoformat()
-                        if "LastModified" in obj
-                        else None,
+                        "created": obj["LastModified"].isoformat() if "LastModified" in obj else None,
+                        "updated": obj["LastModified"].isoformat() if "LastModified" in obj else None,
                         "storage_class": obj.get("StorageClass"),
                         "public_url": f"s3://{bucket_or_container}/{obj['Key']}",
                     }
@@ -186,15 +171,9 @@ def list_objects_unified(
                 {
                     "name": blob.name,
                     "size": blob.size,
-                    "content_type": blob.content_settings.content_type
-                    if blob.content_settings
-                    else None,
-                    "created": blob.creation_time.isoformat()
-                    if blob.creation_time
-                    else None,
-                    "updated": blob.last_modified.isoformat()
-                    if blob.last_modified
-                    else None,
+                    "content_type": blob.content_settings.content_type if blob.content_settings else None,
+                    "created": blob.creation_time.isoformat() if blob.creation_time else None,
+                    "updated": blob.last_modified.isoformat() if blob.last_modified else None,
                     "storage_class": blob.blob_tier,
                     "public_url": f"azure://{bucket_or_container}/{blob.name}",
                 }
@@ -220,9 +199,7 @@ def copy_object_unified(
         source_blob = source_bucket_obj.blob(source_path)
 
         if not source_blob.exists():
-            raise Exception(
-                f"Source file does not exist: gs://{source_bucket}/{source_path}"
-            )
+            raise Exception(f"Source file does not exist: gs://{source_bucket}/{source_path}")
 
         target_bucket_obj = storage_client.bucket(target_bucket)
         source_bucket_obj.copy_blob(source_blob, target_bucket_obj, target_path)
@@ -234,9 +211,7 @@ def copy_object_unified(
             raise Exception("Could not authenticate with AWS S3")
 
         copy_source = {"Bucket": source_bucket, "Key": source_path}
-        s3_client.copy_object(
-            CopySource=copy_source, Bucket=target_bucket, Key=target_path
-        )
+        s3_client.copy_object(CopySource=copy_source, Bucket=target_bucket, Key=target_path)
         return True
 
     elif provider == "azure":
@@ -244,17 +219,11 @@ def copy_object_unified(
         if not azure_client:
             raise Exception("Could not authenticate with Azure Blob Storage")
 
-        source_blob_client = azure_client.get_blob_client(
-            container=source_bucket, blob=source_path
-        )
-        target_blob_client = azure_client.get_blob_client(
-            container=target_bucket, blob=target_path
-        )
+        source_blob_client = azure_client.get_blob_client(container=source_bucket, blob=source_path)
+        target_blob_client = azure_client.get_blob_client(container=target_bucket, blob=target_path)
 
         if not source_blob_client.exists():
-            raise Exception(
-                f"Source file does not exist: azure://{source_bucket}/{source_path}"
-            )
+            raise Exception(f"Source file does not exist: azure://{source_bucket}/{source_path}")
 
         target_blob_client.start_copy_from_url(source_blob_client.url)
         return True
@@ -287,9 +256,7 @@ def delete_object_unified(provider: str, bucket_or_container: str, path: str) ->
         if not azure_client:
             raise Exception("Could not authenticate with Azure Blob Storage")
 
-        blob_client = azure_client.get_blob_client(
-            container=bucket_or_container, blob=path
-        )
+        blob_client = azure_client.get_blob_client(container=bucket_or_container, blob=path)
         blob_client.delete_blob()
         return True
 
@@ -324,14 +291,10 @@ def download_text_unified(provider: str, bucket_or_container: str, path: str) ->
         if not azure_client:
             raise Exception("Could not authenticate with Azure Blob Storage")
 
-        blob_client = azure_client.get_blob_client(
-            container=bucket_or_container, blob=path
-        )
+        blob_client = azure_client.get_blob_client(container=bucket_or_container, blob=path)
 
         if not blob_client.exists():
-            raise Exception(
-                f"File does not exist: azure://{bucket_or_container}/{path}"
-            )
+            raise Exception(f"File does not exist: azure://{bucket_or_container}/{path}")
 
         return blob_client.download_blob().readall().decode("utf-8")
 
@@ -342,9 +305,7 @@ def download_text_unified(provider: str, bucket_or_container: str, path: str) ->
 mcp = FastMCP("CloudStorage")
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_objects(bucket_uri: str) -> str:
     """Get all objects from a cloud storage bucket/container."""
     try:
@@ -364,9 +325,7 @@ def get_objects(bucket_uri: str) -> str:
             if "name" in obj:
                 obj["file_uri"] = f"{provider}://{bucket_name}/{obj['name']}"
             else:
-                logger.warning(
-                    f"Object {obj} missing 'name' key, cannot construct file_uri"
-                )
+                logger.warning(f"Object {obj} missing 'name' key, cannot construct file_uri")
 
         logger.debug(
             f"Successfully retrieved and processed {len(objects)} objects from {provider} bucket '{bucket_name}'"
@@ -404,9 +363,7 @@ def perform_action(file_uri: str, target_uri: str) -> str:
 
     # Validate target is a folder (ends with /)
     if not target_uri.endswith("/"):
-        return json.dumps(
-            {"error": f"Target URI must be a folder path ending with '/': {target_uri}"}
-        )
+        return json.dumps({"error": f"Target URI must be a folder path ending with '/': {target_uri}"})
 
     try:
         # Parse source and target URIs
@@ -432,9 +389,7 @@ def perform_action(file_uri: str, target_uri: str) -> str:
         full_target_uri = f"{target_provider}://{target_bucket}/{target_path}"
 
         # Perform copy operation
-        copy_object_unified(
-            source_provider, source_bucket, source_path, target_bucket, target_path
-        )
+        copy_object_unified(source_provider, source_bucket, source_path, target_bucket, target_path)
 
         result = {"status": "success"}
 
@@ -463,15 +418,11 @@ if __name__ == "__main__":
         configured_providers.append("GCP")
     if AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY:
         configured_providers.append("AWS S3")
-    if AZURE_STORAGE_CONNECTION_STRING or (
-        AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY
-    ):
+    if AZURE_STORAGE_CONNECTION_STRING or (AZURE_STORAGE_ACCOUNT_NAME and AZURE_STORAGE_ACCOUNT_KEY):
         configured_providers.append("Azure")
 
     if not configured_providers:
-        logger.warning(
-            "No cloud provider credentials configured. Please set up at least one provider."
-        )
+        logger.warning("No cloud provider credentials configured. Please set up at least one provider.")
     else:
         logger.info(f"Configured providers: {', '.join(configured_providers)}")
 

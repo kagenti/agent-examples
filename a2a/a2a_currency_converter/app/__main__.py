@@ -5,21 +5,19 @@ import sys
 import click
 import httpx
 import uvicorn
-
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryPushNotifier, InMemoryTaskStore
-from starlette.routing import Route
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
     AgentSkill,
 )
 from dotenv import load_dotenv
+from starlette.routing import Route
 
 from app.agent import CurrencyAgent
 from app.agent_executor import CurrencyAgentExecutor
-
 
 load_dotenv()
 
@@ -66,9 +64,7 @@ def main(host, port):
             task_store=InMemoryTaskStore(),
             push_notifier=InMemoryPushNotifier(httpx_client),
         )
-        server = A2AStarletteApplication(
-            agent_card=agent_card, http_handler=request_handler
-        )
+        server = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
 
         app = server.build()
 

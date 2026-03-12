@@ -1,14 +1,14 @@
 """Tests for flight_tool MCP server — pure utility functions (isolated from heavy deps)."""
 
 import sys
-from unittest.mock import MagicMock
 from datetime import date, timedelta
+from unittest.mock import MagicMock
 
 # Mock the fastmcp and fast_flights dependencies before importing
 sys.modules.setdefault("fastmcp", MagicMock())
 sys.modules.setdefault("fast_flights", MagicMock())
 
-from flight_tool import _parse_iso_date, _date_in_past, _coerce_int, _result_to_dict
+from flight_tool import _coerce_int, _date_in_past, _parse_iso_date, _result_to_dict
 
 
 class TestParseIsoDate:

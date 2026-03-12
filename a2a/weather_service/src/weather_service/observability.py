@@ -11,18 +11,19 @@ Key Features:
 import json
 import logging
 import os
-from contextvars import ContextVar
-from typing import Dict, Any, Optional
 from contextlib import contextmanager
-from opentelemetry import trace, context
+from contextvars import ContextVar
+from typing import Dict, Optional
+
+from opentelemetry import context, trace
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.propagate import extract, set_global_textmap
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.trace import Status, StatusCode, SpanKind
-from opentelemetry.propagate import set_global_textmap, extract
-from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 logger = logging.getLogger(__name__)
 
@@ -51,7 +52,7 @@ def get_root_span():
 
 # OpenInference semantic conventions
 try:
-    from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
+    from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
 
     OPENINFERENCE_AVAILABLE = True
 except ImportError:
@@ -111,9 +112,7 @@ def setup_observability() -> None:
 
     # Create and configure tracer provider
     tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(
-        BatchSpanProcessor(_get_otlp_exporter(otlp_endpoint))
-    )
+    tracer_provider.add_span_processor(BatchSpanProcessor(_get_otlp_exporter(otlp_endpoint)))
     trace.set_tracer_provider(tracer_provider)
 
     # Auto-instrument LangChain with OpenInference
@@ -236,9 +235,7 @@ def enrich_current_span(
     # get_current_span() returns INVALID_SPAN if none exists
     if current_span.is_recording():
         # Enrich the existing span
-        _set_genai_mlflow_attributes(
-            current_span, context_id, task_id, user_id, input_text
-        )
+        _set_genai_mlflow_attributes(current_span, context_id, task_id, user_id, input_text)
         try:
             yield current_span
         except Exception as e:
@@ -251,9 +248,7 @@ def enrich_current_span(
         logger.info("No current recording span - creating gen_ai.agent.invoke span")
         tracer = get_tracer()
         with tracer.start_as_current_span("gen_ai.agent.invoke") as new_span:
-            _set_genai_mlflow_attributes(
-                new_span, context_id, task_id, user_id, input_text
-            )
+            _set_genai_mlflow_attributes(new_span, context_id, task_id, user_id, input_text)
             try:
                 yield new_span
                 new_span.set_status(Status(StatusCode.OK))
@@ -347,9 +342,7 @@ def create_agent_span(
 
     # OpenInference span kind - marks this as an AGENT span
     if OPENINFERENCE_AVAILABLE:
-        attributes[SpanAttributes.OPENINFERENCE_SPAN_KIND] = (
-            OpenInferenceSpanKindValues.AGENT.value
-        )
+        attributes[SpanAttributes.OPENINFERENCE_SPAN_KIND] = OpenInferenceSpanKindValues.AGENT.value
 
     # Custom attributes for debugging
     if task_id:
@@ -407,9 +400,9 @@ def create_tracing_middleware():
         app = server.build()
         app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
     """
+
     from starlette.requests import Request
     from starlette.responses import Response, StreamingResponse
-    import io
 
     async def tracing_middleware(request: Request, call_next):
         # Skip non-API paths (health checks, agent card, etc.)
@@ -510,9 +503,7 @@ def create_tracing_middleware():
 
                     # Try to capture response for output attributes
                     # Note: This only works for non-streaming responses
-                    if isinstance(response, Response) and not isinstance(
-                        response, StreamingResponse
-                    ):
+                    if isinstance(response, Response) and not isinstance(response, StreamingResponse):
                         # Read response body - we MUST recreate response after this
                         response_body = b""
                         async for chunk in response.body_iterator:
@@ -529,15 +520,9 @@ def create_tracing_middleware():
                                     if parts:
                                         output_text = parts[0].get("text", "")
                                         if output_text:
-                                            span.set_attribute(
-                                                "gen_ai.completion", output_text[:1000]
-                                            )
-                                            span.set_attribute(
-                                                "output.value", output_text[:1000]
-                                            )
-                                            span.set_attribute(
-                                                "mlflow.spanOutputs", output_text[:1000]
-                                            )
+                                            span.set_attribute("gen_ai.completion", output_text[:1000])
+                                            span.set_attribute("output.value", output_text[:1000])
+                                            span.set_attribute("mlflow.spanOutputs", output_text[:1000])
                         except Exception as e:
                             logger.debug(f"Could not parse response body: {e}")
 

@@ -1,11 +1,7 @@
 import logging
-
-import uvicorn
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
 from textwrap import dedent
 
+import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -13,6 +9,9 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
 
 from recipe_agent.recipe_llm import chat
 
@@ -67,9 +66,7 @@ class RecipeExecutor(AgentExecutor):
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
 
         user_input = context.get_user_input()
-        logger.info(
-            "Recipe agent received: %s (context=%s)", user_input, task.context_id
-        )
+        logger.info("Recipe agent received: %s (context=%s)", user_input, task.context_id)
 
         await task_updater.update_status(
             TaskState.working,
@@ -131,8 +128,6 @@ def run():
 
     # Add custom routes
     app.routes.insert(0, Route("/health", health, methods=["GET"]))
-    app.routes.insert(
-        0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"])
-    )
+    app.routes.insert(0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"]))
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

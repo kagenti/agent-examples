@@ -1,7 +1,7 @@
 FROM ghcr.io/astral-sh/uv:python3.12-bookworm-slim
 ARG RELEASE_VERSION="main"
 
-ADD . /app
+COPY . /app
 WORKDIR /app
 
 RUN uv sync --no-cache --locked --link-mode copy

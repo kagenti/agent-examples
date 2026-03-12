@@ -2,13 +2,14 @@
 
 import sys
 from pathlib import Path
+
 import pytest
 
 # Add parent directory to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from providers.mock import MockProvider
-from schemas import Restaurant, AvailabilitySlot, Reservation
+from schemas import AvailabilitySlot, Reservation, Restaurant
 
 
 class TestMockProvider:
@@ -45,9 +46,7 @@ class TestMockProvider:
 
     def test_check_availability(self, provider):
         """Test checking availability for a restaurant."""
-        slots = provider.check_availability(
-            restaurant_id="rest_001", date_time="2025-03-15T12:00:00", party_size=4
-        )
+        slots = provider.check_availability(restaurant_id="rest_001", date_time="2025-03-15T12:00:00", party_size=4)
         assert len(slots) > 0
         assert all(isinstance(s, AvailabilitySlot) for s in slots)
         # Slots should include both lunch and dinner times
@@ -153,9 +152,7 @@ class TestMockProvider:
         )
 
         # Cancel it
-        receipt = provider.cancel_reservation(
-            reservation_id=reservation.id, reason="Change of plans"
-        )
+        receipt = provider.cancel_reservation(reservation_id=reservation.id, reason="Change of plans")
 
         assert receipt.reservation_id == reservation.id
         assert receipt.reason == "Change of plans"
@@ -217,9 +214,7 @@ class TestSchemaValidation:
 
     def test_availability_slot_validation(self):
         """Test AvailabilitySlot schema validation."""
-        slot = AvailabilitySlot(
-            time="2025-03-15T19:00:00", max_party_size=8, available=True
-        )
+        slot = AvailabilitySlot(time="2025-03-15T19:00:00", max_party_size=8, available=True)
         assert slot.available is True
 
         # Invalid party size

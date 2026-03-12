@@ -2,10 +2,11 @@
 # -*- coding: utf-8 -*-
 """Simple test client for the reservation agent."""
 
-import time
-import requests
-import sys
 import io
+import sys
+import time
+
+import requests
 
 # Fix Windows console encoding
 if sys.platform == "win32":
@@ -26,9 +27,7 @@ def chat_with_agent(prompt: str):
         "jsonrpc": "2.0",
         "id": 1,
         "method": "agent.task.create",
-        "params": {
-            "message": {"role": "user", "parts": [{"type": "text", "text": prompt}]}
-        },
+        "params": {"message": {"role": "user", "parts": [{"type": "text", "text": prompt}]}},
     }
 
     print("🤖 Agent is thinking...\n")

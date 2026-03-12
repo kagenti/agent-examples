@@ -1,7 +1,8 @@
+import logging
 import os
 import sys
-import logging
-from typing import List, Dict, Any
+from typing import Any, Dict, List
+
 from fastmcp import FastMCP
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
@@ -22,18 +23,14 @@ def slack_client_from_bot_token(bot_token):
     try:
         slack_client = WebClient(token=bot_token)
         auth_test = slack_client.auth_test()
-        logger.info(
-            f"Successfully authenticated as bot '{auth_test['user']}' in workspace '{auth_test['team']}'."
-        )
+        logger.info(f"Successfully authenticated as bot '{auth_test['user']}' in workspace '{auth_test['team']}'.")
         return slack_client
     except SlackApiError as e:
         # Handle authentication errors, such as an invalid token
         logger.error(f"Error authenticating with Slack: {e.response['error']}")
         return None
     except Exception as e:
-        logger.exception(
-            f"An unexpected error occurred during Slack client initialization: {e}"
-        )
+        logger.exception(f"An unexpected error occurred during Slack client initialization: {e}")
         return None
 
 
@@ -52,13 +49,11 @@ def get_channels() -> List[Dict[str, Any]]:
     """
     Lists all public and private slack channels you have access to.
     """
-    logger.debug(f"Called get_channels tool")
+    logger.debug("Called get_channels tool")
 
     slack_client = get_slack_client()
     if slack_client is None:
-        return [
-            {"error": f"Could not start slack client. Check the configured bot token"}
-        ]
+        return [{"error": "Could not start slack client. Check the configured bot token"}]
 
     try:
         # Call the conversations_list method to get public channels
@@ -96,9 +91,7 @@ def get_channel_history(channel_id: str, limit: int = 20) -> List:
 
     slack_client = get_slack_client()
     if slack_client is None:
-        return [
-            {"error": f"Could not start slack client. Check the configured bot token"}
-        ]
+        return [{"error": "Could not start slack client. Check the configured bot token"}]
 
     try:
         # Call the Slack API to list conversations the bot is part of.
@@ -125,9 +118,7 @@ def run_server():
 
 if __name__ == "__main__":
     if SLACK_BOT_TOKEN is None:
-        logger.warning(
-            "Please configure the SLACK_BOT_TOKEN environment variable before running the server"
-        )
+        logger.warning("Please configure the SLACK_BOT_TOKEN environment variable before running the server")
     else:
         if ADMIN_SLACK_BOT_TOKEN:
             logger.info(

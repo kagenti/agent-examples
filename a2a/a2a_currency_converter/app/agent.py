@@ -1,21 +1,17 @@
 """Currency conversion logic for A2A example"""
 
 import os
-
 from collections.abc import AsyncIterable
 from typing import Any, Literal
 
 import httpx
-
 from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
-from langchain_openai import ChatOpenAI
-
 
 memory = MemorySaver()
 
@@ -27,9 +23,7 @@ class Configuration(BaseSettings):
     llm_api_base: str = ""
     # We don't want the pod to crash without a valid key.
     # Report authentication error to A2A user instead.
-    llm_api_key: str = os.getenv(
-        "OPENAI_API_KEY", "Failed to load env var OPENAI_API_KEY"
-    )
+    llm_api_key: str = os.getenv("OPENAI_API_KEY", "Failed to load env var OPENAI_API_KEY")
 
 
 config = Configuration()
@@ -120,11 +114,7 @@ class CurrencyAgent:
 
         for item in self.graph.stream(inputs, config, stream_mode="values"):
             message = item["messages"][-1]
-            if (
-                isinstance(message, AIMessage)
-                and message.tool_calls
-                and len(message.tool_calls) > 0
-            ):
+            if isinstance(message, AIMessage) and message.tool_calls and len(message.tool_calls) > 0:
                 yield {
                     "is_task_complete": False,
                     "require_user_input": False,
@@ -165,9 +155,7 @@ class CurrencyAgent:
         return {
             "is_task_complete": False,
             "require_user_input": True,
-            "content": (
-                "We are unable to process your request at the moment. Please try again."
-            ),
+            "content": ("We are unable to process your request at the moment. Please try again."),
         }
 
     SUPPORTED_CONTENT_TYPES = ["text", "text/plain"]

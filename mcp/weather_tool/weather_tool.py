@@ -3,8 +3,9 @@
 import json
 import logging
 import os
-import requests
 import sys
+
+import requests
 from fastmcp import FastMCP
 
 mcp = FastMCP("Weather")
@@ -16,9 +17,7 @@ logging.basicConfig(
 )
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_weather(city: str) -> str:
     """Get weather info for a city"""
     logger.debug(f"Getting weather info for city '{city}'.")
@@ -26,7 +25,7 @@ def get_weather(city: str) -> str:
     params = {"name": city, "count": 1}
     response = requests.get(base_url, params=params, timeout=10)
     data = response.json()
-    if not data or not "results" in data:
+    if not data or "results" not in data:
         return f"City {city} not found"
     latitude = data["results"][0]["latitude"]
     longitude = data["results"][0]["longitude"]

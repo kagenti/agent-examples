@@ -3,8 +3,9 @@
 import base64
 import logging
 import os
-import requests
 import sys
+
+import requests
 from fastmcp import FastMCP
 
 mcp = FastMCP("Image")
@@ -16,9 +17,7 @@ logging.basicConfig(
 )
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_image(width: int, height: int) -> dict:
     """Fetch a random image from picsum.photos API and return it as base64-encoded data.
 
@@ -47,9 +46,7 @@ def get_image(width: int, height: int) -> dict:
         resp.raise_for_status()
         img_b = resp.content
         img_b64 = base64.b64encode(img_b).decode("ascii")
-        logger.info(
-            f"Successfully fetched and encoded {w}x{h} image, base64 length={len(img_b64)}"
-        )
+        logger.info(f"Successfully fetched and encoded {w}x{h} image, base64 length={len(img_b64)}")
         return {"image_base64": img_b64, "url": url}
     except requests.RequestException as e:
         logger.error("failed to fetch image: %s", e)

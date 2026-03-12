@@ -1,25 +1,24 @@
 import logging
 import os
-import uvicorn
 from textwrap import dedent
 
+import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
-from starlette.routing import Route
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
-
 from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.routing import Route
 
 from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
     create_tracing_middleware,
-    set_span_output,
     get_root_span,
+    set_span_output,
 )
 
 logging.basicConfig(level=logging.DEBUG)
@@ -72,9 +71,7 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(
-        self, message: str, final: bool = False, failed: bool = False
-    ) -> None:
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
@@ -126,18 +123,14 @@ class WeatherExecutor(AgentExecutor):
         output = None
 
         # Test MCP connection first
-        logger.info(
-            f"Attempting to connect to MCP server at: {os.getenv('MCP_URL', 'http://localhost:8000/sse')}"
-        )
+        logger.info(f"Attempting to connect to MCP server at: {os.getenv('MCP_URL', 'http://localhost:8000/sse')}")
 
         mcpclient = get_mcpclient()
 
         # Try to get tools to verify connection
         try:
             tools = await mcpclient.get_tools()
-            logger.info(
-                f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}"
-            )
+            logger.info(f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}")
         except Exception as tool_error:
             logger.error(f"Failed to connect to MCP server: {tool_error}")
             await event_emitter.emit_event(
@@ -150,9 +143,7 @@ class WeatherExecutor(AgentExecutor):
             graph = await get_graph(mcpclient)
         except Exception as graph_error:
             logger.error(f"Failed to create LLM graph: {graph_error}")
-            await event_emitter.emit_event(
-                f"Error: Failed to initialize LLM graph: {graph_error}", failed=True
-            )
+            await event_emitter.emit_event(f"Error: Failed to initialize LLM graph: {graph_error}", failed=True)
             return
 
         try:
@@ -168,9 +159,7 @@ class WeatherExecutor(AgentExecutor):
                 logger.info(f"event: {event}")
         except Exception as llm_error:
             logger.error(f"LLM execution failed: {llm_error}")
-            await event_emitter.emit_event(
-                f"Error: LLM execution failed: {llm_error}", failed=True
-            )
+            await event_emitter.emit_event(f"Error: LLM execution failed: {llm_error}", failed=True)
             return
 
         output = output.get("assistant", {}).get("final_answer") if output else None

@@ -1,10 +1,11 @@
-import os
 import json
-import requests
-import sys
-from fastmcp import FastMCP
 import logging
+import os
+import sys
 from typing import Any
+
+import requests
+from fastmcp import FastMCP
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(
@@ -42,9 +43,7 @@ def _fetch_json(params: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
         return {"Error": "Error fetching data"}
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_full_plot(movie_title: str) -> str:
     """Get full plot summary of a movie from OMDb API."""
 
@@ -61,9 +60,7 @@ def get_full_plot(movie_title: str) -> str:
     return "Movie not found"
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_movie_details(movie_title: str) -> str:
     """Get full details (awards, actors, short plot, and ratings, etc.) of a movie from OMDb API."""
 
@@ -94,7 +91,5 @@ def run_server():
 
 if __name__ == "__main__":
     if OMDB_API_KEY is None:
-        logger.warning(
-            "Please configure the OMDB_API_KEY environment variable before running the server"
-        )
+        logger.warning("Please configure the OMDB_API_KEY environment variable before running the server")
     run_server()

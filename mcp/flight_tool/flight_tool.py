@@ -4,18 +4,19 @@ import json
 import logging
 import os
 import sys
-from typing import Any, Dict, List, Optional
 from datetime import date, datetime
+from typing import Any, Dict, List, Optional
 
-from fastmcp import FastMCP
 from fast_flights import (
     FlightData,
     Passengers,
     Result,
     get_flights,
+)
+from fast_flights import (
     search_airport as ff_search_airport,
 )
-
+from fastmcp import FastMCP
 
 mcp = FastMCP("Flights")
 logger = logging.getLogger(__name__)
@@ -106,9 +107,7 @@ def _coerce_int(val: Any, name: str, default: int) -> tuple[int, Optional[str]]:
     return i, None
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def search_airports(query: str, limit: int = 10) -> str:
     """Search for airports by name or code.
 
@@ -134,9 +133,7 @@ def search_airports(query: str, limit: int = 10) -> str:
     return json.dumps(airports)
 
 
-@mcp.tool(
-    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
-)
+@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def search_flights(
     from_airport: str,
     to_airport: str,

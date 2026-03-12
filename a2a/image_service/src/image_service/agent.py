@@ -2,25 +2,25 @@ import base64
 import logging
 import os
 from textwrap import dedent
-import uvicorn
 
+import uvicorn
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from starlette.routing import Route
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
     AgentSkill,
+    DataPart,
     TaskState,
     TextPart,
-    DataPart,
 )
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
 
 from image_service.graph import get_graph, get_mcpclient
 
@@ -64,9 +64,7 @@ class ImageTaskEventEmitter:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(
-        self, message: str, final: bool = False, failed: bool = False
-    ) -> None:
+    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
