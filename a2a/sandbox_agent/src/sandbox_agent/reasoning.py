@@ -431,8 +431,14 @@ Your working directory is the session workspace. Pre-created subdirs:
 - **data/** — intermediate data files
 - **scripts/** — generated scripts
 Use relative paths (e.g. `repos/kagenti`, `output/report.md`).
-Each shell command starts fresh from this workspace root — `cd` does NOT
-persist between calls. Chain commands: `cd repos/kagenti && git log`.
+
+WORKSPACE RULES (MANDATORY):
+- Your working directory is /workspace. All commands start here.
+- NEVER use bare `cd dir` as a standalone command — it has no effect.
+- ALWAYS chain directory changes: `cd repos/myrepo && git status`
+- For multi-command sequences: `cd repos/myrepo && cmd1 && cmd2`
+- gh CLI requires a git repo context: `cd repos/myrepo && gh pr list`
+- GH_TOKEN and GITHUB_TOKEN are already set. Do NOT run export or gh auth.
 
 ## Handling Large Output
 Tool output is truncated to 10KB. For commands that produce large output:
@@ -508,13 +514,17 @@ Step status:
 Step results:
 {results_text}
 
+{limit_note}
+
 RULES:
 - Only report facts from actual tool output — NEVER fabricate data.
 - If a step FAILED, explain WHY it failed (include the error message).
+- If steps are PARTIAL, summarize what was accomplished so far.
 - If no real data was obtained, say "Unable to retrieve data" rather than
   making up results.
 - Include relevant command output, file paths, or next steps.
 - Do NOT include the plan itself — just the results.
+- Do NOT say "The task has been completed" — present the actual findings.
 """
 
 
@@ -1083,11 +1093,12 @@ async def reflector_node(
             result["_system_prompt"] = "[Executor signaled done — no LLM call]"
         return result
 
-    def _force_done(reason: str) -> dict[str, Any]:
-        """Helper for early termination — marks current step failed, rest skipped."""
+    def _force_done(reason: str, *, mark_failed: bool = False) -> dict[str, Any]:
+        """Helper for early termination — marks current step partial/failed, rest skipped."""
         ps = list(state.get("plan_steps", []))
+        step_status = "failed" if mark_failed else "partial"
         if current_step < len(ps):
-            ps[current_step] = {**ps[current_step], "status": "failed"}
+            ps[current_step] = {**ps[current_step], "status": step_status}
         for i in range(current_step + 1, len(ps)):
             if ps[i].get("status") == "pending":
                 ps[i] = {**ps[i], "status": "skipped"}
@@ -1110,7 +1121,7 @@ async def reflector_node(
     # Budget guard — force termination if ANY budget limit exceeded
 
     if budget.exceeded:
-        return _force_done(f"Budget exceeded: {budget.exceeded_reason}")
+        return _force_done(f"Budget exceeded: {budget.exceeded_reason}", mark_failed=True)
 
     # Count tool calls in this iteration (from executor's last message)
     messages = state["messages"]
@@ -1357,10 +1368,11 @@ async def reporter_node(
     if plan_steps:
         done_count = sum(1 for s in plan_steps if s.get("status") == "done")
         failed_count = sum(1 for s in plan_steps if s.get("status") == "failed")
+        partial_count = sum(1 for s in plan_steps if s.get("status") == "partial")
         total = len(plan_steps)
         if done_count == total:
             terminal_status = "completed"
-        elif failed_count > 0 or done_count < total:
+        elif failed_count > 0 or partial_count > 0 or done_count < total:
             terminal_status = "awaiting_continue"
         else:
             terminal_status = "completed"
@@ -1384,22 +1396,35 @@ async def reporter_node(
 
     # Build step status summary from plan_steps
     step_status_lines = []
+    has_partial = False
     for ps in plan_steps:
         idx = ps.get("index", 0)
         status = ps.get("status", "unknown").upper()
+        if status == "PARTIAL":
+            has_partial = True
         desc = ps.get("description", "")[:80]
         result = ps.get("result_summary", "")[:100]
         line = f"{idx+1}. [{status}] {desc}"
-        if result and status == "failed":
-            line += f" — ERROR: {result}"
+        if result and status in ("FAILED", "PARTIAL"):
+            line += f" — {result}"
         step_status_lines.append(line)
     step_status_text = "\n".join(step_status_lines) if step_status_lines else "No step status available."
+
+    # Add context when the agent hit its step limit
+    done_count = sum(1 for s in plan_steps if s.get("status") == "done")
+    limit_note = ""
+    if has_partial:
+        limit_note = (
+            f"NOTE: The agent reached its step limit after {done_count} completed steps. "
+            "Summarize ALL results obtained so far — do not dismiss the work done."
+        )
 
     system_content = _safe_format(
         _REPORTER_SYSTEM,
         plan_text=plan_text,
         step_status_text=step_status_text,
         results_text=results_text,
+        limit_note=limit_note,
     )
     # Filter dedup sentinel messages from conversation history passed to the
     # reporter LLM so it cannot echo them in the final answer.
