@@ -283,7 +283,7 @@ Use `docker/build-push-action` with:
 
 **Include when:** Repo is actively maintained (has recent commits).
 
-Use the kagenti org reusable workflow:
+Use an org reusable workflow or `actions/stale`:
 
 ```yaml
 name: Close Stale Issues and PRs
@@ -294,7 +294,7 @@ on:
 
 jobs:
   stale:
-    uses: kagenti/.github/.github/workflows/stale.yaml@main
+    uses: <org>/.github/.github/workflows/stale.yaml@main
 ```
 
 ### 2.3 PR Title Verification

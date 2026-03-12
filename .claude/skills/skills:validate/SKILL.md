@@ -60,18 +60,18 @@ Commands target local development environments, Kind clusters, or other safe tar
 
 Check pod status:
 ```bash
-kubectl get pods -n kagenti-system
+kubectl get pods -n my-namespace
 ```
 
 Check logs:
 ```bash
-kubectl logs -n kagenti-system deployment/mlflow
+kubectl logs -n my-namespace deployment/my-app
 ```
 
 ## BAD (chained commands won't match auto-approve patterns)
 
 ```bash
-kubectl get pods -n kagenti-system && kubectl logs -n kagenti-system deployment/mlflow
+kubectl get pods -n my-namespace && kubectl logs -n my-namespace deployment/my-app
 ```
 ```
 

@@ -100,12 +100,12 @@ Claude Code auto-approves commands by matching the first token against `.claude/
 ```markdown
 Check pod status:
 ```bash
-kubectl get pods -n kagenti-system
+kubectl get pods -n my-namespace
 ```
 
 Check logs:
 ```bash
-kubectl logs -n kagenti-system deployment/mlflow
+kubectl logs -n my-namespace deployment/my-app
 ```
 ```
 
