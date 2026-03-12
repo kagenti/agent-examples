@@ -154,4 +154,3 @@ The key should match your OpenAI key."""
 
     async def cancel(self, _: RequestContext, event_queue: EventQueue) -> Task | None:
         raise ServerError(error=UnsupportedOperationError())
-
