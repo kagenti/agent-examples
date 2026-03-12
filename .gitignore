@@ -204,3 +204,17 @@ mise.local.toml
 
 # Supervisor output
 /output
+
+# Secrets and credentials
+*.key
+*.p12
+*.jks
+credentials.*
+secrets.*
+*kubeconfig*
+
+# IDE
+.vscode/
+
+# Ruff cache
+.ruff_cache/
