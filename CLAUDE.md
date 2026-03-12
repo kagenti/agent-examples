@@ -105,3 +105,28 @@ without installing agent-specific packages.
 2. Add a `pyproject.toml` with dependencies
 3. Add a `Dockerfile` for container builds
 4. Add environment config to `sample-environments.yaml` if needed
+
+## Orchestration
+
+This repo includes orchestrate skills for enhancing related repos:
+
+| Skill | Description |
+|-------|-------------|
+| `orchestrate` | Run `/orchestrate <repo-path>` to start |
+| `orchestrate:scan` | Assess repo structure and gaps |
+| `orchestrate:plan` | Create phased enhancement plan |
+| `orchestrate:precommit` | Add pre-commit hooks and linting |
+| `orchestrate:tests` | Add test infrastructure |
+| `orchestrate:ci` | Add CI workflows and security scanning |
+| `orchestrate:security` | Add security governance files |
+| `orchestrate:replicate` | Bootstrap skills into target |
+| `orchestrate:review` | Review all orchestration PRs |
+
+Skills management:
+
+| Skill | Description |
+|-------|-------------|
+| `skills` | Skill management router |
+| `skills:scan` | Audit and bootstrap skills |
+| `skills:write` | Create or edit skills |
+| `skills:validate` | Validate skill format |
