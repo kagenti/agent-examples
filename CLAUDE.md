@@ -79,6 +79,26 @@ Install it via:
 git config core.hooksPath scripts/hooks
 ```
 
+## Testing
+
+Tests use `pytest` and live in the `tests/` directory:
+
+```sh
+# Run all tests
+python -m pytest tests/ -v
+
+# Run A2A agent tests only
+python -m pytest tests/a2a/ -v
+
+# Run MCP tool tests only
+python -m pytest tests/mcp/ -v
+```
+
+Test configuration is in `pyproject.toml` under `[tool.pytest.ini_options]`.
+
+Tests mock heavy dependencies (langchain, opentelemetry, fastmcp) to run
+without installing agent-specific packages.
+
 ## Adding a New Agent
 
 1. Create a directory under `a2a/` or `mcp/`
