@@ -1,11 +1,12 @@
 """Shopping Agent MCP Tool - Uses SerpAPI for product search"""
 
 import argparse
-import os
-import sys
 import json
 import logging
+import os
+import sys
 from typing import Any, Dict, Optional, Union
+
 from fastmcp import FastMCP
 from serpapi import GoogleSearch
 
@@ -18,6 +19,7 @@ def _env_flag(name: str, default: str = "false") -> bool:
     if value is None:
         value = default
     return value.strip().lower() in {"1", "true", "yes", "on"}
+
 
 # Environment variable for API key
 SERPAPI_API_KEY = os.getenv("SERPAPI_API_KEY")
@@ -51,14 +53,14 @@ AGENT_CARD = {
 def recommend_products(query: str, max_results: int = 10) -> str:
     """
     Recommend products based on natural language query (e.g., "good curtains under $40")
-    
+
     This tool searches Google Shopping via SerpAPI and returns structured product data
     including titles, prices, and descriptions.
-    
+
     Args:
         query: Natural language product request
         max_results: Maximum number of product recommendations to return (default 10, max 20)
-    
+
     Returns:
         JSON string containing product search results with names, prices, descriptions, and links.
     """
@@ -68,13 +70,13 @@ def recommend_products(query: str, max_results: int = 10) -> str:
     if len(query) > 256:
         return json.dumps({"error": "Query is too long (max 256 characters)."})
     logger.info(f"Searching products for query: '{query}'")
-    
+
     if not SERPAPI_API_KEY:
         return json.dumps({"error": "SERPAPI_API_KEY not configured"})
-    
+
     # Limit max_results
     max_results = min(max_results, 20)
-    
+
     try:
         # Configure SerpAPI Google Shopping search
         params = {
@@ -84,18 +86,18 @@ def recommend_products(query: str, max_results: int = 10) -> str:
             "google_domain": "google.com",
             "gl": "us",
             "hl": "en",
-            "num": max_results
+            "num": max_results,
         }
-        
+
         logger.debug(f"Searching with params: {json.dumps(params, default=str)}")
         search = GoogleSearch(params)
         results = search.get_dict()
-        
+
         if "error" in results:
             return json.dumps({"error": results["error"]})
-            
+
         shopping_results = results.get("shopping_results", [])
-        
+
         # Format products
         products = []
         for item in shopping_results:
@@ -107,23 +109,26 @@ def recommend_products(query: str, max_results: int = 10) -> str:
                 "thumbnail": item.get("thumbnail"),
                 "source": item.get("source"),
                 "rating": item.get("rating"),
-                "reviews": item.get("reviews")
+                "reviews": item.get("reviews"),
             }
             products.append(product)
-            
+
         # Fallback to regular search if no shopping results found
         if not products and "organic_results" in results:
             logger.info("No shopping results found, falling back to organic results")
             # This might happen if we switch engine to 'google' or if shopping has no results
             # But with engine='google_shopping', we should get shopping_results
             pass
-            
-        return json.dumps({
-            "query": query,
-            "products": products[:max_results],
-            "count": len(products[:max_results])
-        }, indent=2)
-        
+
+        return json.dumps(
+            {
+                "query": query,
+                "products": products[:max_results],
+                "count": len(products[:max_results]),
+            },
+            indent=2,
+        )
+
     except Exception as e:
         logger.error(f"Error in recommend_products: {e}", exc_info=True)
         return json.dumps({"error": str(e)})
@@ -133,11 +138,11 @@ def recommend_products(query: str, max_results: int = 10) -> str:
 def search_products(query: str, max_results: int = 10) -> str:
     """
     Search for products using standard Google Search (internal tool)
-    
+
     Args:
         query: Product search query
         max_results: Maximum number of results to return (default 10, max 100)
-    
+
     Returns:
         JSON string containing search results
     """
@@ -147,13 +152,13 @@ def search_products(query: str, max_results: int = 10) -> str:
     if len(query) > 256:
         return json.dumps({"error": "Query parameter is too long (max 256 characters)."})
     logger.info(f"Searching products for query: '{query}'")
-    
+
     if not SERPAPI_API_KEY:
         return json.dumps({"error": "SERPAPI_API_KEY not configured"})
-    
+
     # Limit max_results
     max_results = min(max_results, 100)
-    
+
     try:
         # Use standard Google Search for broader context
         params = {
@@ -163,12 +168,12 @@ def search_products(query: str, max_results: int = 10) -> str:
             "google_domain": "google.com",
             "gl": "us",
             "hl": "en",
-            "num": max_results
+            "num": max_results,
         }
-        
+
         search = GoogleSearch(params)
         results = search.get_dict()
-        
+
         if "error" in results:
             return json.dumps({"error": results["error"]})
 
@@ -180,7 +185,7 @@ def search_products(query: str, max_results: int = 10) -> str:
             },
             indent=2,
         )
-        
+
     except Exception as e:
         logger.error(f"Error in search_products: {e}", exc_info=True)
         return json.dumps({"error": str(e)})
@@ -227,6 +232,7 @@ def run_server(
 # Attach agent card route if FastMCP exposes the FastAPI app
 app = getattr(mcp, "app", None)
 if app:
+
     @app.get("/.well-known/agent.json")
     def agent_card() -> Dict[str, Any]:
         return AGENT_CARD
@@ -294,10 +300,10 @@ def main() -> int:
     if SERPAPI_API_KEY is None:
         logger.error("Please configure the SERPAPI_API_KEY environment variable before running the server")
         return 1
-    
+
     logger.info("Starting Shopping Agent MCP Server with SerpAPI")
     logger.info("Note: This server provides search results. The calling agent provides reasoning.")
-    
+
     run_server(
         transport=args.transport,
         host=args.host,

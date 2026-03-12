@@ -1,9 +1,11 @@
 [tool.ruff]
 line-length = 120
 target-version = "py311"
+exclude = [".repos"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "W"]
+ignore = ["E501", "E402", "W291"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests", "mcp/reservation_tool/tests"]

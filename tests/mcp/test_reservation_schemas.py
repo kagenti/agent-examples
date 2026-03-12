@@ -1,8 +1,7 @@
 """Tests for reservation_tool schemas — Pydantic model validation."""
 
 import pytest
-
-from schemas import Location, Restaurant, AvailabilitySlot, Reservation, CancellationReceipt
+from schemas import CancellationReceipt, Location, Restaurant
 
 
 class TestLocation:

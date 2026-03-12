@@ -1,26 +1,27 @@
 import logging
-import uvicorn
 from textwrap import dedent
+
+import uvicorn
+from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from starlette.routing import Route
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from openinference.instrumentation.langchain import LangChainInstrumentor
-from langchain_core.messages import HumanMessage
-
-from generic_agent.graph import get_graph, get_mcpclient, get_mcp_server_names
 from generic_agent.config import Configuration
+from generic_agent.graph import get_graph, get_mcp_server_names, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 LangChainInstrumentor().instrument()
 config = Configuration()
+
 
 def get_agent_card(host: str, port: int) -> AgentCard:
     """Returns the Agent Card for the A2A Agent."""
@@ -32,8 +33,7 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     mcp_section = ""
     if mcp_names:
         mcp_section = "\n\nConnected MCP Servers:\n" + "\n".join(f"- {name}" for name in mcp_names)
-    
-    
+
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
         id="generic_agent",
@@ -57,6 +57,7 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         skills=[skill],
     )
 
+
 class A2AEvent:
     """
     A class to handle events for A2A Agent.
@@ -71,12 +72,12 @@ class A2AEvent:
     async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
         """
         Emit an event to update task status.
-        
+
         Args:
             message: The message content to emit
             final: If True, marks the task as complete
             failed: If True, marks the task as failed
-            
+
         Raises:
             Exception: If event emission fails
         """
@@ -99,10 +100,12 @@ class A2AEvent:
                 ),
             )
 
+
 class GenericExecutor(AgentExecutor):
     """
     A class to handle generic assistant execution for A2A Agent.
     """
+
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         The agent completes tasks through a natural language conversational interface
@@ -115,7 +118,7 @@ class GenericExecutor(AgentExecutor):
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
-        
+
         user_input = context.get_user_input()
         if not user_input or not user_input.strip():
             await event_emitter.emit_event("Error: Empty input provided", failed=True)
@@ -124,35 +127,40 @@ class GenericExecutor(AgentExecutor):
         # Parse Messages
         messages = [HumanMessage(content=user_input)]
         input = {"messages": messages}
-        logger.info(f'Processing messages: {input}')
+        logger.info(f"Processing messages: {input}")
 
         try:
             output = None
             # Test MCP connection first
-            logger.info(f'Attempting to connect to MCP server(s) at: {config.MCP_URLS}')
+            logger.info(f"Attempting to connect to MCP server(s) at: {config.MCP_URLS}")
 
             mcpclient = get_mcpclient()
 
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info(f'Successfully connected to MCP server(s). Available tools: {[tool.name for tool in tools]}')
+                logger.info(
+                    f"Successfully connected to MCP server(s). Available tools: {[tool.name for tool in tools]}"
+                )
             except Exception as tool_error:
-                logger.error(f'Failed to connect to MCP server(s): {tool_error}')
-                await event_emitter.emit_event(f"Error: Cannot connect to MCP server(s) at {config.MCP_URLS}. Please ensure the MCP server(s) are running. Error: {tool_error}", failed=True)
+                logger.error(f"Failed to connect to MCP server(s): {tool_error}")
+                await event_emitter.emit_event(
+                    f"Error: Cannot connect to MCP server(s) at {config.MCP_URLS}. Please ensure the MCP server(s) are running. Error: {tool_error}",
+                    failed=True,
+                )
                 return
 
             graph = await get_graph(mcpclient)
             async for event in graph.astream(input, stream_mode="updates"):
                 await event_emitter.emit_event(
                     "\n".join(
-                        f"🚶‍♂️{key}: {str(value)[:config.MAX_EVENT_DISPLAY_LENGTH] + '...' if len(str(value)) > config.MAX_EVENT_DISPLAY_LENGTH else str(value)}"
+                        f"🚶‍♂️{key}: {str(value)[: config.MAX_EVENT_DISPLAY_LENGTH] + '...' if len(str(value)) > config.MAX_EVENT_DISPLAY_LENGTH else str(value)}"
                         for key, value in event.items()
                     )
                     + "\n"
                 )
                 output = event
-                logger.info(f'event: {event}')
+                logger.info(f"event: {event}")
 
             final_answer = output.get("assistant", {}).get("final_answer") if output else None
             if final_answer is None:
@@ -161,7 +169,7 @@ class GenericExecutor(AgentExecutor):
             else:
                 await event_emitter.emit_event(str(final_answer), final=True)
         except Exception as e:
-            logger.error(f'Graph execution error: {e}')
+            logger.error(f"Graph execution error: {e}")
             await event_emitter.emit_event(f"Error: Failed to process request. {str(e)}", failed=True)
             raise Exception(str(e))
 
@@ -170,6 +178,7 @@ class GenericExecutor(AgentExecutor):
         Not implemented
         """
         raise Exception("cancel not supported")
+
 
 def run():
     """
@@ -190,11 +199,14 @@ def run():
     app = server.build()
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

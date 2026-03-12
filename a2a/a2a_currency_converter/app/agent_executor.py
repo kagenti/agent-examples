@@ -5,8 +5,6 @@ Example of the business logic of an A2A agent for currency conversion.
 import logging
 import os
 
-from app.agent import CurrencyAgent
-
 from openai import AuthenticationError, InternalServerError
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
@@ -26,6 +24,7 @@ from a2a.utils import (
     new_task,
 )
 from a2a.utils.errors import ServerError
+from app.agent import CurrencyAgent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -44,37 +43,37 @@ class CurrencyAgentExecutor(AgentExecutor):
     ) -> None:
         error = self._validate_request(context)
         if error:
-            logger.warning(f'Invalid agent executor request: {context}')
+            logger.warning(f"Invalid agent executor request: {context}")
             raise ServerError(error=InvalidParamsError())
 
         query = context.get_user_input()
         task = context.current_task
         if not task:
             task = new_task(context.message)
-            logger.info(f'Created task for message : {context.message}')
+            logger.info(f"Created task for message : {context.message}")
             event_queue.enqueue_event(task)
         updater = TaskUpdater(event_queue, task.id, task.contextId)
         try:
             async for item in self.agent.stream(query, task.contextId):
-                is_task_complete = item['is_task_complete']
-                require_user_input = item['require_user_input']
+                is_task_complete = item["is_task_complete"]
+                require_user_input = item["require_user_input"]
 
                 if not is_task_complete and not require_user_input:
-                    logger.info(f'Updating status for non-input task: {task.id}')
+                    logger.info(f"Updating status for non-input task: {task.id}")
                     updater.update_status(
                         TaskState.working,
                         new_agent_text_message(
-                            item['content'],
+                            item["content"],
                             task.contextId,
                             task.id,
                         ),
                     )
                 elif require_user_input:
-                    logger.info(f'Updating status for input task: {task.id}')
+                    logger.info(f"Updating status for input task: {task.id}")
                     updater.update_status(
                         TaskState.input_required,
                         new_agent_text_message(
-                            item['content'],
+                            item["content"],
                             task.contextId,
                             task.id,
                         ),
@@ -82,16 +81,16 @@ class CurrencyAgentExecutor(AgentExecutor):
                     )
                     break
                 else:
-                    logger.info('Adding artifact for item')
+                    logger.info("Adding artifact for item")
                     updater.add_artifact(
-                        [Part(root=TextPart(text=item['content']))],
-                        name='conversion_result',
+                        [Part(root=TextPart(text=item["content"]))],
+                        name="conversion_result",
                     )
                     updater.complete()
                     break
 
         except InternalServerError as e:
-            msg=f"""CurrencyAgentExecutor reports an InternalServerError error.
+            msg = f"""CurrencyAgentExecutor reports an InternalServerError error.
 
 This can happen if the agent's LLM_API_BASE environment variable does not point to an OpenAI server.
 
@@ -112,7 +111,7 @@ Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
             )
 
         except AuthenticationError as e:
-            msg=f"""CurrencyAgentExecutor reports an authentication error.
+            msg = f"""CurrencyAgentExecutor reports an authentication error.
 
 When importing this agent into Kagenti, expand Environment Variables and Add Variable,
 or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_converter/.env.openai
@@ -120,7 +119,7 @@ or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_c
 Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
 
 Also check
-`kubectl -n <namespace> get secret openai-secret -o jsonpath="{'{'}.data.apikey{'}'}" | base64 -d`
+`kubectl -n <namespace> get secret openai-secret -o jsonpath="{"{"}.data.apikey{"}"}" | base64 -d`
 The key should match your OpenAI key."""
             logger.error(msg=msg)
             logger.error(msg=f"Raw AuthenticationError {e}")
@@ -135,8 +134,8 @@ The key should match your OpenAI key."""
             )
 
         except Exception as e:
-            logger.error(f'An error occurred while streaming the response: {e}')
-            logger.info(msg=f'The error is a {type(e)}')
+            logger.error(f"An error occurred while streaming the response: {e}")
+            logger.info(msg=f"The error is a {type(e)}")
             updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
@@ -153,7 +152,5 @@ The key should match your OpenAI key."""
     def _validate_request(self, _: RequestContext) -> bool:
         return False
 
-    async def cancel(
-        self, _: RequestContext, event_queue: EventQueue
-    ) -> Task | None:
+    async def cancel(self, _: RequestContext, event_queue: EventQueue) -> Task | None:
         raise ServerError(error=UnsupportedOperationError())

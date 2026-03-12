@@ -2,40 +2,32 @@
 # -*- coding: utf-8 -*-
 """Simple test client for the reservation agent."""
 
-import time
-import requests
-import sys
 import io
+import sys
+import time
+
+import requests
 
 # Fix Windows console encoding
 if sys.platform == "win32":
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8')
+    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
 
 AGENT_URL = "http://localhost:8001"
+
 
 def chat_with_agent(prompt: str):
     """Send a message to the agent and get the response."""
 
-    print(f"\n{'='*80}")
+    print(f"\n{'=' * 80}")
     print(f"YOU: {prompt}")
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
     # Create a task
     task_request = {
         "jsonrpc": "2.0",
         "id": 1,
         "method": "agent.task.create",
-        "params": {
-            "message": {
-                "role": "user",
-                "parts": [
-                    {
-                        "type": "text",
-                        "text": prompt
-                    }
-                ]
-            }
-        }
+        "params": {"message": {"role": "user", "parts": [{"type": "text", "text": prompt}]}},
     }
 
     print("🤖 Agent is thinking...\n")
@@ -79,9 +71,7 @@ def chat_with_agent(prompt: str):
             "jsonrpc": "2.0",
             "id": attempt + 2,
             "method": "agent.task.get",
-            "params": {
-                "task_id": task_id
-            }
+            "params": {"task_id": task_id},
         }
 
         try:
@@ -116,15 +106,15 @@ def chat_with_agent(prompt: str):
             print(f"\n✅ Task {status}")
             break
 
-    print(f"{'='*80}\n")
+    print(f"{'=' * 80}\n")
 
 
 def main():
     """Run the test scenarios."""
 
-    print("\n" + "="*80)
-    print(" "*25 + "RESERVATION AGENT DEMO")
-    print("="*80 + "\n")
+    print("\n" + "=" * 80)
+    print(" " * 25 + "RESERVATION AGENT DEMO")
+    print("=" * 80 + "\n")
 
     test_prompts = [
         "Find Italian restaurants in Boston",
@@ -138,9 +128,9 @@ def main():
     print("3. 📝 Make reservations with guest details\n")
 
     for i, prompt in enumerate(test_prompts, 1):
-        print(f"\n{'#'*80}")
+        print(f"\n{'#' * 80}")
         print(f"  DEMO {i}/{len(test_prompts)}")
-        print(f"{'#'*80}")
+        print(f"{'#' * 80}")
 
         chat_with_agent(prompt)
 
@@ -148,9 +138,9 @@ def main():
             print("\n⏸️  Press Enter to continue to next demo...")
             input()
 
-    print("\n" + "="*80)
-    print(" "*20 + "✅ DEMO COMPLETE!")
-    print("="*80 + "\n")
+    print("\n" + "=" * 80)
+    print(" " * 20 + "✅ DEMO COMPLETE!")
+    print("=" * 80 + "\n")
 
 
 if __name__ == "__main__":
@@ -161,4 +151,5 @@ if __name__ == "__main__":
     except Exception as e:
         print(f"\n\n❌ Error: {e}")
         import traceback
+
         traceback.print_exc()

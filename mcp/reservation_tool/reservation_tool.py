@@ -4,13 +4,13 @@ This MCP server provides tools for searching restaurants, checking availability,
 and managing reservations through a provider abstraction layer.
 """
 
+import json
+import logging
 import os
 import sys
-import logging
-import json
 from typing import Optional
-from fastmcp import FastMCP
 
+from fastmcp import FastMCP
 from providers import MockProvider, ReservationProvider
 
 # Setup logging
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     stream=sys.stdout,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 # Initialize provider
@@ -92,7 +92,9 @@ def check_availability(
     Returns:
         JSON string containing list of available time slots
     """
-    logger.info(f"check_availability called: restaurant={restaurant_id}, date_time={date_time}, party_size={party_size}")
+    logger.info(
+        f"check_availability called: restaurant={restaurant_id}, date_time={date_time}, party_size={party_size}"
+    )
 
     try:
         slots = provider.check_availability(
@@ -114,7 +116,13 @@ def check_availability(
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
+)
 def place_reservation(
     restaurant_id: str,
     date_time: str,
@@ -241,7 +249,9 @@ def run_server():
     port = int(os.getenv("PORT", "8000"))
 
     logger.info(f"Starting Restaurant Reservation MCP Server on {host}:{port} with transport={transport}")
-    logger.info(f"Registered tools: search_restaurants, check_availability, place_reservation, cancel_reservation, list_reservations")
+    logger.info(
+        "Registered tools: search_restaurants, check_availability, place_reservation, cancel_reservation, list_reservations"
+    )
 
     mcp.run(transport=transport, host=host, port=port)
 

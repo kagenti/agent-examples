@@ -1,0 +1,68 @@
+name: Security Scans
+
+on:
+  pull_request:
+    branches: [main]
+
+permissions: {}
+
+jobs:
+  dependency-review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/dependency-review-action@2031cfc080254a8a887f58cffee85186f0e49e48  # v4
+        with:
+          fail-on-severity: critical
+          deny-licenses: GPL-3.0, AGPL-3.0
+
+  trivy-scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # v0.35.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          severity: CRITICAL,HIGH
+          exit-code: 0  # Informational — upstream dependency CVEs in community examples
+          format: sarif
+          output: trivy-results.sarif
+      - uses: github/codeql-action/upload-sarif@0d579ffd059c29b07949a3cce3983f0780820c98  # v4
+        if: always()
+        with:
+          sarif_file: trivy-results.sarif
+
+  codeql:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      security-events: write
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: github/codeql-action/init@0d579ffd059c29b07949a3cce3983f0780820c98  # v4
+        with:
+          languages: python
+          queries: security-extended
+      - uses: github/codeql-action/analyze@0d579ffd059c29b07949a3cce3983f0780820c98  # v4
+
+  hadolint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: hadolint/hadolint-action@2332a7b74a6de0dda2e2221d575162eba76ba5e5  # v3.3.0
+        with:
+          recursive: true
+          failure-threshold: error

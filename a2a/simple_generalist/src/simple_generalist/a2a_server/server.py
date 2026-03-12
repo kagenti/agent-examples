@@ -31,22 +31,22 @@ logger = logging.getLogger(__name__)
 def get_agent_card(settings: Settings) -> AgentCard:
     """
     Create the Agent Card for the Simple Generalist Agent.
-    
+
     Args:
         settings: Application settings
-        
+
     Returns:
         AgentCard describing the agent's capabilities
     """
     capabilities = AgentCapabilities(streaming=True)
-    
+
     # Create skill description
     skill_description = (
         "A general-purpose agent that can use MCP tools to accomplish various tasks. "
         "The agent uses a function-calling loop to iteratively solve problems by calling tools "
         "and synthesizing results."
     )
-    
+
     skill = AgentSkill(
         id="simple_generalist_agent",
         name="Simple Generalist Agent",
@@ -58,7 +58,7 @@ def get_agent_card(settings: Settings) -> AgentCard:
             "Perform multi-step operations with tool assistance",
         ],
     )
-    
+
     agent_url = settings.A2A_PUBLIC_URL
     if not agent_url:
         if settings.A2A_HOST == "0.0.0.0":
@@ -80,16 +80,16 @@ def get_agent_card(settings: Settings) -> AgentCard:
 
 class SimpleGeneralistExecutor(AgentExecutor):
     """Agent executor for the Simple Generalist Agent."""
-    
+
     def __init__(self, settings: Settings):
         """
         Initialize the executor.
-        
+
         Args:
             settings: Application settings
         """
         self.settings = settings
-    
+
     async def _run_agent(
         self,
         user_input: str,
@@ -117,7 +117,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         Execute a task request.
-        
+
         Args:
             context: Request context
             event_queue: Event queue for progress updates
@@ -127,10 +127,10 @@ class SimpleGeneralistExecutor(AgentExecutor):
         if not task:
             task = new_task(context.message)  # type: ignore
             await event_queue.enqueue_event(task)
-        
+
         # Create task updater for progress events
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
-        
+
         # Create event callback
         async def event_callback(message: str, final: bool = False):
             """Send progress events to the client."""
@@ -158,11 +158,11 @@ class SimpleGeneralistExecutor(AgentExecutor):
             parts = [Part(root=TextPart(text=message))]
             await task_updater.add_artifact(parts)
             await task_updater.failed()
-        
+
         # Extract user input
         user_input = context.get_user_input()
         logger.info(f"Processing request: {user_input}")
-        
+
         # Hook up MCP tools (per-request connection like in a2a_agent.py)
         toolkit = None
         try:
@@ -170,19 +170,20 @@ class SimpleGeneralistExecutor(AgentExecutor):
             if mcp_url:
                 logger.info(f"Connecting to MCP server at {mcp_url}")
 
-                async with streamablehttp_client(
-                    url=mcp_url,
-                    timeout=30,
-                    sse_read_timeout=300,
-                ) as (
-                    read_stream,
-                    write_stream,
-                    _,
-                ), ClientSession(read_stream, write_stream) as session:
+                async with (
+                    streamablehttp_client(
+                        url=mcp_url,
+                        timeout=30,
+                        sse_read_timeout=300,
+                    ) as (
+                        read_stream,
+                        write_stream,
+                        _,
+                    ),
+                    ClientSession(read_stream, write_stream) as session,
+                ):
                     await session.initialize()
-                    toolkit = await create_toolkit(
-                        session=session, use_mcp_resources=False
-                    )
+                    toolkit = await create_toolkit(session=session, use_mcp_resources=False)
                     await self._run_agent(
                         user_input,
                         self.settings,
@@ -198,17 +199,17 @@ class SimpleGeneralistExecutor(AgentExecutor):
                     error_callback,
                     toolkit,
                 )
-                
+
         except Exception as exc:
             traceback.print_exc()
             logger.error(f"Error executing task: {exc}", exc_info=True)
             error_message = f"I encountered an error while processing your request: {str(exc)}"
             await error_callback(error_message)
-    
+
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
         Cancel a task (not implemented).
-        
+
         Args:
             context: Request context
             event_queue: Event queue
@@ -219,32 +220,33 @@ class SimpleGeneralistExecutor(AgentExecutor):
 def create_app(settings: Settings) -> Any:
     """
     Create the A2A Starlette application.
-    
+
     Args:
         settings: Application settings
-        
+
     Returns:
         Starlette application
     """
     # Create agent card
     agent_card = get_agent_card(settings)
-    
+
     # Create request handler
     request_handler = DefaultRequestHandler(
         agent_executor=SimpleGeneralistExecutor(settings),
         task_store=InMemoryTaskStore(),
     )
-    
+
     # Create A2A server
     server = A2AStarletteApplication(
         agent_card=agent_card,
         http_handler=request_handler,
     )
-    
+
     # Build and return the app
     app = server.build()
     logger.info("A2A server application created")
-    
+
     return app
+
 
 # Made with Bob

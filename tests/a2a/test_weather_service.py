@@ -16,7 +16,6 @@ sys.modules["weather_service"] = _fake_ws
 sys.modules["weather_service.observability"] = MagicMock()
 
 # Now import the configuration module directly — it only needs pydantic_settings
-from importlib import import_module
 import importlib.util
 
 # Load configuration.py directly from its file path

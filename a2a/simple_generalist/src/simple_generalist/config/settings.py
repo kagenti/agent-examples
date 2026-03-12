@@ -13,13 +13,13 @@ load_dotenv()
 
 class Settings(BaseSettings):
     """Application settings loaded from environment variables."""
-    
+
     # Logging
-    LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         default=os.getenv("LOG_LEVEL", "INFO"),  # type: ignore[arg-type]
         description="Application log level",
     )
-    
+
     # A2A Server Configuration
     A2A_HOST: str = Field(
         default=os.getenv("A2A_HOST", "0.0.0.0"),
@@ -29,14 +29,14 @@ class Settings(BaseSettings):
         default=int(os.getenv("A2A_PORT", "8000")),
         description="Port for A2A server",
     )
-    
+
     # MCP Server Configuration
     MCP_SERVER_URL: str = Field(
         default=os.getenv("MCP_SERVER_URL", ""),
         description="MCP server URL",
         validation_alias=AliasChoices("MCP_SERVER_URL", "MCP_SERVERS"),
     )
-    
+
     # LLM Configuration
     LLM_MODEL: str = Field(
         default=os.getenv("LLM_MODEL", "gpt-4"),
@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     )
     EXTRA_HEADERS: dict[str, str] = Field(
         default_factory=dict,
-        description="Extra headers for the OpenAI API (JSON string, e.g. '{\"key\": \"value\"}')",
+        description='Extra headers for the OpenAI API (JSON string, e.g. \'{"key": "value"}\')',
     )
 
     @field_validator("EXTRA_HEADERS", mode="before")
@@ -84,7 +84,7 @@ class Settings(BaseSettings):
         default=os.getenv("OTEL_CONSOLE_TRACING", "false").lower() in ("true", "1", "yes"),
         description="Print OpenTelemetry traces to console when no OTLP endpoint is configured",
     )
-    
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
@@ -95,5 +95,6 @@ class Settings(BaseSettings):
 def load_settings() -> Settings:
     """Load and return application settings."""
     return Settings()  # type: ignore[call-arg]
+
 
 # Made with Bob
