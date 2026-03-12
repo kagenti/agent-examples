@@ -5,6 +5,8 @@ Example of the business logic of an A2A agent for currency conversion.
 import logging
 import os
 
+from openai import AuthenticationError, InternalServerError
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events import EventQueue
 from a2a.server.tasks import TaskUpdater
@@ -22,8 +24,6 @@ from a2a.utils import (
     new_task,
 )
 from a2a.utils.errors import ServerError
-from openai import AuthenticationError, InternalServerError
-
 from app.agent import CurrencyAgent
 
 logging.basicConfig(level=logging.INFO)

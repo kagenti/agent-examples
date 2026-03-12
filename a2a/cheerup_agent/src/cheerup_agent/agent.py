@@ -2,6 +2,10 @@ import logging
 from textwrap import dedent
 
 import uvicorn
+from starlette.requests import Request
+from starlette.responses import JSONResponse
+from starlette.routing import Route
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -9,10 +13,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from starlette.requests import Request
-from starlette.responses import JSONResponse
-from starlette.routing import Route
-
 from cheerup_agent.cheerup_llm import chat
 
 logging.basicConfig(level=logging.DEBUG)

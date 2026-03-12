@@ -5,6 +5,9 @@ import sys
 import click
 import httpx
 import uvicorn
+from dotenv import load_dotenv
+from starlette.routing import Route
+
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryPushNotifier, InMemoryTaskStore
@@ -13,9 +16,6 @@ from a2a.types import (
     AgentCard,
     AgentSkill,
 )
-from dotenv import load_dotenv
-from starlette.routing import Route
-
 from app.agent import CurrencyAgent
 from app.agent_executor import CurrencyAgentExecutor
 

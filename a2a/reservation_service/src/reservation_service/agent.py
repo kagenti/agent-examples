@@ -3,6 +3,10 @@ import os
 from textwrap import dedent
 
 import uvicorn
+from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.routing import Route
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -10,10 +14,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-from langchain_core.messages import HumanMessage
-from openinference.instrumentation.langchain import LangChainInstrumentor
-from starlette.routing import Route
-
 from reservation_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
