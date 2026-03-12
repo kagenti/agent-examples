@@ -52,9 +52,9 @@ class CurrencyAgentExecutor(AgentExecutor):
             task = new_task(context.message)
             logger.info(f"Created task for message : {context.message}")
             event_queue.enqueue_event(task)
-        updater = TaskUpdater(event_queue, task.id, task.contextId)
+        updater = TaskUpdater(event_queue, task.id, task.context_id)
         try:
-            async for item in self.agent.stream(query, task.contextId):
+            async for item in self.agent.stream(query, task.context_id):
                 is_task_complete = item["is_task_complete"]
                 require_user_input = item["require_user_input"]
 
@@ -64,7 +64,7 @@ class CurrencyAgentExecutor(AgentExecutor):
                         TaskState.working,
                         new_agent_text_message(
                             item["content"],
-                            task.contextId,
+                            task.context_id,
                             task.id,
                         ),
                     )
@@ -74,7 +74,7 @@ class CurrencyAgentExecutor(AgentExecutor):
                         TaskState.input_required,
                         new_agent_text_message(
                             item["content"],
-                            task.contextId,
+                            task.context_id,
                             task.id,
                         ),
                         final=True,
@@ -104,7 +104,7 @@ Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
                 TaskState.input_required,
                 new_agent_text_message(
                     msg,
-                    task.contextId,
+                    task.context_id,
                     task.id,
                 ),
                 final=True,
@@ -119,7 +119,7 @@ or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_c
 Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
 
 Also check
-`kubectl -n <namespace> get secret openai-secret -o jsonpath="{"{"}.data.apikey{"}"}" | base64 -d`
+`kubectl -n <namespace> get secret openai-secret -o jsonpath="{"{"}}.data.apikey{"}"}" | base64 -d`
 The key should match your OpenAI key."""
             logger.error(msg=msg)
             logger.error(msg=f"Raw AuthenticationError {e}")
@@ -127,7 +127,7 @@ The key should match your OpenAI key."""
                 TaskState.input_required,
                 new_agent_text_message(
                     msg,
-                    task.contextId,
+                    task.context_id,
                     task.id,
                 ),
                 final=True,
@@ -142,7 +142,7 @@ The key should match your OpenAI key."""
                     # We don't show the error to the user, as it may have credentials
                     """Internal error on the agent.
                     Use `kubectl -n <namespace> logs deployment/<agent-name>` for details""",
-                    task.contextId,
+                    task.context_id,
                     task.id,
                 ),
                 final=True,
