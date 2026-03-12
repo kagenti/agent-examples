@@ -119,7 +119,7 @@ or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_c
 Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
 
 Also check
-`kubectl -n <namespace> get secret openai-secret -o jsonpath="{"{"}}.data.apikey{"}"}" | base64 -d`
+`kubectl -n <namespace> get secret openai-secret -o jsonpath="{"{"}.data.apikey{"}"}" | base64 -d`
 The key should match your OpenAI key."""
             logger.error(msg=msg)
             logger.error(msg=f"Raw AuthenticationError {e}")
@@ -154,3 +154,4 @@ The key should match your OpenAI key."""
 
     async def cancel(self, _: RequestContext, event_queue: EventQueue) -> Task | None:
         raise ServerError(error=UnsupportedOperationError())
+
