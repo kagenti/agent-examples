@@ -40,9 +40,7 @@ def _coerce_db_path_for_docker_mode(path: str | None, appworld_root: str) -> str
             suffix = normalized.split(outputs_marker, 1)[1]
             path = os.path.join(appworld_root, "experiments", "outputs", suffix)
 
-    resolved = os.path.abspath(
-        path if os.path.isabs(path) else os.path.join(appworld_root, path)
-    )
+    resolved = os.path.abspath(path if os.path.isabs(path) else os.path.join(appworld_root, path))
     if _ensure_under(data_root, resolved) or _ensure_under(outputs_root, resolved):
         return resolved
     raise ValueError(
@@ -85,9 +83,7 @@ def _enable_docker_mode_db_guard() -> None:
             break
 
     if api_module is None:
-        print(
-            "APIS_DOCKER_MODE enabled, but no set_local_dbs module was found; skipping guard."
-        )
+        print("APIS_DOCKER_MODE enabled, but no set_local_dbs module was found; skipping guard.")
         return
 
     original_set_local_dbs = getattr(api_module, "set_local_dbs")
@@ -104,22 +100,14 @@ def _enable_docker_mode_db_guard() -> None:
         # when a path can't be mapped (e.g. AppWorld's own default that lives
         # outside the container's APPWORLD_ROOT).
         try:
-            to_db_home_path = _coerce_db_path_for_docker_mode(
-                to_db_home_path, appworld_root
-            )
+            to_db_home_path = _coerce_db_path_for_docker_mode(to_db_home_path, appworld_root)
         except ValueError:
-            print(
-                f"[docker-mode] to_db_home_path {to_db_home_path!r} outside allowed roots, remapping to default"
-            )
+            print(f"[docker-mode] to_db_home_path {to_db_home_path!r} outside allowed roots, remapping to default")
             to_db_home_path = None
         try:
-            from_db_home_path = _coerce_db_path_for_docker_mode(
-                from_db_home_path, appworld_root
-            )
+            from_db_home_path = _coerce_db_path_for_docker_mode(from_db_home_path, appworld_root)
         except ValueError:
-            print(
-                f"[docker-mode] from_db_home_path {from_db_home_path!r} outside allowed roots, remapping to default"
-            )
+            print(f"[docker-mode] from_db_home_path {from_db_home_path!r} outside allowed roots, remapping to default")
             from_db_home_path = None
 
         if to_db_home_path is None:

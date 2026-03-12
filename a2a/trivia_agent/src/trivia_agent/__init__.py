@@ -5,7 +5,6 @@ from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 
 
-
 def setup_tracer():
     resource = Resource.create(
         attributes={
