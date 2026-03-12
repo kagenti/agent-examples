@@ -16,7 +16,11 @@ from langchain_core.messages import HumanMessage
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from weather_service.graph import get_graph, get_mcpclient
-from weather_service.observability import create_tracing_middleware, set_span_output, get_root_span
+from weather_service.observability import (
+    create_tracing_middleware,
+    set_span_output,
+    get_root_span,
+)
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -56,6 +60,7 @@ def get_agent_card(host: str, port: int):
         skills=[skill],
     )
 
+
 class A2AEvent:
     """
     A class to handle events for A2A Agent.
@@ -67,7 +72,9 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
+    async def emit_event(
+        self, message: str, final: bool = False, failed: bool = False
+    ) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
@@ -87,10 +94,12 @@ class A2AEvent:
                 ),
             )
 
+
 class WeatherExecutor(AgentExecutor):
     """
     A class to handle weather assistant execution for A2A Agent.
     """
+
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         The agent allows to retrieve weather info through a natural language conversational interface
@@ -110,31 +119,40 @@ class WeatherExecutor(AgentExecutor):
         # Parse Messages
         messages = [HumanMessage(content=user_input)]
         input = {"messages": messages}
-        logger.info(f'Processing messages: {input}')
+        logger.info(f"Processing messages: {input}")
 
         # Note: Root span with MLflow attributes is created by tracing middleware
         # Here we just run the agent logic - spans from LangChain are auto-captured
         output = None
 
         # Test MCP connection first
-        logger.info(f'Attempting to connect to MCP server at: {os.getenv("MCP_URL", "http://localhost:8000/sse")}')
+        logger.info(
+            f"Attempting to connect to MCP server at: {os.getenv('MCP_URL', 'http://localhost:8000/sse')}"
+        )
 
         mcpclient = get_mcpclient()
 
         # Try to get tools to verify connection
         try:
             tools = await mcpclient.get_tools()
-            logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+            logger.info(
+                f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}"
+            )
         except Exception as tool_error:
-            logger.error(f'Failed to connect to MCP server: {tool_error}')
-            await event_emitter.emit_event(f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}", failed=True)
+            logger.error(f"Failed to connect to MCP server: {tool_error}")
+            await event_emitter.emit_event(
+                f"Error: Cannot connect to MCP weather service at {os.getenv('MCP_URL', 'http://localhost:8000/sse')}. Please ensure the weather MCP server is running. Error: {tool_error}",
+                failed=True,
+            )
             return
 
         try:
             graph = await get_graph(mcpclient)
         except Exception as graph_error:
-            logger.error(f'Failed to create LLM graph: {graph_error}')
-            await event_emitter.emit_event(f"Error: Failed to initialize LLM graph: {graph_error}", failed=True)
+            logger.error(f"Failed to create LLM graph: {graph_error}")
+            await event_emitter.emit_event(
+                f"Error: Failed to initialize LLM graph: {graph_error}", failed=True
+            )
             return
 
         try:
@@ -147,10 +165,12 @@ class WeatherExecutor(AgentExecutor):
                     + "\n"
                 )
                 output = event
-                logger.info(f'event: {event}')
+                logger.info(f"event: {event}")
         except Exception as llm_error:
-            logger.error(f'LLM execution failed: {llm_error}')
-            await event_emitter.emit_event(f"Error: LLM execution failed: {llm_error}", failed=True)
+            logger.error(f"LLM execution failed: {llm_error}")
+            await event_emitter.emit_event(
+                f"Error: LLM execution failed: {llm_error}", failed=True
+            )
             return
 
         output = output.get("assistant", {}).get("final_answer") if output else None
@@ -172,6 +192,7 @@ class WeatherExecutor(AgentExecutor):
         """
         raise Exception("cancel not supported")
 
+
 def run():
     """
     Runs the A2A Agent application.
@@ -192,12 +213,15 @@ def run():
     app = server.build()
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     # Add tracing middleware - creates root span with MLflow/GenAI attributes
     app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
@@ -206,7 +230,9 @@ def run():
     @app.middleware("http")
     async def log_authorization_header(request, call_next):
         auth_header = request.headers.get("authorization", "No Authorization header")
-        logger.info(f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}")
+        logger.info(
+            f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}"
+        )
         response = await call_next(request)
         return response
 

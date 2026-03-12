@@ -21,16 +21,8 @@ class LLMConfig:
             "config_list": [
                 {
                     **self._base_config,
-                    **(
-                        {"response_format": response_format}
-                        if response_format
-                        else {}
-                    ),
-                    **(
-                        {"default_headers": config.EXTRA_HEADERS}
-                        if config.EXTRA_HEADERS
-                        else {}
-                    ),
+                    **({"response_format": response_format} if response_format else {}),
+                    **({"default_headers": config.EXTRA_HEADERS} if config.EXTRA_HEADERS else {}),
                 }
             ],
             "temperature": config.MODEL_TEMPERATURE,

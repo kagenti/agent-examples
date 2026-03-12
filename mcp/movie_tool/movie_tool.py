@@ -7,12 +7,17 @@ import logging
 from typing import Any
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "DEBUG"), stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "DEBUG"),
+    stream=sys.stdout,
+    format="%(levelname)s: %(message)s",
+)
 logging.getLogger("urllib3").setLevel(logging.INFO)
 
 OMDB_API_KEY = os.getenv("OMDB_API_KEY")
 
 mcp = FastMCP("Movie Review")
+
 
 def _fetch_json(params: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
     """
@@ -36,30 +41,36 @@ def _fetch_json(params: dict[str, Any], timeout: int = 10) -> dict[str, Any]:
         logger.error("Error fetching data: %s", e)
         return {"Error": "Error fetching data"}
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def get_full_plot(movie_title: str) -> str:
     """Get full plot summary of a movie from OMDb API."""
-    
+
     logger.debug("Requesting OMDb with t=%s plot=%s", movie_title, "full")
     params = {"t": movie_title, "plot": "full"}
     data = _fetch_json(params=params)
-        
+
     if "Error" in data:
         return data["Error"]
-    
+
     if "Response" in data and data["Response"] == "True" and "Plot" in data:
         return data["Plot"]
-    
+
     return "Movie not found"
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def get_movie_details(movie_title: str) -> str:
     """Get full details (awards, actors, short plot, and ratings, etc.) of a movie from OMDb API."""
 
     logger.debug("Requesting OMDb with t=%s plot=%s", movie_title, "short")
     params = {"t": movie_title, "plot": "short"}
     data = _fetch_json(params=params)
-    
+
     if "Error" in data:
         return data["Error"]
 
@@ -70,6 +81,7 @@ def get_movie_details(movie_title: str) -> str:
 
     return "Movie not found"
 
+
 # host can be specified with HOST env variable
 # transport can be specified with MCP_TRANSPORT env variable (defaults to streamable-http)
 def run_server():
@@ -79,7 +91,10 @@ def run_server():
     port = int(os.getenv("PORT", "8000"))
     mcp.run(transport=transport, host=host, port=port)
 
+
 if __name__ == "__main__":
     if OMDB_API_KEY is None:
-        logger.warning("Please configure the OMDB_API_KEY environment variable before running the server")
+        logger.warning(
+            "Please configure the OMDB_API_KEY environment variable before running the server"
+        )
     run_server()

@@ -2,7 +2,7 @@ import logging
 import sys
 
 from typing import Callable
-from autogen import coding, ConversableAgent, register_function
+from autogen import ConversableAgent, register_function
 from autogen.mcp.mcp_client import Toolkit
 
 from slack_researcher.config import Settings, settings
@@ -11,22 +11,20 @@ from slack_researcher.prompts import (
     ASSISTANT_PROMPT,
     REQUIREMENT_IDENTIFIER_PROMPT,
     CHANNEL_FILTER_PROMPT,
-    SUMMARIZER_PROMPT
+    SUMMARIZER_PROMPT,
 )
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format="%(levelname)s: %(message)s")
 
 
 class Agents:
-
     def __init__(
         self,
         config: Settings = None,
         assistant_tools: dict[str, Callable] = None,
         mcp_toolkit: Toolkit = None,
     ):
-
         if not config:
             config = Settings()
 
@@ -108,7 +106,7 @@ class Agents:
             mcp_toolkit.register_for_llm(self.slack_channel_assistant)
             tool_descriptions = []
             for tool in mcp_toolkit.tools:
-                tool_descriptions.append({tool.name : tool.description})
+                tool_descriptions.append({tool.name: tool.description})
             tool_descriptions = str(tool_descriptions)
             logging.info("Tool descriptions: %s", tool_descriptions)
         else:

@@ -8,17 +8,22 @@ from reservation_service.configuration import Configuration
 
 config = Configuration()
 
+
 # Extend MessagesState to include a final answer
 class ExtendedMessagesState(MessagesState):
     final_answer: str = ""
 
+
 def get_mcpclient():
-    return MultiServerMCPClient({
-        "reservations": {
-            "url": os.getenv("MCP_URL", "http://reservation-tool:8000/mcp"),
-            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+    return MultiServerMCPClient(
+        {
+            "reservations": {
+                "url": os.getenv("MCP_URL", "http://reservation-tool:8000/mcp"),
+                "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+            }
         }
-    })
+    )
+
 
 async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
@@ -33,7 +38,8 @@ async def get_graph(client) -> StateGraph:
     llm_with_tools = llm.bind_tools(tools)
 
     # System message
-    sys_msg = SystemMessage(content="""You are a helpful restaurant reservation assistant. You have access to tools for:
+    sys_msg = SystemMessage(
+        content="""You are a helpful restaurant reservation assistant. You have access to tools for:
 - Searching restaurants by city, cuisine, price tier
 - Checking availability at restaurants
 - Making reservations
@@ -47,7 +53,8 @@ When helping users:
 4. Provide confirmation codes when reservations are successful
 5. Be conversational and helpful
 
-Use the provided tools to complete your tasks.""")
+Use the provided tools to complete your tasks."""
+    )
 
     # Node
     def assistant(state: ExtendedMessagesState) -> ExtendedMessagesState:

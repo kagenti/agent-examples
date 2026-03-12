@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
     stream=sys.stdout,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
 # Initialize provider
@@ -30,7 +30,9 @@ logger.info("Initialized MockProvider for reservations")
 mcp = FastMCP("Restaurant Reservations")
 
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def search_restaurants(
     city: str,
     cuisine: Optional[str] = None,
@@ -53,7 +55,9 @@ def search_restaurants(
     Returns:
         JSON string containing list of matching restaurants
     """
-    logger.info(f"search_restaurants called: city={city}, cuisine={cuisine}, price_tier={price_tier}")
+    logger.info(
+        f"search_restaurants called: city={city}, cuisine={cuisine}, price_tier={price_tier}"
+    )
 
     try:
         restaurants = provider.search_restaurants(
@@ -75,7 +79,9 @@ def search_restaurants(
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def check_availability(
     restaurant_id: str,
     date_time: str,
@@ -92,7 +98,9 @@ def check_availability(
     Returns:
         JSON string containing list of available time slots
     """
-    logger.info(f"check_availability called: restaurant={restaurant_id}, date_time={date_time}, party_size={party_size}")
+    logger.info(
+        f"check_availability called: restaurant={restaurant_id}, date_time={date_time}, party_size={party_size}"
+    )
 
     try:
         slots = provider.check_availability(
@@ -114,7 +122,13 @@ def check_availability(
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True})
+@mcp.tool(
+    annotations={
+        "readOnlyHint": False,
+        "destructiveHint": False,
+        "idempotentHint": True,
+    }
+)
 def place_reservation(
     restaurant_id: str,
     date_time: str,
@@ -142,7 +156,9 @@ def place_reservation(
     Returns:
         JSON string containing reservation confirmation details
     """
-    logger.info(f"place_reservation called: restaurant={restaurant_id}, name={name}, party_size={party_size}")
+    logger.info(
+        f"place_reservation called: restaurant={restaurant_id}, name={name}, party_size={party_size}"
+    )
 
     try:
         reservation = provider.place_reservation(
@@ -167,7 +183,9 @@ def place_reservation(
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True})
+@mcp.tool(
+    annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True}
+)
 def cancel_reservation(
     reservation_id: str,
     reason: Optional[str] = None,
@@ -206,7 +224,9 @@ def cancel_reservation(
         return json.dumps({"error": str(e)})
 
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def list_reservations(
     user_id: str,
 ) -> str:
@@ -240,8 +260,12 @@ def run_server():
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
 
-    logger.info(f"Starting Restaurant Reservation MCP Server on {host}:{port} with transport={transport}")
-    logger.info(f"Registered tools: search_restaurants, check_availability, place_reservation, cancel_reservation, list_reservations")
+    logger.info(
+        f"Starting Restaurant Reservation MCP Server on {host}:{port} with transport={transport}"
+    )
+    logger.info(
+        f"Registered tools: search_restaurants, check_availability, place_reservation, cancel_reservation, list_reservations"
+    )
 
     mcp.run(transport=transport, host=host, port=port)
 

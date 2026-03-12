@@ -9,9 +9,16 @@ from fastmcp import FastMCP
 
 mcp = FastMCP("Weather")
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    stream=sys.stdout,
+    format="%(levelname)s: %(message)s",
+)
 
-@mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
+
+@mcp.tool(
+    annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True}
+)
 def get_weather(city: str) -> str:
     """Get weather info for a city"""
     logger.debug(f"Getting weather info for city '{city}'.")
@@ -29,12 +36,13 @@ def get_weather(city: str) -> str:
         "latitude": latitude,
         "longitude": longitude,
         "temperature_unit": "fahrenheit",
-        "current_weather": True
+        "current_weather": True,
     }
     weather_response = requests.get(weather_url, params=weather_params, timeout=10)
     weather_data = weather_response.json()
 
     return json.dumps(weather_data["current_weather"])
+
 
 # host can be specified with HOST env variable
 # transport can be specified with MCP_TRANSPORT env variable (defaults to streamable-http)
@@ -44,6 +52,7 @@ def run_server():
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
     mcp.run(transport=transport, host=host, port=port)
+
 
 if __name__ == "__main__":
     run_server()
