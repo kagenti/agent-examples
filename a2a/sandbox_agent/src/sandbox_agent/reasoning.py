@@ -1094,32 +1094,10 @@ async def reflector_node(
         else:
             last_content = str(content)
 
-    # Stall detection — force done if agent is stuck
-    # Only count decisions AFTER the most recent replan (replans reset context)
-    decisions_since_replan = []
-    for d in reversed(recent_decisions):
-        if d == "replan":
-            break
-        decisions_since_replan.insert(0, d)
-
-    # Check if executor hit the per-step tool call limit (not a stall — step is done)
-    hit_tool_limit = "tool call limit" in last_content.lower() or "reached tool call limit" in last_content.lower()
-
-    # 1. Two consecutive no-tool iterations since last replan → stuck
-    #    BUT: skip stall detection if the executor hit the tool call limit
-    #    (that's a legitimate step completion, not a stall)
-    no_tool_recent = 0
-    for d in reversed(decisions_since_replan[-3:]):
-        if d in ("replan", "continue"):
-            no_tool_recent += 1
-        else:
-            break
-    if no_tool_recent >= 2 and tool_calls_this_iter == 0 and not hit_tool_limit:
-        return _force_done(f"Stall: {no_tool_recent + 1} consecutive iterations with 0 tool calls")
-
-    # 2. Identical executor output across 2 consecutive iterations → stuck
-    if step_results and last_content[:500] == step_results[-1]:
-        return _force_done("Stall: executor output identical to previous iteration")
+    # Stall detection removed — the reflector's LLM call decides whether to
+    # continue, replan, or stop. Hardcoded stall guards were overriding the
+    # reflector's judgment and force-terminating sessions prematurely.
+    # The iteration limit and wall-clock limit are sufficient safeguards.
 
     # If last_content is the dedup sentinel, recover the actual last tool
     # result from the message history so the reflector sees real output.
