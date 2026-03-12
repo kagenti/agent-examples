@@ -1,0 +1,191 @@
+version: 2
+updates:
+  # GitHub Actions
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+
+  # Python dependencies — A2A agents
+  - package-ecosystem: pip
+    directory: /a2a/a2a_contact_extractor
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/a2a_currency_converter
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/cheerup_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/file_organizer
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/generic_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/git_issue_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/image_service
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/recipe_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/reservation_service
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/simple_generalist
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/slack_researcher
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/trivia_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /a2a/weather_service
+    schedule:
+      interval: weekly
+
+  # Python dependencies — MCP tools
+  - package-ecosystem: pip
+    directory: /mcp/cloud_storage_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/flight_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/image_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/movie_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/reservation_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/shopping_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/slack_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: pip
+    directory: /mcp/weather_tool
+    schedule:
+      interval: weekly
+
+  # Docker — A2A agents
+  - package-ecosystem: docker
+    directory: /a2a/a2a_contact_extractor
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/a2a_currency_converter
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/cheerup_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/file_organizer
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/generic_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/git_issue_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/image_service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/recipe_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/reservation_service
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/simple_generalist
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/slack_researcher
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/trivia_agent
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /a2a/weather_service
+    schedule:
+      interval: weekly
+
+  # Docker — MCP tools
+  - package-ecosystem: docker
+    directory: /mcp/appworld_apis
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/cloud_storage_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/flight_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/github_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/image_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/movie_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/reservation_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/shopping_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/slack_tool
+    schedule:
+      interval: weekly
+  - package-ecosystem: docker
+    directory: /mcp/weather_tool
+    schedule:
+      interval: weekly
