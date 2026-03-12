@@ -5,6 +5,7 @@ ARG RELEASE_VERSION="main"
 RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     curl \
+    jq \
     && rm -rf /var/lib/apt/lists/* \
     # Install GitHub CLI
     && curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
