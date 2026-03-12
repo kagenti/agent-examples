@@ -1,0 +1,16 @@
+# Default owners for everything
+* @kagenti/maintainers
+
+# CI and platform tooling
+.github/ @kagenti/platform
+Makefile @kagenti/platform
+
+# A2A agents
+a2a/ @kagenti/agents
+
+# MCP tools
+mcp/ @kagenti/agents
+
+# Documentation
+docs/ @kagenti/maintainers
+*.md @kagenti/maintainers
