@@ -7,7 +7,7 @@ dependencies = [
     "python-dotenv>=1.1.0",
     "a2a-sdk>=0.2.16",
     "crewai==0.203.1",
-    "crewai-tools==0.76.0",
+    "crewai-tools==1.10.1",
     "crewai-tools[mcp]==0.76.0",
 ]
 
