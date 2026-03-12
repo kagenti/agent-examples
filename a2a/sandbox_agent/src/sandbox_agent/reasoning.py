@@ -38,6 +38,19 @@ from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from sandbox_agent.budget import AgentBudget
 
+# openai raises APIStatusError for non-2xx responses (e.g. 402 from the budget proxy)
+try:
+    from openai import APIStatusError as _APIStatusError
+except ImportError:
+    _APIStatusError = None  # type: ignore[assignment,misc]
+
+
+def _is_budget_exceeded_error(exc: Exception) -> bool:
+    """Check if an exception is a 402 budget-exceeded from the LLM proxy."""
+    if _APIStatusError and isinstance(exc, _APIStatusError):
+        return exc.status_code == 402
+    return "budget_exceeded" in str(exc).lower() or "402" in str(exc)
+
 logger = logging.getLogger(__name__)
 
 # Sentinel text returned by the executor when all tool calls in a step have
@@ -717,8 +730,18 @@ async def planner_node(
         system_content = skill_instructions + "\n\n" + system_content
 
     plan_messages = [SystemMessage(content=system_content)] + messages
-    await budget.refresh_from_litellm()
-    response = await llm.ainvoke(plan_messages)
+
+    try:
+        response = await llm.ainvoke(plan_messages)
+    except Exception as exc:
+        if _is_budget_exceeded_error(exc):
+            logger.warning("Budget exceeded in planner (402 from proxy): %s", exc)
+            return {
+                "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
+                "done": True,
+                "_budget_summary": budget.summary(),
+            }
+        raise
 
     usage = getattr(response, 'usage_metadata', None) or {}
     prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
@@ -804,7 +827,7 @@ async def executor_node(
         system_content = skill_instructions + "\n\n" + system_content
 
     # Check budget before making the LLM call (refresh from LiteLLM first)
-    await budget.refresh_from_litellm()
+
     if budget.exceeded:
         logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
         result: dict[str, Any] = {
@@ -843,7 +866,18 @@ async def executor_node(
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
     logger.info("Executor context: %d messages, ~%dk tokens (from %d total)",
                 len(messages), used_chars // (_CHARS_PER_TOKEN * 1000), len(all_msgs))
-    response = await llm_with_tools.ainvoke(messages)
+    try:
+        response = await llm_with_tools.ainvoke(messages)
+    except Exception as exc:
+        if _is_budget_exceeded_error(exc):
+            logger.warning("Budget exceeded in executor (402 from proxy): %s", exc)
+            return {
+                "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
+                "current_step": current_step,
+                "done": True,
+                "_budget_summary": budget.summary(),
+            }
+        raise
 
     # Track no-tool executions — if the LLM produces text instead of
     # tool calls, increment counter. After 2 consecutive no-tool runs
@@ -1074,7 +1108,7 @@ async def reflector_node(
         return result
 
     # Budget guard — force termination if ANY budget limit exceeded
-    await budget.refresh_from_litellm()
+
     if budget.exceeded:
         return _force_done(f"Budget exceeded: {budget.exceeded_reason}")
 
@@ -1178,7 +1212,13 @@ async def reflector_node(
             if pair_count >= 3:
                 break
     reflect_messages = [SystemMessage(content=system_content)] + recent_msgs
-    response = await llm.ainvoke(reflect_messages)
+    try:
+        response = await llm.ainvoke(reflect_messages)
+    except Exception as exc:
+        if _is_budget_exceeded_error(exc):
+            logger.warning("Budget exceeded in reflector (402 from proxy): %s", exc)
+            return _force_done(f"Budget exceeded: {exc}")
+        raise
 
     # Extract token usage from the LLM response
     usage = getattr(response, 'usage_metadata', None) or {}
@@ -1368,8 +1408,20 @@ async def reporter_node(
         if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
     ]
     messages = [SystemMessage(content=system_content)] + filtered_msgs
-    await budget.refresh_from_litellm()
-    response = await llm.ainvoke(messages)
+
+    try:
+        response = await llm.ainvoke(messages)
+    except Exception as exc:
+        if _is_budget_exceeded_error(exc):
+            logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc)
+            return {
+                "messages": [AIMessage(content="Task completed (budget exhausted before final summary).")],
+                "final_answer": "Task completed (budget exhausted before final summary).",
+                "plan_status": terminal_status,
+                "done": True,
+                "_budget_summary": budget.summary(),
+            }
+        raise
 
     # Extract token usage from the LLM response
     usage = getattr(response, 'usage_metadata', None) or {}

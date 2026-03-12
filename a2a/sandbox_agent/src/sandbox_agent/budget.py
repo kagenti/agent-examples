@@ -4,27 +4,28 @@ Prevents runaway execution by capping iterations, tool calls per step,
 total token usage, and wall clock time. When the budget is exceeded the
 reflector forces the loop to terminate gracefully.
 
-Token budget is enforced via LiteLLM as the single source of truth:
-the agent queries the backend's ``/token-usage/sessions/{context_id}``
-endpoint before each LLM call. This tracks ALL calls including
-sub-agents (explore, delegate) and persists across restarts.
+Token budget is enforced via the LLM Budget Proxy:
+- The proxy intercepts all LLM calls and checks per-session token usage
+- When budget is exceeded, the proxy returns HTTP 402
+- The agent catches 402 errors and terminates gracefully
+- The local ``tokens_used`` counter tracks in-process usage for budget
+  summary events (emitted to the UI) and for the local ``exceeded`` check
 
 Budget scopes:
 - **Per-message** (single graph run): max_iterations, max_wall_clock_s, recursion_limit
 - **Per-step** (within one plan step): max_tool_calls_per_step
-- **Per-session** (across A2A turns + restarts): token budget via LiteLLM
+- **Per-session** (across A2A turns + restarts): enforced by LLM Budget Proxy
 
 Budget parameters are configurable via environment variables:
 
 - ``SANDBOX_MAX_ITERATIONS`` (default: 100)
 - ``SANDBOX_MAX_TOOL_CALLS_PER_STEP`` (default: 10)
-- ``SANDBOX_MAX_TOKENS`` (default: 1000000) — enforced via LiteLLM query
+- ``SANDBOX_MAX_TOKENS`` (default: 1000000) — passed to proxy via metadata
 - ``SANDBOX_MAX_WALL_CLOCK_S`` (default: 600) — max seconds per message
 - ``SANDBOX_HITL_INTERVAL`` (default: 50)
 - ``SANDBOX_RECURSION_LIMIT`` (default: 50)
 - ``SANDBOX_LLM_TIMEOUT`` (default: 300) — seconds per LLM call
 - ``SANDBOX_LLM_MAX_RETRIES`` (default: 3) — retry on transient LLM errors
-- ``KAGENTI_BACKEND_URL`` — backend URL for token-usage API
 """
 
 from __future__ import annotations
@@ -34,18 +35,7 @@ import os
 import time
 from dataclasses import dataclass, field
 
-import httpx
-
 logger = logging.getLogger(__name__)
-
-# Default backend URL for token-usage queries (in-cluster service discovery)
-_DEFAULT_BACKEND_URL = os.environ.get(
-    "KAGENTI_BACKEND_URL",
-    "http://kagenti-backend.kagenti-system.svc.cluster.local:8000",
-)
-
-# Minimum seconds between LiteLLM usage queries (cache to avoid hammering)
-_BUDGET_CHECK_INTERVAL = int(os.environ.get("SANDBOX_BUDGET_CHECK_INTERVAL", "5"))
 
 
 def _env_int(name: str, default: int) -> int:
@@ -71,6 +61,7 @@ class AgentBudget:
         Maximum tool invocations the executor may make for a single plan step.
     max_tokens:
         Approximate upper bound on total tokens consumed (prompt + completion).
+        Passed to the LLM Budget Proxy via request metadata.
     max_wall_clock_s:
         Maximum wall clock time in seconds for a single message run.
     hitl_interval:
@@ -93,14 +84,8 @@ class AgentBudget:
     tokens_used: int = field(default=0, init=False)
     tool_calls_this_step: int = field(default=0, init=False)
     _start_time: float = field(default_factory=time.monotonic, init=False)
-    _last_litellm_check: float = field(default=0.0, init=False)
-    _session_id: str = field(default="", init=False)
 
     # -- helpers -------------------------------------------------------------
-
-    def set_session_id(self, session_id: str) -> None:
-        """Set the session ID for LiteLLM usage queries."""
-        self._session_id = session_id
 
     def tick_iteration(self) -> None:
         """Advance the iteration counter by one."""
@@ -109,54 +94,16 @@ class AgentBudget:
     def add_tokens(self, count: int) -> None:
         """Accumulate *count* tokens (prompt + completion).
 
-        This is a fallback counter used when LiteLLM is unavailable.
-        When LiteLLM is reachable, ``refresh_from_litellm`` overwrites
-        ``tokens_used`` with the authoritative value.
+        Tracks in-process token usage for budget summary events and the
+        local ``exceeded`` check. The authoritative budget enforcement
+        is done by the LLM Budget Proxy (returns 402 when exceeded).
         """
         self.tokens_used += count
         if self.tokens_exceeded:
             logger.warning(
                 "Budget: tokens exceeded %d/%d",
-                self.tokens_used, self.max_tokens,
-            )
-
-    async def refresh_from_litellm(self) -> None:
-        """Query LiteLLM for actual session token usage.
-
-        Updates ``tokens_used`` with the authoritative value from LiteLLM.
-        Caches for ``_BUDGET_CHECK_INTERVAL`` seconds to avoid hammering.
-        Falls back silently to the in-memory counter on error.
-        """
-        if not self._session_id:
-            return
-
-        now = time.monotonic()
-        if now - self._last_litellm_check < _BUDGET_CHECK_INTERVAL:
-            return  # Use cached value
-
-        try:
-            url = f"{_DEFAULT_BACKEND_URL}/api/v1/token-usage/sessions/{self._session_id}"
-            async with httpx.AsyncClient(timeout=10.0) as client:
-                resp = await client.get(url)
-                if resp.status_code == 200:
-                    data = resp.json()
-                    litellm_total = data.get("total_tokens", 0)
-                    if litellm_total > 0:
-                        self.tokens_used = litellm_total
-                        self._last_litellm_check = now
-                        logger.debug(
-                            "Budget: LiteLLM reports %d tokens for session %s",
-                            litellm_total, self._session_id[:12],
-                        )
-                else:
-                    logger.debug(
-                        "Budget: token-usage API returned %d for session %s",
-                        resp.status_code, self._session_id[:12],
-                    )
-        except Exception as exc:
-            logger.debug(
-                "Budget: LiteLLM query failed for session %s: %s (using in-memory fallback)",
-                self._session_id[:12], exc,
+                self.tokens_used,
+                self.max_tokens,
             )
 
     def tick_tool_call(self) -> None:

@@ -565,7 +565,6 @@ def build_graph(
     config = Configuration()  # type: ignore[call-arg]
     # -- Budget -------------------------------------------------------------
     budget = AgentBudget()
-    budget.set_session_id(context_id)
 
     llm = ChatOpenAI(
         model=config.llm_model,
@@ -579,6 +578,7 @@ def build_graph(
                     "session_id": context_id,
                     "agent_name": os.environ.get("AGENT_NAME", "sandbox-legion"),
                     "namespace": namespace,
+                    "max_session_tokens": budget.max_tokens,
                 }
             }
         },
