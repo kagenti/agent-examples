@@ -68,6 +68,7 @@ def get_agent_card(host: str, port: int):
         skills=[skill],
     )
 
+
 class A2AEvent:
     """
     A class to handle events for A2A Agent.
@@ -79,7 +80,9 @@ class A2AEvent:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
+    async def emit_event(
+        self, message: str, final: bool = False, failed: bool = False
+    ) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
@@ -99,10 +102,12 @@ class A2AEvent:
                 ),
             )
 
+
 class ReservationExecutor(AgentExecutor):
     """
     A class to handle reservation assistant execution for A2A Agent.
     """
+
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         """
         The agent allows restaurant reservations through a natural language conversational interface
@@ -119,26 +124,28 @@ class ReservationExecutor(AgentExecutor):
         # Parse Messages
         messages = [HumanMessage(content=context.get_user_input())]
         input = {"messages": messages}
-        logger.info(f'Processing messages: {input}')
+        logger.info(f"Processing messages: {input}")
 
         try:
             output = None
             # Test MCP connection first
             mcp_url = os.getenv("MCP_URL", "http://reservation-tool:8000/mcp")
-            logger.info(f'Attempting to connect to MCP server at: {mcp_url}')
+            logger.info(f"Attempting to connect to MCP server at: {mcp_url}")
 
             mcpclient = get_mcpclient()
 
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info(f'Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}')
+                logger.info(
+                    f"Successfully connected to MCP server. Available tools: {[tool.name for tool in tools]}"
+                )
             except Exception as tool_error:
-                logger.error(f'Failed to connect to MCP server: {tool_error}')
+                logger.error(f"Failed to connect to MCP server: {tool_error}")
                 await event_emitter.emit_event(
                     f"Error: Cannot connect to reservation MCP service at {mcp_url}. "
                     f"Please ensure the reservation MCP server is running. Error: {tool_error}",
-                    failed=True
+                    failed=True,
                 )
                 return
 
@@ -152,15 +159,19 @@ class ReservationExecutor(AgentExecutor):
                     + "\n"
                 )
                 output = event
-                logger.info(f'event: {event}')
+                logger.info(f"event: {event}")
             if output is not None:
                 final_answer = output.get("assistant", {}).get("final_answer")
                 await event_emitter.emit_event(str(final_answer), final=True)
             else:
-                await event_emitter.emit_event("No events produced by the graph.", final=True)
+                await event_emitter.emit_event(
+                    "No events produced by the graph.", final=True
+                )
         except Exception as e:
-            logger.error(f'Graph execution error: {e}')
-            await event_emitter.emit_event(f"Error: Failed to process reservation request. {str(e)}", failed=True)
+            logger.error(f"Graph execution error: {e}")
+            await event_emitter.emit_event(
+                f"Error: Failed to process reservation request. {str(e)}", failed=True
+            )
             raise Exception(str(e))
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
@@ -168,6 +179,7 @@ class ReservationExecutor(AgentExecutor):
         Not implemented
         """
         raise Exception("cancel not supported")
+
 
 def run():
     """
@@ -188,11 +200,14 @@ def run():
     app = server.build()
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

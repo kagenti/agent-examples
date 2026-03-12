@@ -1,5 +1,6 @@
 from pydantic_settings import BaseSettings
 
+
 class Configuration(BaseSettings):
     LLM_MODEL: str = "llama3.2:3b-instruct-fp16"
     LLM_API_BASE: str = "http://localhost:11434/v1"

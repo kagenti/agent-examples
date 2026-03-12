@@ -5,7 +5,13 @@ import logging
 from datetime import datetime, timedelta, timezone
 from typing import List, Optional, Dict
 from providers.base import ReservationProvider
-from schemas import Restaurant, Location, AvailabilitySlot, Reservation, CancellationReceipt
+from schemas import (
+    Restaurant,
+    Location,
+    AvailabilitySlot,
+    Reservation,
+    CancellationReceipt,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +219,9 @@ class MockProvider(ReservationProvider):
         Note: The `date_time` and `distance_km` parameters are ignored in this mock implementation,
         but would be used by real providers to filter results by availability and proximity.
         """
-        logger.debug(f"Searching restaurants in {city} with filters: cuisine={cuisine}, price_tier={price_tier}")
+        logger.debug(
+            f"Searching restaurants in {city} with filters: cuisine={cuisine}, price_tier={price_tier}"
+        )
 
         results = []
         for restaurant in self._restaurants:
@@ -245,7 +253,9 @@ class MockProvider(ReservationProvider):
         party_size: int,
     ) -> List[AvailabilitySlot]:
         """Generate availability slots based on deterministic rules."""
-        logger.debug(f"Checking availability for restaurant {restaurant_id} on {date_time} for {party_size} guests")
+        logger.debug(
+            f"Checking availability for restaurant {restaurant_id} on {date_time} for {party_size} guests"
+        )
 
         # Validate restaurant exists
         restaurant = next((r for r in self._restaurants if r.id == restaurant_id), None)
@@ -261,13 +271,24 @@ class MockProvider(ReservationProvider):
         # Generate slots for lunch (11:30-14:00) and dinner (17:00-21:00)
         slots = []
         lunch_times = ["11:30", "12:00", "12:30", "13:00", "13:30"]
-        dinner_times = ["17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30"]
+        dinner_times = [
+            "17:00",
+            "17:30",
+            "18:00",
+            "18:30",
+            "19:00",
+            "19:30",
+            "20:00",
+            "20:30",
+        ]
 
         all_times = lunch_times + dinner_times
 
         for time_str in all_times:
             hour, minute = map(int, time_str.split(":"))
-            slot_time = base_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
+            slot_time = base_date.replace(
+                hour=hour, minute=minute, second=0, microsecond=0
+            )
 
             # Deterministic availability based on hash of restaurant_id + time + party_size
             # This ensures consistent results for the same inputs
@@ -304,7 +325,9 @@ class MockProvider(ReservationProvider):
         notes: Optional[str] = None,
     ) -> Reservation:
         """Create a mock reservation."""
-        logger.debug(f"Placing reservation for {name} at {restaurant_id} on {date_time}")
+        logger.debug(
+            f"Placing reservation for {name} at {restaurant_id} on {date_time}"
+        )
 
         # Validate restaurant exists
         restaurant = next((r for r in self._restaurants if r.id == restaurant_id), None)
@@ -317,7 +340,9 @@ class MockProvider(ReservationProvider):
         for existing_res in self._reservations.values():
             existing_key = f"{existing_res.guest_email}_{existing_res.date_time}_{existing_res.restaurant_id}"
             if existing_key == duplicate_key:
-                logger.info(f"Returning existing reservation (idempotent): {existing_res.id}")
+                logger.info(
+                    f"Returning existing reservation (idempotent): {existing_res.id}"
+                )
                 return existing_res
 
         # Generate confirmation code (only for new reservations)
@@ -325,7 +350,9 @@ class MockProvider(ReservationProvider):
         self._reservation_counter += 1
 
         # Create new reservation
-        reservation_id = f"reservation_{hashlib.sha256(confirmation_code.encode()).hexdigest()[:12]}"
+        reservation_id = (
+            f"reservation_{hashlib.sha256(confirmation_code.encode()).hexdigest()[:12]}"
+        )
         reservation = Reservation(
             id=reservation_id,
             restaurant_id=restaurant_id,
@@ -342,7 +369,9 @@ class MockProvider(ReservationProvider):
         )
 
         self._reservations[reservation_id] = reservation
-        logger.info(f"Created reservation {reservation_id} with confirmation {confirmation_code}")
+        logger.info(
+            f"Created reservation {reservation_id} with confirmation {confirmation_code}"
+        )
         return reservation
 
     def cancel_reservation(

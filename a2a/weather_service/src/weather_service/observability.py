@@ -34,7 +34,7 @@ AGENT_FRAMEWORK = "langchain"
 # ContextVar to pass root span from middleware to agent code
 # This allows execute() to access the middleware-created root span
 # even though trace.get_current_span() would return a child span
-_root_span_var: ContextVar = ContextVar('root_span', default=None)
+_root_span_var: ContextVar = ContextVar("root_span", default=None)
 
 
 def get_root_span():
@@ -48,9 +48,11 @@ def get_root_span():
     """
     return _root_span_var.get()
 
+
 # OpenInference semantic conventions
 try:
     from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
+
     OPENINFERENCE_AVAILABLE = True
 except ImportError:
     OPENINFERENCE_AVAILABLE = False
@@ -60,6 +62,7 @@ except ImportError:
 def _get_otlp_exporter(endpoint: str):
     """Get HTTP OTLP exporter."""
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
     if not endpoint.endswith("/v1/traces"):
         endpoint = endpoint.rstrip("/") + "/v1/traces"
     return OTLPSpanExporter(endpoint=endpoint)
@@ -75,7 +78,7 @@ def setup_observability() -> None:
     namespace = os.getenv("K8S_NAMESPACE_NAME", "team1")
     otlp_endpoint = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+        "http://otel-collector.kagenti-system.svc.cluster.local:8335",
     )
 
     logger.info("=" * 60)
@@ -88,21 +91,23 @@ def setup_observability() -> None:
     # Create resource with service and MLflow attributes
     # Resource attributes are STATIC and apply to ALL spans/traces
     # See: https://mlflow.org/docs/latest/genai/tracing/opentelemetry/
-    resource = Resource(attributes={
-        # Standard OTEL service attributes
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: AGENT_VERSION,
-        "service.namespace": namespace,
-        "k8s.namespace.name": namespace,
-        # MLflow static metadata (applies to all traces)
-        # These appear in MLflow trace list columns
-        "mlflow.traceName": AGENT_NAME,
-        "mlflow.source": service_name,
-        # GenAI static attributes
-        "gen_ai.agent.name": AGENT_NAME,
-        "gen_ai.agent.version": AGENT_VERSION,
-        "gen_ai.system": AGENT_FRAMEWORK,
-    })
+    resource = Resource(
+        attributes={
+            # Standard OTEL service attributes
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: AGENT_VERSION,
+            "service.namespace": namespace,
+            "k8s.namespace.name": namespace,
+            # MLflow static metadata (applies to all traces)
+            # These appear in MLflow trace list columns
+            "mlflow.traceName": AGENT_NAME,
+            "mlflow.source": service_name,
+            # GenAI static attributes
+            "gen_ai.agent.name": AGENT_NAME,
+            "gen_ai.agent.version": AGENT_VERSION,
+            "gen_ai.system": AGENT_FRAMEWORK,
+        }
+    )
 
     # Create and configure tracer provider
     tracer_provider = TracerProvider(resource=resource)
@@ -114,20 +119,26 @@ def setup_observability() -> None:
     # Auto-instrument LangChain with OpenInference
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor
+
         LangChainInstrumentor().instrument()
         logger.info("LangChain instrumented with OpenInference")
     except ImportError:
         logger.warning("openinference-instrumentation-langchain not available")
 
     # Configure W3C Trace Context propagation
-    set_global_textmap(CompositePropagator([
-        TraceContextTextMapPropagator(),
-        W3CBaggagePropagator(),
-    ]))
+    set_global_textmap(
+        CompositePropagator(
+            [
+                TraceContextTextMapPropagator(),
+                W3CBaggagePropagator(),
+            ]
+        )
+    )
 
     # Instrument OpenAI for GenAI semantic conventions
     try:
         from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
         OpenAIInstrumentor().instrument()
         logger.info("OpenAI instrumented with GenAI semantic conventions")
     except ImportError:
@@ -168,7 +179,7 @@ def _set_genai_mlflow_attributes(
     if OPENINFERENCE_AVAILABLE:
         span.set_attribute(
             SpanAttributes.OPENINFERENCE_SPAN_KIND,
-            OpenInferenceSpanKindValues.AGENT.value
+            OpenInferenceSpanKindValues.AGENT.value,
         )
 
     # === MLflow-specific Attributes ===
@@ -225,7 +236,9 @@ def enrich_current_span(
     # get_current_span() returns INVALID_SPAN if none exists
     if current_span.is_recording():
         # Enrich the existing span
-        _set_genai_mlflow_attributes(current_span, context_id, task_id, user_id, input_text)
+        _set_genai_mlflow_attributes(
+            current_span, context_id, task_id, user_id, input_text
+        )
         try:
             yield current_span
         except Exception as e:
@@ -238,7 +251,9 @@ def enrich_current_span(
         logger.info("No current recording span - creating gen_ai.agent.invoke span")
         tracer = get_tracer()
         with tracer.start_as_current_span("gen_ai.agent.invoke") as new_span:
-            _set_genai_mlflow_attributes(new_span, context_id, task_id, user_id, input_text)
+            _set_genai_mlflow_attributes(
+                new_span, context_id, task_id, user_id, input_text
+            )
             try:
                 yield new_span
                 new_span.set_status(Status(StatusCode.OK))
@@ -332,7 +347,9 @@ def create_agent_span(
 
     # OpenInference span kind - marks this as an AGENT span
     if OPENINFERENCE_AVAILABLE:
-        attributes[SpanAttributes.OPENINFERENCE_SPAN_KIND] = OpenInferenceSpanKindValues.AGENT.value
+        attributes[SpanAttributes.OPENINFERENCE_SPAN_KIND] = (
+            OpenInferenceSpanKindValues.AGENT.value
+        )
 
     # Custom attributes for debugging
     if task_id:

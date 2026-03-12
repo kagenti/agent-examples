@@ -1,13 +1,13 @@
 import json
-import logging
 import os
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
-from typing import Literal, Optional
+from typing import Literal
+
 
 class Settings(BaseSettings):
-    LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         os.getenv("LOG_LEVEL", "DEBUG"),
         description="Application log level",
     )
@@ -31,7 +31,9 @@ class Settings(BaseSettings):
         description="The maximum number of plan steps",
         ge=1,
     )
-    MCP_URL: str = Field(os.getenv("MCP_URL", "http://slack-tool:8000"), description="Endpoint for an option MCP server")
+    MCP_URL: str = Field(
+        os.getenv("MCP_URL", "http://slack-tool:8000"), description="Endpoint for an option MCP server"
+    )
     SERVICE_PORT: int = Field(os.getenv("SERVICE_URL", 8000), description="Port on which the service will run.")
 
     class Config:
@@ -46,5 +48,6 @@ class Settings(BaseSettings):
             except json.JSONDecodeError:
                 raise ValueError("EXTRA_HEADERS must be a valid JSON string")
         return self
+
 
 settings = Settings()  # type: ignore[call-arg]

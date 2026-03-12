@@ -46,9 +46,7 @@ class TestMockProvider:
     def test_check_availability(self, provider):
         """Test checking availability for a restaurant."""
         slots = provider.check_availability(
-            restaurant_id="rest_001",
-            date_time="2025-03-15T12:00:00",
-            party_size=4
+            restaurant_id="rest_001", date_time="2025-03-15T12:00:00", party_size=4
         )
         assert len(slots) > 0
         assert all(isinstance(s, AvailabilitySlot) for s in slots)
@@ -61,7 +59,7 @@ class TestMockProvider:
             provider.check_availability(
                 restaurant_id="invalid_id",
                 date_time="2025-03-15T12:00:00",
-                party_size=4
+                party_size=4,
             )
 
     def test_place_reservation(self, provider):
@@ -73,7 +71,7 @@ class TestMockProvider:
             name="John Doe",
             phone="+1-555-123-4567",
             email="john@example.com",
-            notes="Window seat preferred"
+            notes="Window seat preferred",
         )
         assert isinstance(reservation, Reservation)
         assert reservation.restaurant_id == "rest_001"
@@ -91,7 +89,7 @@ class TestMockProvider:
             party_size=4,
             name="John Doe",
             phone="+1-555-123-4567",
-            email="john@example.com"
+            email="john@example.com",
         )
 
         # Place duplicate reservation
@@ -101,7 +99,7 @@ class TestMockProvider:
             party_size=4,
             name="John Doe",
             phone="+1-555-123-4567",
-            email="john@example.com"
+            email="john@example.com",
         )
 
         # Should return same reservation
@@ -117,7 +115,7 @@ class TestMockProvider:
                 party_size=4,
                 name="John Doe",
                 phone="+1-555-123-4567",
-                email="john@example.com"
+                email="john@example.com",
             )
 
     def test_list_reservations(self, provider):
@@ -129,7 +127,7 @@ class TestMockProvider:
             party_size=4,
             name="John Doe",
             phone="+1-555-123-4567",
-            email="john@example.com"
+            email="john@example.com",
         )
 
         # List by email
@@ -151,13 +149,12 @@ class TestMockProvider:
             party_size=4,
             name="John Doe",
             phone="+1-555-123-4567",
-            email="john@example.com"
+            email="john@example.com",
         )
 
         # Cancel it
         receipt = provider.cancel_reservation(
-            reservation_id=reservation.id,
-            reason="Change of plans"
+            reservation_id=reservation.id, reason="Change of plans"
         )
 
         assert receipt.reservation_id == reservation.id
@@ -194,8 +191,8 @@ class TestSchemaValidation:
                 address="123 Main St",
                 city="Boston",
                 state="MA",
-                postal_code="02101"
-            )
+                postal_code="02101",
+            ),
         )
         assert restaurant.id == "test_001"
 
@@ -214,16 +211,14 @@ class TestSchemaValidation:
                     address="123 Main St",
                     city="Boston",
                     state="MA",
-                    postal_code="02101"
-                )
+                    postal_code="02101",
+                ),
             )
 
     def test_availability_slot_validation(self):
         """Test AvailabilitySlot schema validation."""
         slot = AvailabilitySlot(
-            time="2025-03-15T19:00:00",
-            max_party_size=8,
-            available=True
+            time="2025-03-15T19:00:00", max_party_size=8, available=True
         )
         assert slot.available is True
 
@@ -232,5 +227,5 @@ class TestSchemaValidation:
             AvailabilitySlot(
                 time="2025-03-15T19:00:00",
                 max_party_size=0,  # Invalid: must be >= 1
-                available=True
+                available=True,
             )

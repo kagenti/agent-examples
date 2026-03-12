@@ -41,8 +41,8 @@ class ExtractorAgentExecutor(AgentExecutor):
         async for item in self.agent.stream(query, task.contextId):
             is_task_complete = item["is_task_complete"]
             require_user_input = item["require_user_input"]
-            #content = item["content"]
-            content = item.get('content', '')
+            # content = item["content"]
+            content = item.get("content", "")
 
             logger.info(
                 f"Stream item received: complete={is_task_complete}, require_input={require_user_input}, content_len={len(content)}"
@@ -57,7 +57,6 @@ class ExtractorAgentExecutor(AgentExecutor):
             if isinstance(content, list):
                 # Extract the text from each TextPart object
                 content = " ".join(part.text for part in content)
-
 
             artifact = new_text_artifact(
                 name="current_result",

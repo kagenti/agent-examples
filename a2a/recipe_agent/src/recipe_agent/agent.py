@@ -67,7 +67,9 @@ class RecipeExecutor(AgentExecutor):
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
 
         user_input = context.get_user_input()
-        logger.info("Recipe agent received: %s (context=%s)", user_input, task.context_id)
+        logger.info(
+            "Recipe agent received: %s (context=%s)", user_input, task.context_id
+        )
 
         await task_updater.update_status(
             TaskState.working,
@@ -129,6 +131,8 @@ def run():
 
     # Add custom routes
     app.routes.insert(0, Route("/health", health, methods=["GET"]))
-    app.routes.insert(0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"]))
+    app.routes.insert(
+        0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"])
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=8000)

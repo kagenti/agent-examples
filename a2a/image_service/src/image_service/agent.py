@@ -10,7 +10,14 @@ from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from starlette.routing import Route
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, DataPart
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    TaskState,
+    TextPart,
+    DataPart,
+)
 from a2a.utils import new_agent_text_message, new_task
 from openinference.instrumentation.langchain import LangChainInstrumentor
 from langchain_core.messages import HumanMessage
@@ -21,6 +28,7 @@ logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 LangChainInstrumentor().instrument()
+
 
 def get_agent_card(host: str, port: int):
     """Returns the Agent Card for the Image Agent."""
@@ -55,7 +63,9 @@ class ImageTaskEventEmitter:
     def __init__(self, task_updater: TaskUpdater):
         self.task_updater = task_updater
 
-    async def emit_event(self, message: str, final: bool = False, failed: bool = False) -> None:
+    async def emit_event(
+        self, message: str, final: bool = False, failed: bool = False
+    ) -> None:
         logger.info("Emitting event %s", message)
 
         if final or failed:
@@ -81,22 +91,31 @@ class ImageExecutor(AgentExecutor):
         """Fetch an image (base64) from the MCP image_tool and return it to the UI."""
         task = context.current_task
         if not task:
-            task = new_task(context.message)  
+            task = new_task(context.message)
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = ImageTaskEventEmitter(task_updater)
 
         try:
             # Test MCP connection first
-            logger.info('Attempting to connect to MCP server at: %s', os.getenv("MCP_URL", "http://localhost:8000/mcp"))
+            logger.info(
+                "Attempting to connect to MCP server at: %s",
+                os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+            )
             mcpclient = get_mcpclient()
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info('Successfully connected to MCP server. Available tools: %s', [tool.name for tool in tools])
+                logger.info(
+                    "Successfully connected to MCP server. Available tools: %s",
+                    [tool.name for tool in tools],
+                )
             except Exception as tool_error:
-                logger.error('Failed to connect to MCP server: %s', tool_error)
-                await event_emitter.emit_event(f"Error: Cannot connect to MCP image service at {os.getenv('MCP_URL', 'http://localhost:8000/mcp')}. Please ensure the image MCP server is running. Error: {tool_error}", failed=True)
+                logger.error("Failed to connect to MCP server: %s", tool_error)
+                await event_emitter.emit_event(
+                    f"Error: Cannot connect to MCP image service at {os.getenv('MCP_URL', 'http://localhost:8000/mcp')}. Please ensure the image MCP server is running. Error: {tool_error}",
+                    failed=True,
+                )
                 return
 
             graph = await get_graph(mcpclient)
@@ -117,8 +136,8 @@ class ImageExecutor(AgentExecutor):
                     err_msg = "No events were produced by the graph stream; cannot process result."
                     logger.error(err_msg)
                     await event_emitter.emit_event(err_msg, failed=True)
-                    return  
-        
+                    return
+
             result = output.get("assistant", {}).get("final_answer")
 
             if not result:
@@ -159,12 +178,12 @@ class ImageExecutor(AgentExecutor):
                     await task_updater.add_artifact(parts, name="image.png")
                     await task_updater.complete()
                     return
-                
+
                 # Fallback: treat as text
                 if not result or (isinstance(result, str) and result.strip() == ""):
                     await event_emitter.emit_event(
                         "I am here to help with image requests. Please ask for an image with specific dimensions.",
-                        final=True
+                        final=True,
                     )
                 else:
                     await event_emitter.emit_event(str(result), final=True)
@@ -175,13 +194,17 @@ class ImageExecutor(AgentExecutor):
                 return
 
         except Exception as e:
-            logger.exception('Graph execution error')
-            await event_emitter.emit_event(f"Error: Failed to process image request. {type(e).__name__}: {str(e)}", failed=True)
+            logger.exception("Graph execution error")
+            await event_emitter.emit_event(
+                f"Error: Failed to process image request. {type(e).__name__}: {str(e)}",
+                failed=True,
+            )
             return
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Not implemented"""
         raise NotImplementedError("cancel not supported")
+
 
 def run():
     agent_card = get_agent_card(host="0.0.0.0", port=8000)
@@ -199,11 +222,14 @@ def run():
     app = server.build()
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
