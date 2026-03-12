@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "marvin>=3.0.0", 
-    "a2a-sdk>=0.2.5,<0.3.0"
+    "a2a-sdk>=0.2.5,<0.4.0"
 ]
 
 [tool.uv.sources]
