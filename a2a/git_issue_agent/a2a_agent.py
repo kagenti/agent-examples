@@ -5,21 +5,26 @@ Module for A2A Agent.
 import logging
 import sys
 import traceback
-from typing import Callable
 
 import uvicorn
 from crewai_tools import MCPServerAdapter
 from crewai_tools.adapters.tool_collection import ToolCollection
 
-from mcp import ClientSession
-from mcp.client.streamable_http import streamablehttp_client
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, SecurityScheme, HTTPAuthSecurityScheme
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    TaskState,
+    TextPart,
+    SecurityScheme,
+    HTTPAuthSecurityScheme,
+)
 from a2a.utils import new_agent_text_message, new_task
 
 from starlette.routing import Route
@@ -29,7 +34,8 @@ from git_issue_agent.event import Event
 from git_issue_agent.main import GitIssueAgent
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format="%(levelname)s: %(message)s")
+
 
 def get_agent_card(host: str, port: int):
     """Returns the Agent Card for the AG2 Agent."""
@@ -56,10 +62,7 @@ def get_agent_card(host: str, port: int):
         securitySchemes={
             "Bearer": SecurityScheme(
                 root=HTTPAuthSecurityScheme(
-                    type="http",
-                    scheme="bearer",
-                    bearerFormat="JWT",
-                    description="OAuth 2.0 JWT token"
+                    type="http", scheme="bearer", bearerFormat="JWT", description="OAuth 2.0 JWT token"
                 )
             )
         },
@@ -112,12 +115,8 @@ class GithubExecutor(AgentExecutor):
     """
     A class to handle research execution for A2A Agent.
     """
-    async def _run_agent(self,
-        messages: dict,
-        settings: Settings,
-        event_emitter: Event,
-        toolkit: ToolCollection):
 
+    async def _run_agent(self, messages: dict, settings: Settings, event_emitter: Event, toolkit: ToolCollection):
         git_issue_agent = GitIssueAgent(
             config=settings,
             eventer=event_emitter,
@@ -142,10 +141,12 @@ class GithubExecutor(AgentExecutor):
         headers = {}
         if settings.GITHUB_TOKEN:
             headers["Authorization"] = f"Bearer {settings.GITHUB_TOKEN}"
-        elif context.call_context and (context.call_context.state or {}).get('headers', {}).get('authorization'):
-            headers["Authorization"] = context.call_context.state['headers']['authorization']
+        elif context.call_context and (context.call_context.state or {}).get("headers", {}).get("authorization"):
+            headers["Authorization"] = context.call_context.state["headers"]["authorization"]
         else:
-            logging.warning("No GITHUB_TOKEN or inbound Authorization header; outbound requests will be unauthenticated")
+            logging.warning(
+                "No GITHUB_TOKEN or inbound Authorization header; outbound requests will be unauthenticated"
+            )
 
         user_input = [context.get_user_input()]
         task = context.current_task
@@ -178,8 +179,8 @@ class GithubExecutor(AgentExecutor):
                     issue_tools = [
                         tool
                         for tool in mcp_tools
-                        if ("issue" in tool.name.lower() or "label" in tool.name.lower()) and
-                        ("search" in tool.name.lower() or "list" in tool.name.lower())
+                        if ("issue" in tool.name.lower() or "label" in tool.name.lower())
+                        and ("search" in tool.name.lower() or "list" in tool.name.lower())
                     ]
 
                     if not issue_tools:
@@ -189,13 +190,13 @@ class GithubExecutor(AgentExecutor):
                         )
                     await self._run_agent(messages, settings, event_emitter, issue_tools)
             else:
-                await self._run_agent(messages, settings,
-                    event_emitter,
-                    None)
+                await self._run_agent(messages, settings, event_emitter, None)
 
         except Exception as e:
             traceback.print_exc()
-            await event_emitter.emit_event(f"I'm sorry I was unable to fulfill your request. I encountered the following exception: {str(e)}", True)
+            await event_emitter.emit_event(
+                f"I'm sorry I was unable to fulfill your request. I encountered the following exception: {str(e)}", True
+            )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
@@ -223,11 +224,14 @@ def run():
     app = server.build()  # this returns a Starlette app
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)

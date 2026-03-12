@@ -1,6 +1,7 @@
 """Data models for the Restaurant Reservation MCP server."""
 
 from typing import Optional
+
 from pydantic import BaseModel, Field
 
 

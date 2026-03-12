@@ -2,8 +2,8 @@ import os
 import signal
 import sys
 import threading
-from inspect import signature
 from importlib import import_module
+from inspect import signature
 from multiprocessing import Process
 
 from appworld import update_root
@@ -44,8 +44,7 @@ def _coerce_db_path_for_docker_mode(path: str | None, appworld_root: str) -> str
     if _ensure_under(data_root, resolved) or _ensure_under(outputs_root, resolved):
         return resolved
     raise ValueError(
-        "DB path is outside allowed roots. "
-        "Allowed: APPWORLD_ROOT/data and APPWORLD_ROOT/experiments/outputs"
+        "DB path is outside allowed roots. Allowed: APPWORLD_ROOT/data and APPWORLD_ROOT/experiments/outputs"
     )
 
 

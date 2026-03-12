@@ -11,18 +11,19 @@ Key Features:
 import json
 import logging
 import os
-from contextvars import ContextVar
-from typing import Dict, Any, Optional
 from contextlib import contextmanager
-from opentelemetry import trace, context
+from contextvars import ContextVar
+from typing import Dict, Optional
+
+from opentelemetry import context, trace
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.propagate import extract, set_global_textmap
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.sdk.resources import SERVICE_NAME, SERVICE_VERSION, Resource
 from opentelemetry.sdk.trace import TracerProvider
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-from opentelemetry.trace import Status, StatusCode, SpanKind
-from opentelemetry.propagate import set_global_textmap, extract
-from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.trace import SpanKind, Status, StatusCode
 from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +35,7 @@ AGENT_FRAMEWORK = "langchain"
 # ContextVar to pass root span from middleware to agent code
 # This allows execute() to access the middleware-created root span
 # even though trace.get_current_span() would return a child span
-_root_span_var: ContextVar = ContextVar('root_span', default=None)
+_root_span_var: ContextVar = ContextVar("root_span", default=None)
 
 
 def get_root_span():
@@ -48,9 +49,11 @@ def get_root_span():
     """
     return _root_span_var.get()
 
+
 # OpenInference semantic conventions
 try:
-    from openinference.semconv.trace import SpanAttributes, OpenInferenceSpanKindValues
+    from openinference.semconv.trace import OpenInferenceSpanKindValues, SpanAttributes
+
     OPENINFERENCE_AVAILABLE = True
 except ImportError:
     OPENINFERENCE_AVAILABLE = False
@@ -60,6 +63,7 @@ except ImportError:
 def _get_otlp_exporter(endpoint: str):
     """Get HTTP OTLP exporter."""
     from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+
     if not endpoint.endswith("/v1/traces"):
         endpoint = endpoint.rstrip("/") + "/v1/traces"
     return OTLPSpanExporter(endpoint=endpoint)
@@ -75,7 +79,7 @@ def setup_observability() -> None:
     namespace = os.getenv("K8S_NAMESPACE_NAME", "team1")
     otlp_endpoint = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+        "http://otel-collector.kagenti-system.svc.cluster.local:8335",
     )
 
     logger.info("=" * 60)
@@ -88,46 +92,52 @@ def setup_observability() -> None:
     # Create resource with service and MLflow attributes
     # Resource attributes are STATIC and apply to ALL spans/traces
     # See: https://mlflow.org/docs/latest/genai/tracing/opentelemetry/
-    resource = Resource(attributes={
-        # Standard OTEL service attributes
-        SERVICE_NAME: service_name,
-        SERVICE_VERSION: AGENT_VERSION,
-        "service.namespace": namespace,
-        "k8s.namespace.name": namespace,
-        # MLflow static metadata (applies to all traces)
-        # These appear in MLflow trace list columns
-        "mlflow.traceName": AGENT_NAME,
-        "mlflow.source": service_name,
-        # GenAI static attributes
-        "gen_ai.agent.name": AGENT_NAME,
-        "gen_ai.agent.version": AGENT_VERSION,
-        "gen_ai.system": AGENT_FRAMEWORK,
-    })
+    resource = Resource(
+        attributes={
+            # Standard OTEL service attributes
+            SERVICE_NAME: service_name,
+            SERVICE_VERSION: AGENT_VERSION,
+            "service.namespace": namespace,
+            "k8s.namespace.name": namespace,
+            # MLflow static metadata (applies to all traces)
+            # These appear in MLflow trace list columns
+            "mlflow.traceName": AGENT_NAME,
+            "mlflow.source": service_name,
+            # GenAI static attributes
+            "gen_ai.agent.name": AGENT_NAME,
+            "gen_ai.agent.version": AGENT_VERSION,
+            "gen_ai.system": AGENT_FRAMEWORK,
+        }
+    )
 
     # Create and configure tracer provider
     tracer_provider = TracerProvider(resource=resource)
-    tracer_provider.add_span_processor(
-        BatchSpanProcessor(_get_otlp_exporter(otlp_endpoint))
-    )
+    tracer_provider.add_span_processor(BatchSpanProcessor(_get_otlp_exporter(otlp_endpoint)))
     trace.set_tracer_provider(tracer_provider)
 
     # Auto-instrument LangChain with OpenInference
     try:
         from openinference.instrumentation.langchain import LangChainInstrumentor
+
         LangChainInstrumentor().instrument()
         logger.info("LangChain instrumented with OpenInference")
     except ImportError:
         logger.warning("openinference-instrumentation-langchain not available")
 
     # Configure W3C Trace Context propagation
-    set_global_textmap(CompositePropagator([
-        TraceContextTextMapPropagator(),
-        W3CBaggagePropagator(),
-    ]))
+    set_global_textmap(
+        CompositePropagator(
+            [
+                TraceContextTextMapPropagator(),
+                W3CBaggagePropagator(),
+            ]
+        )
+    )
 
     # Instrument OpenAI for GenAI semantic conventions
     try:
         from opentelemetry.instrumentation.openai import OpenAIInstrumentor
+
         OpenAIInstrumentor().instrument()
         logger.info("OpenAI instrumented with GenAI semantic conventions")
     except ImportError:
@@ -168,7 +178,7 @@ def _set_genai_mlflow_attributes(
     if OPENINFERENCE_AVAILABLE:
         span.set_attribute(
             SpanAttributes.OPENINFERENCE_SPAN_KIND,
-            OpenInferenceSpanKindValues.AGENT.value
+            OpenInferenceSpanKindValues.AGENT.value,
         )
 
     # === MLflow-specific Attributes ===
@@ -390,9 +400,9 @@ def create_tracing_middleware():
         app = server.build()
         app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
     """
+
     from starlette.requests import Request
     from starlette.responses import Response, StreamingResponse
-    import io
 
     async def tracing_middleware(request: Request, call_next):
         # Skip non-API paths (health checks, agent card, etc.)
@@ -493,9 +503,7 @@ def create_tracing_middleware():
 
                     # Try to capture response for output attributes
                     # Note: This only works for non-streaming responses
-                    if isinstance(response, Response) and not isinstance(
-                        response, StreamingResponse
-                    ):
+                    if isinstance(response, Response) and not isinstance(response, StreamingResponse):
                         # Read response body - we MUST recreate response after this
                         response_body = b""
                         async for chunk in response.body_iterator:
@@ -512,15 +520,9 @@ def create_tracing_middleware():
                                     if parts:
                                         output_text = parts[0].get("text", "")
                                         if output_text:
-                                            span.set_attribute(
-                                                "gen_ai.completion", output_text[:1000]
-                                            )
-                                            span.set_attribute(
-                                                "output.value", output_text[:1000]
-                                            )
-                                            span.set_attribute(
-                                                "mlflow.spanOutputs", output_text[:1000]
-                                            )
+                                            span.set_attribute("gen_ai.completion", output_text[:1000])
+                                            span.set_attribute("output.value", output_text[:1000])
+                                            span.set_attribute("mlflow.spanOutputs", output_text[:1000])
                         except Exception as e:
                             logger.debug(f"Could not parse response body: {e}")
 

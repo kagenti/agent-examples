@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 # Mock the marvin dependency before importing
 sys.modules.setdefault("marvin", MagicMock())
 
-from agent import TextPart, ExtractionOutcome, _to_text_part, ExtractorAgent
+from agent import ExtractionOutcome, ExtractorAgent, TextPart, _to_text_part
 from pydantic import BaseModel
 
 

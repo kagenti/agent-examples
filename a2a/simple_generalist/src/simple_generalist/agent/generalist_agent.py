@@ -70,9 +70,7 @@ def _init_tracing() -> TracerProvider:
     _tracer_provider.add_span_processor(AgentIdSpanProcessor(_AGENT_IDS))
 
     if os.environ.get("OTEL_EXPORTER_OTLP_ENDPOINT"):
-        _tracer_provider.add_span_processor(
-            BatchSpanProcessor(OTLPSpanExporter())
-        )
+        _tracer_provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter()))
         logger.info("AG2 OpenTelemetry tracing enabled (OTLP endpoint: %s)", os.environ["OTEL_EXPORTER_OTLP_ENDPOINT"])
     elif os.environ.get("OTEL_CONSOLE_TRACING", "").lower() in ("true", "1", "yes"):
         _tracer_provider.add_span_processor(SimpleSpanProcessor(ConsoleSpanExporter()))
@@ -85,18 +83,16 @@ def _init_tracing() -> TracerProvider:
     return _tracer_provider
 
 
-
-
 class GeneralistAgent:
     """
     Generalist agent that uses AG2 for LLM interaction and MCP tools for actions.
-    
+
     - Maintains conversation state
     - Calls LLM for next action
     - Executes tools via MCP
     - Iterates until completion or limits
     """
-    
+
     def __init__(
         self,
         settings: Settings,
@@ -105,7 +101,7 @@ class GeneralistAgent:
     ):
         """
         Initialize the generalist agent.
-        
+
         Args:
             settings: Application settings
             mcp_toolkit: Optional AG2 MCP toolkit with connected servers
@@ -118,7 +114,7 @@ class GeneralistAgent:
 
         # Initialize AG2 agent
         self._init_ag2_agent()
-    
+
     def _init_ag2_agent(self):
         """Initialize the AG2 conversable agent without registering tools."""
         # Build LLM config
@@ -132,16 +128,16 @@ class GeneralistAgent:
         # Add API key if provided
         if self.settings.LLM_API_KEY:
             llm_config["api_key"] = self.settings.LLM_API_KEY
-        
+
         # Add base URL if provided (for custom endpoints)
         if self.settings.LLM_BASE_URL:
             llm_config["base_url"] = self.settings.LLM_BASE_URL
 
         if self.settings.EXTRA_HEADERS:
             llm_config["default_headers"] = self.settings.EXTRA_HEADERS
-        
+
         system_message = GENERAL_AGENT_PROMPT.format(max_steps=self.settings.MAX_ITERATIONS)
-        
+
         # Create the agent
         self.agent = ConversableAgent(
             name="generalist_agent",
@@ -169,8 +165,7 @@ class GeneralistAgent:
         # Instrument agents for tracing
         instrument_agent(self.agent, tracer_provider=self._tracer_provider)
         instrument_agent(self.user_proxy, tracer_provider=self._tracer_provider)
-    
-    
+
     async def _emit_event(self, message: str, final: bool = False):
         """Emit a progress event if callback is set."""
         if self.event_callback:
@@ -178,16 +173,16 @@ class GeneralistAgent:
                 await self.event_callback(message, final)
             except Exception as exc:
                 logger.error(f"Error in event callback: {exc}")
-    
+
     async def run_task(self, instruction: str) -> dict[str, Any]:
         """
         Run a task with the given instruction.
-        
+
         Uses AG2's built-in conversation flow with MCP tools.
-        
+
         Args:
             instruction: User instruction/query
-            
+
         Returns:
             Dictionary with:
                 - answer: Final answer text
@@ -196,29 +191,28 @@ class GeneralistAgent:
         """
         logger.info(f"Starting task: {instruction}")
         await self._emit_event("🤖 Starting task execution...")
-        
+
         try:
             # Initiate chat - AG2 handles the tool calling loop
-            await self._emit_event(f"🔄 Processing with AG2 agent...")
-            
+            await self._emit_event("🔄 Processing with AG2 agent...")
+
             # Run the synchronous initiate_chat in a thread pool to avoid blocking
             await self.user_proxy.a_initiate_chat(
-                self.agent,
-                message=instruction,
-                max_turns=self.settings.MAX_ITERATIONS)
-            
+                self.agent, message=instruction, max_turns=self.settings.MAX_ITERATIONS
+            )
+
             # Get the final response from chat history
             chat_history = self.user_proxy.chat_messages.get(self.agent, [])
-            
+
             # Extract final answer from the last assistant message
             final_answer = "No response generated"
             for msg in reversed(chat_history):
                 if msg.get("role") == "assistant" and msg.get("content"):
                     final_answer = msg["content"]
                     break
-            
+
             logger.info("Task completed successfully")
-            
+
             result = {
                 "answer": final_answer,
                 "iterations": len(chat_history),
@@ -234,5 +228,6 @@ class GeneralistAgent:
                 "iterations": 0,
                 "error": True,
             }
+
 
 # Made with Bob
