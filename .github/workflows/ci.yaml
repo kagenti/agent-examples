@@ -36,4 +36,4 @@ jobs:
       - name: Install test dependencies
         run: pip install pytest pydantic pydantic-settings httpx python-dotenv
       - name: Run tests
-        run: python -m pytest tests/ -v
+        run: python -m pytest -v
