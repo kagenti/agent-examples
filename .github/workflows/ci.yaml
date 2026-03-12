@@ -1,45 +1,43 @@
 name: CI
 
 on:
-  # Triggers the workflow on push or pull request events but only for the "main" branch
   pull_request:
     branches: [ "main" ]
 
 jobs:
-  build:
+  lint:
     runs-on: ubuntu-latest
-
-    strategy:
-      matrix:
-        python-version: ["3.12"]
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      # Sets up a specific version of Python
-      - name: Set up Python ${{ matrix.python-version }}
+      - name: Set up Python 3.12
         uses: actions/setup-python@v6
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
 
-      # Installs dependencies
-      # It's a good practice to cache dependencies to speed up subsequent runs
-      - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install flake8 pytest
-          if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+      - name: Install linter
+        run: pip install ruff
 
-      # Lints with flake8
-      # This step checks for style issues in the code
-      - name: Lint with flake8
-        run: |
-          # stop the build if there are Python syntax errors or undefined names
-          flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-          # exit-zero treats all errors as warnings. The GitHub editor is 127 chars wide
-          flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+      - name: Lint with ruff
+        run: ruff check .
 
-      # - name: Test with pytest
-      #   run: |
-      #     pytest
+      - name: Check formatting with ruff
+        run: ruff format --check .
+
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v6
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install test dependencies
+        run: pip install pytest pydantic pydantic-settings httpx python-dotenv
+
+      - name: Run tests
+        run: python -m pytest tests/ -v
