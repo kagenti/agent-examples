@@ -218,3 +218,6 @@ secrets.*
 
 # Ruff cache
 .ruff_cache/
+
+# Orchestration working directory
+.repos/
