@@ -139,16 +139,19 @@ class AgentBudget:
 
     @property
     def exceeded(self) -> bool:
-        """Return True if *any* budget limit has been reached."""
-        return self.iterations_exceeded or self.tokens_exceeded or self.wall_clock_exceeded
+        """Return True if *any* local budget limit has been reached.
+
+        Token budget is NOT checked here — it is enforced by the LLM
+        Budget Proxy (returns HTTP 402).  The agent catches 402 errors
+        in the executor/reflector/reporter nodes.
+        """
+        return self.iterations_exceeded or self.wall_clock_exceeded
 
     @property
     def exceeded_reason(self) -> str | None:
         """Human-readable reason for why the budget was exceeded, or None."""
         if self.iterations_exceeded:
             return f"Iteration limit reached ({self.iterations_used}/{self.max_iterations})"
-        if self.tokens_exceeded:
-            return f"Token limit reached ({self.tokens_used:,}/{self.max_tokens:,})"
         if self.wall_clock_exceeded:
             return f"Time limit reached ({self.wall_clock_s:.0f}s/{self.max_wall_clock_s}s)"
         return None
