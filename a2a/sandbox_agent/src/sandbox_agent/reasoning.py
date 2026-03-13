@@ -125,6 +125,58 @@ def _summarize_messages(messages: list) -> list[dict[str, str]]:
     return result
 
 
+def _format_llm_response(response: Any) -> dict[str, Any]:
+    """Format a LangChain AIMessage as an OpenAI-style response for debug display.
+
+    Shows the full response structure including content, tool_calls,
+    finish_reason, and usage — matching the OpenAI Chat Completions format.
+    """
+    try:
+        meta = getattr(response, "response_metadata", {}) or {}
+        usage_meta = getattr(response, "usage_metadata", {}) or {}
+        content = response.content
+        if isinstance(content, list):
+            content = " ".join(
+                b.get("text", "") for b in content
+                if isinstance(b, dict) and b.get("type") == "text"
+            ) or None
+
+        tool_calls_out = None
+        if response.tool_calls:
+            tool_calls_out = []
+            for tc in response.tool_calls:
+                name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
+                tool_calls_out.append({
+                    "id": tc_id,
+                    "type": "function",
+                    "function": {
+                        "name": name,
+                        "arguments": json.dumps(args) if isinstance(args, dict) else str(args),
+                    },
+                })
+
+        return {
+            "choices": [{
+                "message": {
+                    "role": "assistant",
+                    "content": content if content else None,
+                    "tool_calls": tool_calls_out,
+                },
+                "finish_reason": meta.get("finish_reason", "unknown"),
+            }],
+            "model": meta.get("model", ""),
+            "usage": {
+                "prompt_tokens": usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0),
+                "completion_tokens": usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0),
+            },
+            "id": meta.get("id", ""),
+        }
+    except Exception:
+        return {"error": "Failed to format response"}
+
+
 def _summarize_bound_tools(llm_with_tools: Any) -> list[dict[str, Any]]:
     """Extract bound tool schemas from a LangChain RunnableBinding for debug display.
 
@@ -815,6 +867,7 @@ async def planner_node(
         "_budget_summary": budget.summary(),
         **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
         **({"_prompt_messages": _summarize_messages(plan_messages)} if _DEBUG_PROMPTS else {}),
+        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
     }
 
 
@@ -1090,6 +1143,7 @@ async def executor_node(
         **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
         **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
         **({"_bound_tools": _summarize_bound_tools(llm_with_tools)} if _DEBUG_PROMPTS else {}),
+        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
     }
@@ -1324,6 +1378,7 @@ async def reflector_node(
         "_budget_summary": budget.summary(),
         **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
         **({"_prompt_messages": _summarize_messages(reflect_messages)} if _DEBUG_PROMPTS else {}),
+        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
     }
 
     if decision == "done":
@@ -1516,6 +1571,7 @@ async def reporter_node(
         "_budget_summary": budget.summary(),
         **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
         **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
+        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
     }
 
 

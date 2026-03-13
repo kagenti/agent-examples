@@ -241,6 +241,13 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
         Returns:
             Command output (stdout + stderr), or pauses for human approval.
         """
+        # Warn on bare `cd` — it has no effect in isolated shell execution
+        if command.strip().startswith("cd ") and "&&" not in command:
+            logger.warning(
+                "Bare 'cd' command detected — has no effect in isolated shell: %s",
+                command,
+            )
+
         try:
             result = await executor.run_shell(command)
         except HitlRequired as exc:
@@ -696,7 +703,11 @@ Next step to execute: {next_step + 1}. {step_text}
 Recent tool results:
 {chr(10).join(recent_results) if recent_results else '(none yet)'}
 
-Write a brief: what EXACTLY to do for step {next_step + 1}, what context from previous steps is relevant, and what to watch out for. Be specific about commands/tools to use."""
+WORKSPACE RULE: Each shell command starts fresh in /workspace. Bare `cd` has no effect.
+If the step involves a cloned repo, always write `cd repos/<repo> && <command>` in the brief.
+Example: "cd repos/kagenti && gh pr list" — never just "gh pr list".
+
+Write a brief: what EXACTLY to do for step {next_step + 1}, what context from previous steps is relevant, and what to watch out for. Be specific about commands/tools to use, and always include the full `cd <dir> && command` pattern when a cloned repo is involved."""
 
         try:
             response = await llm.ainvoke([

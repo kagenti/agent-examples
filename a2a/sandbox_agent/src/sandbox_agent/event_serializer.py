@@ -376,6 +376,9 @@ class LangGraphSerializer(FrameworkEventSerializer):
         bt = value.get("_bound_tools")
         if bt:
             data["bound_tools"] = bt[:50]  # max 50 tools
+        lr = value.get("_llm_response")
+        if lr:
+            data["llm_response"] = lr
         return data
 
     def _serialize_planner(self, value: dict) -> str:
