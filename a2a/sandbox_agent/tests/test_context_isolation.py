@@ -927,3 +927,67 @@ class TestBuildExecutorContext:
         all_content = " ".join(str(m.content) for m in msgs)
         assert "old plan text" not in all_content
         assert "cloned!" in all_content
+
+
+# ---------------------------------------------------------------------------
+# invoke_llm wrapper
+# ---------------------------------------------------------------------------
+
+
+class TestInvokeLLM:
+    """Verify invoke_llm captures exactly what the LLM receives."""
+
+    @pytest.mark.asyncio
+    async def test_capture_matches_sent_messages(self) -> None:
+        """The capture.messages should be the exact messages sent to ainvoke."""
+        from sandbox_agent.context_builders import invoke_llm
+
+        llm = CaptureLLM([AIMessage(content="response text")])
+        messages = [
+            SystemMessage(content="You are an assistant"),
+            HumanMessage(content="Hello"),
+        ]
+        response, capture = await invoke_llm(llm, messages, node="test")
+
+        assert capture.messages == messages
+        assert capture.response is response
+        assert capture.model == "test-model"
+        assert capture.prompt_tokens == 100
+        assert capture.completion_tokens == 20
+
+    @pytest.mark.asyncio
+    async def test_debug_fields_match_captured_messages(self) -> None:
+        """debug_fields()._system_prompt should match what was sent."""
+        from sandbox_agent.context_builders import invoke_llm
+
+        llm = CaptureLLM([AIMessage(content="ok")])
+        messages = [
+            SystemMessage(content="System prompt text here"),
+            HumanMessage(content="User request"),
+        ]
+        _, capture = await invoke_llm(llm, messages, node="test")
+        fields = capture.debug_fields()
+
+        assert fields["_system_prompt"] == "System prompt text here"
+        assert len(fields["_prompt_messages"]) == 2
+        assert fields["_prompt_messages"][0]["role"] == "system"
+        assert fields["_prompt_messages"][1]["role"] == "human"
+
+    @pytest.mark.asyncio
+    async def test_executor_uses_invoke_llm(self) -> None:
+        """executor_node should use invoke_llm — debug output matches actual context."""
+        llm = CaptureLLM([AIMessage(content="Running command")])
+        state = _base_state(
+            plan=_make_rca_plan(),
+            current_step=0,
+            workspace_path="/workspace/test-123",
+        )
+        result = await executor_node(state, llm)
+
+        # Debug fields should be present (SANDBOX_DEBUG_PROMPTS defaults to "1")
+        if "_system_prompt" in result:
+            # The system prompt in debug should contain workspace_path
+            assert "/workspace/test-123" in result["_system_prompt"]
+            # The prompt messages should match what was actually sent
+            assert result["_prompt_messages"][0]["role"] == "system"
+            assert "/workspace/test-123" in result["_prompt_messages"][0]["preview"]

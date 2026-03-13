@@ -1,4 +1,6 @@
-"""Pure functions that build the message list for each reasoning node.
+"""Pure functions that build the message list for each reasoning node,
+and an ``invoke_llm`` wrapper that guarantees the debug output matches
+exactly what was sent to the LLM.
 
 Each builder takes the graph state and returns a list of BaseMessage objects
 that the node should pass to ``llm.ainvoke()``.  The functions are
@@ -18,7 +20,10 @@ Context contracts:
 
 from __future__ import annotations
 
+import json
 import logging
+import os
+from dataclasses import dataclass, field
 from typing import Any
 
 from langchain_core.messages import (
@@ -200,3 +205,189 @@ def build_reflector_context(
         extra={"session_id": state.get("context_id", ""), "node": "reflector"},
     )
     return result
+
+
+# ---------------------------------------------------------------------------
+# LLM invocation wrapper — captures exactly what the LLM sees
+# ---------------------------------------------------------------------------
+
+_DEBUG_PROMPTS = os.environ.get("SANDBOX_DEBUG_PROMPTS", "1") == "1"
+
+
+@dataclass
+class LLMCallCapture:
+    """Captures the exact input/output of an LLM invocation.
+
+    Always populated (not conditional on _DEBUG_PROMPTS) so that the
+    node result can decide what to include.  This guarantees the debug
+    view shows exactly what the LLM received — no drift.
+    """
+
+    messages: list = field(default_factory=list)
+    response: Any = None
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    model: str = ""
+
+    # -- Convenience methods for node result dicts -------------------------
+
+    def debug_fields(self) -> dict[str, Any]:
+        """Return prompt debug fields for the node result dict.
+
+        Only populated when ``SANDBOX_DEBUG_PROMPTS=1`` (default).
+        These are large payloads (system prompt, message list, full
+        response) — optional to reduce event size in production.
+        Token counts and budget are always included via ``token_fields()``.
+        """
+        if not _DEBUG_PROMPTS:
+            return {}
+        return {
+            "_system_prompt": self._system_prompt()[:10000],
+            "_prompt_messages": self._summarize_messages(),
+            "_llm_response": self._format_response(),
+        }
+
+    def token_fields(self) -> dict[str, Any]:
+        """Return token usage fields for the node result dict."""
+        return {
+            "model": self.model,
+            "prompt_tokens": self.prompt_tokens,
+            "completion_tokens": self.completion_tokens,
+        }
+
+    # -- Internal helpers --------------------------------------------------
+
+    def _system_prompt(self) -> str:
+        """Extract the system prompt from the captured messages."""
+        for m in self.messages:
+            if isinstance(m, SystemMessage):
+                return str(m.content)
+        return ""
+
+    def _summarize_messages(self) -> list[dict[str, str]]:
+        """Summarize messages as {role, preview} dicts."""
+        result = []
+        for msg in self.messages:
+            role = getattr(msg, "type", "unknown")
+            content = getattr(msg, "content", "")
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "")
+                    for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                )
+            text = str(content)
+            tool_calls = getattr(msg, "tool_calls", None)
+            if tool_calls:
+                tc_parts = []
+                for tc in tool_calls:
+                    name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                    args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                    args_str = str(args)[:500] if args else ""
+                    tc_parts.append(f"{name}({args_str})" if args_str else name)
+                text = f"[tool_calls: {'; '.join(tc_parts)}] {text[:2000]}"
+            tool_name = getattr(msg, "name", None)
+            if role == "tool" and tool_name:
+                text = f"[{tool_name}] {text[:3000]}"
+            else:
+                text = text[:5000]
+            result.append({"role": role, "preview": text})
+        return result
+
+    def _format_response(self) -> dict[str, Any]:
+        """Format the LLM response as OpenAI-style dict."""
+        resp = self.response
+        if resp is None:
+            return {}
+        try:
+            meta = getattr(resp, "response_metadata", {}) or {}
+            content = resp.content
+            if isinstance(content, list):
+                content = " ".join(
+                    b.get("text", "")
+                    for b in content
+                    if isinstance(b, dict) and b.get("type") == "text"
+                ) or None
+            tool_calls_out = None
+            if resp.tool_calls:
+                tool_calls_out = [
+                    {
+                        "id": tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", ""),
+                        "type": "function",
+                        "function": {
+                            "name": tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?"),
+                            "arguments": json.dumps(
+                                tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+                            ),
+                        },
+                    }
+                    for tc in resp.tool_calls
+                ]
+            return {
+                "choices": [{
+                    "message": {
+                        "role": "assistant",
+                        "content": content if content else None,
+                        "tool_calls": tool_calls_out,
+                    },
+                    "finish_reason": meta.get("finish_reason", "unknown"),
+                }],
+                "model": meta.get("model", ""),
+                "usage": {
+                    "prompt_tokens": self.prompt_tokens,
+                    "completion_tokens": self.completion_tokens,
+                },
+                "id": meta.get("id", ""),
+            }
+        except Exception:
+            return {"error": "Failed to format response"}
+
+
+async def invoke_llm(
+    llm: Any,
+    messages: list[BaseMessage],
+    *,
+    node: str = "",
+    session_id: str = "",
+) -> tuple[AIMessage, LLMCallCapture]:
+    """Invoke the LLM and capture the exact input/output.
+
+    Returns ``(response, capture)`` where capture contains:
+    - ``messages``: the exact messages sent to the LLM
+    - ``response``: the AIMessage returned
+    - ``prompt_tokens`` / ``completion_tokens``: token usage
+    - ``model``: model name from response metadata
+
+    Usage in a node::
+
+        messages = build_executor_context(state, system_content)
+        response, capture = await invoke_llm(llm, messages, node="executor")
+        result = {
+            "messages": [response],
+            **capture.token_fields(),
+            **capture.debug_fields(),
+        }
+    """
+    response = await llm.ainvoke(messages)
+
+    usage = getattr(response, "usage_metadata", None) or {}
+    prompt_tokens = usage.get("input_tokens", 0) or usage.get("prompt_tokens", 0)
+    completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
+    model_name = (getattr(response, "response_metadata", None) or {}).get("model", "")
+
+    capture = LLMCallCapture(
+        messages=list(messages),
+        response=response,
+        prompt_tokens=prompt_tokens,
+        completion_tokens=completion_tokens,
+        model=model_name,
+    )
+
+    logger.info(
+        "LLM call [%s]: %d messages, %d prompt tokens, %d completion tokens, model=%s",
+        node, len(messages), prompt_tokens, completion_tokens, model_name,
+        extra={"session_id": session_id, "node": node,
+               "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
+    )
+
+    return response, capture

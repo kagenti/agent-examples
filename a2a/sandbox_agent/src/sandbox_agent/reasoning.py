@@ -857,11 +857,14 @@ async def executor_node(
     #   from current messages, stopping when we hit a non-tool/non-AI message
     #   (which marks the boundary of this step's context).
 
-    from sandbox_agent.context_builders import build_executor_context
+    from sandbox_agent.context_builders import build_executor_context, invoke_llm
 
     messages = build_executor_context(state, system_content)
     try:
-        response = await llm_with_tools.ainvoke(messages)
+        response, capture = await invoke_llm(
+            llm_with_tools, messages,
+            node="executor", session_id=state.get("context_id", ""),
+        )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
             logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
@@ -880,11 +883,10 @@ async def executor_node(
     # for the same step, mark the step as failed and advance.
     no_tool_count = state.get("_no_tool_count", 0)
 
-    # Extract token usage from the LLM response
-    usage = getattr(response, 'usage_metadata', None) or {}
-    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    # Token usage and model from the capture (guaranteed to match what was sent)
+    prompt_tokens = capture.prompt_tokens
+    completion_tokens = capture.completion_tokens
+    model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
 
     # If the model returned text-based tool calls instead of structured
@@ -1075,10 +1077,8 @@ async def executor_node(
         "prompt_tokens": prompt_tokens,
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
-        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-        **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
+        **capture.debug_fields(),
         **({"_bound_tools": _summarize_bound_tools(llm_with_tools)} if _DEBUG_PROMPTS else {}),
-        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
         **({"_last_tool_result": _last_tool_result} if _last_tool_result else {}),
