@@ -617,10 +617,10 @@ def build_graph(
     read_only_tools = [file_read_tool, grep_tool, glob_tool]
     planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool]
 
-    # All nodes use tool_choice="auto" — the LLM decides when to call tools
-    # and when to produce text. Each node gets its own tool subset.
-    llm_executor = llm.bind_tools(tools)      # all tools
-    llm_planner = llm.bind_tools(planner_tools)  # read + file_write
+    # Executor uses tool_choice="any" — MUST call tools (not produce text).
+    # Planner and reflector use "auto" — CAN choose not to call tools.
+    llm_executor = llm.bind_tools(tools, tool_choice="any")
+    llm_planner = llm.bind_tools(planner_tools)  # defaults to auto
 
     # All nodes with tools use tool_choice="auto"
     llm_reflector = llm.bind_tools(read_only_tools)  # read-only for verification
