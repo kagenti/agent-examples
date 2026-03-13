@@ -445,7 +445,8 @@ def _intercept_respond_to_user(response: Any, node_name: str) -> AIMessage | Non
         tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
         for tc in response.tool_calls
     ]
-    logger.info("%s called tools: %s", node_name, tool_names)
+    logger.info("%s called tools: %s", node_name, tool_names,
+                extra={"node": node_name.lower()})
 
     for tc in response.tool_calls:
         name = tc.get("name", "") if isinstance(tc, dict) else getattr(tc, "name", "")
@@ -453,7 +454,8 @@ def _intercept_respond_to_user(response: Any, node_name: str) -> AIMessage | Non
             args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
             response_text = args.get("response", "")
             logger.info(
-                "%s escaped via respond_to_user (%d chars)", node_name, len(response_text)
+                "%s escaped via respond_to_user (%d chars)", node_name, len(response_text),
+                extra={"node": node_name.lower()},
             )
             # Return a clean AIMessage — no tool_calls so the graph
             # routes to the next node instead of the tool node.
@@ -506,6 +508,8 @@ async def router_node(state: dict[str, Any]) -> dict[str, Any]:
         logger.info(
             "Router: RESUME plan at step %d/%d (plan_status=%s)",
             current_step + 1, len(plan_steps), plan_status,
+            extra={"session_id": state.get("context_id", ""), "node": "router",
+                   "current_step": current_step, "plan_status": plan_status},
         )
         return {
             "_route": "resume",
@@ -518,6 +522,8 @@ async def router_node(state: dict[str, Any]) -> dict[str, Any]:
         logger.info(
             "Router: REPLAN — new message while plan active (plan_status=%s, steps=%d)",
             plan_status, len(plan_steps),
+            extra={"session_id": state.get("context_id", ""), "node": "router",
+                   "plan_status": plan_status},
         )
         return {
             "_route": "replan",
@@ -528,7 +534,9 @@ async def router_node(state: dict[str, Any]) -> dict[str, Any]:
         }
     else:
         # New: no active plan
-        logger.info("Router: NEW plan (plan_status=%s)", plan_status)
+        logger.info("Router: NEW plan (plan_status=%s)", plan_status,
+                    extra={"session_id": state.get("context_id", ""), "node": "router",
+                           "plan_status": plan_status})
         return {
             "_route": "new",
             "plan_status": "executing",
@@ -598,7 +606,9 @@ async def planner_node(
 
     # Fast-path: trivial text-only requests skip the planner LLM call entirely
     if iteration == 0 and not prev_plan_steps and _is_trivial_text_request(messages):
-        logger.info("Fast-path: trivial text request — single-step plan, no LLM call")
+        logger.info("Fast-path: trivial text request — single-step plan, no LLM call",
+                    extra={"session_id": state.get("context_id", ""), "node": "planner",
+                           "iteration": 0, "step_count": 1, "plan_version": 1})
         trivial_steps = _make_plan_steps(["Respond to the user."], iteration=0)
         return {
             "plan": ["Respond to the user."],
@@ -683,7 +693,9 @@ async def planner_node(
         response = await llm.ainvoke(plan_messages)
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in planner (402 from proxy): %s", exc)
+            logger.warning("Budget exceeded in planner (402 from proxy): %s", exc,
+                       extra={"session_id": state.get("context_id", ""), "node": "planner",
+                              "iteration": iteration})
             return {
                 "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
                 "done": True,
@@ -719,7 +731,10 @@ async def planner_node(
     new_plan_steps = _make_plan_steps(plan, iteration=iteration)
 
     logger.info("Planner produced %d steps (iteration %d, version %d): %s",
-                len(plan), iteration, plan_version, plan)
+                len(plan), iteration, plan_version, plan,
+                extra={"session_id": state.get("context_id", ""), "node": "planner",
+                       "iteration": iteration, "step_count": len(plan),
+                       "plan_version": plan_version})
 
     return {
         "messages": [response],
@@ -767,6 +782,8 @@ async def executor_node(
         logger.warning(
             "Step %d hit tool call limit (%d/%d) — forcing step completion",
             current_step, tool_call_count, MAX_TOOL_CALLS_PER_STEP,
+            extra={"session_id": state.get("context_id", ""), "node": "executor",
+                   "current_step": current_step, "tool_call_count": tool_call_count},
         )
         result: dict[str, Any] = {
             "messages": [AIMessage(content=f"Step {current_step + 1} reached tool call limit ({MAX_TOOL_CALLS_PER_STEP}). Moving to reflection.")],
@@ -795,7 +812,9 @@ async def executor_node(
     # Check budget before making the LLM call (refresh from LiteLLM first)
 
     if budget.exceeded:
-        logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason)
+        logger.warning("Budget exceeded in executor: %s", budget.exceeded_reason,
+                       extra={"session_id": state.get("context_id", ""), "node": "executor",
+                              "current_step": current_step})
         result: dict[str, Any] = {
             "messages": [AIMessage(content=f"Budget exceeded: {budget.exceeded_reason}")],
             "current_step": current_step,
@@ -834,12 +853,16 @@ async def executor_node(
 
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
     logger.info("Executor context: %d messages, ~%dk tokens (from %d total)",
-                len(messages), used_chars // (_CHARS_PER_TOKEN * 1000), len(all_msgs))
+                len(messages), used_chars // (_CHARS_PER_TOKEN * 1000), len(all_msgs),
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step, "tool_call_count": tool_call_count})
     try:
         response = await llm_with_tools.ainvoke(messages)
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in executor (402 from proxy): %s", exc)
+            logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
+                           extra={"session_id": state.get("context_id", ""), "node": "executor",
+                                  "current_step": current_step})
             return {
                 "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
                 "current_step": current_step,
@@ -875,6 +898,8 @@ async def executor_node(
         logger.info(
             "Executor returned %d tool calls — keeping only the first (micro-reflection)",
             len(response.tool_calls),
+            extra={"session_id": state.get("context_id", ""), "node": "executor",
+                   "current_step": current_step, "tool_call_count": tool_call_count},
         )
         response = AIMessage(
             content=response.content,
@@ -891,7 +916,9 @@ async def executor_node(
                                             "i will execute", "let me run")):
             logger.warning(
                 "Executor produced text resembling a tool call but no actual "
-                "tool_calls were generated — likely a stalled iteration"
+                "tool_calls were generated — likely a stalled iteration",
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step, "tool_call_count": tool_call_count},
             )
 
     # -- Dedup: skip tool calls that already have ToolMessage responses ------
@@ -941,6 +968,8 @@ async def executor_node(
             skipped = len(response.tool_calls) - len(new_calls)
             logger.info(
                 "Dedup: skipped %d already-executed tool call(s)", skipped,
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step},
             )
             if not new_calls:
                 # All calls already executed — signal reflector to advance
@@ -948,6 +977,8 @@ async def executor_node(
                 logger.info(
                     "All tool calls deduped for step %d — signaling step complete",
                     state.get("current_step", 0),
+                    extra={"session_id": state.get("context_id", ""), "node": "executor",
+                           "current_step": current_step},
                 )
                 return {
                     "messages": [
@@ -983,15 +1014,21 @@ async def executor_node(
             logger.info(
                 "Executor produced text response after %d tool calls for step %d — step complete",
                 tool_call_count, current_step,
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step, "tool_call_count": tool_call_count},
             )
         else:
             no_tool_count += 1
             logger.warning(
                 "Executor produced no tool calls for step %d (attempt %d/2)",
                 current_step, no_tool_count,
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step, "tool_call_count": 0},
             )
             if no_tool_count >= 2:
-                logger.warning("Executor failed to call tools after 2 attempts — marking step failed")
+                logger.warning("Executor failed to call tools after 2 attempts — marking step failed",
+                               extra={"session_id": state.get("context_id", ""), "node": "executor",
+                                      "current_step": current_step, "tool_call_count": 0})
                 return {
                     "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
                     "current_step": current_step,
@@ -1063,7 +1100,9 @@ async def reflector_node(
         for i in range(current_step + 1, len(ps)):
             if ps[i].get("status") == "pending":
                 ps[i] = {**ps[i], "status": "skipped"}
-        logger.warning("%s — forcing done", reason)
+        logger.warning("%s — forcing done", reason,
+                       extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                              "current_step": current_step, "replan_count": replan_count})
         result: dict[str, Any] = {
             "step_results": step_results,
             "plan_steps": ps,
@@ -1112,7 +1151,9 @@ async def reflector_node(
             if isinstance(msg, ToolMessage):
                 last_content = str(getattr(msg, "content", ""))
                 logger.info("Reflector: substituted dedup sentinel with last tool result (%d chars)",
-                            len(last_content))
+                            len(last_content),
+                            extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                                   "current_step": current_step})
                 break
 
     step_results.append(last_content[:500])
@@ -1188,7 +1229,9 @@ async def reflector_node(
         response = await llm.ainvoke(reflect_messages)
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in reflector (402 from proxy): %s", exc)
+            logger.warning("Budget exceeded in reflector (402 from proxy): %s", exc,
+                           extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                                  "current_step": current_step, "replan_count": replan_count})
             return _force_done(f"Budget exceeded: {exc}")
         raise
 
@@ -1226,6 +1269,9 @@ async def reflector_node(
         logger.warning(
             "Reflector said 'done' but %d plan steps remain — overriding to 'continue'",
             steps_remaining,
+            extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                   "decision": "done->continue", "current_step": current_step,
+                   "replan_count": replan_count},
         )
         decision = "continue"
 
@@ -1253,6 +1299,9 @@ async def reflector_node(
         decision, current_step + 1, len(plan), iteration,
         replan_count, tool_calls_this_iter,
         recent_decisions[-3:],
+        extra={"session_id": state.get("context_id", ""), "node": "reflector",
+               "decision": decision, "current_step": current_step,
+               "replan_count": replan_count, "iteration": iteration},
     )
 
     base_result = {
@@ -1288,7 +1337,10 @@ async def reflector_node(
         # Mark current step failed
         if current_step < len(plan_steps):
             plan_steps[current_step] = {**plan_steps[current_step], "status": "failed"}
-        logger.info("Replan %d — routing back to planner", new_replan_count)
+        logger.info("Replan %d — routing back to planner", new_replan_count,
+                    extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                           "decision": "replan", "current_step": current_step,
+                           "replan_count": new_replan_count})
         return {
             **base_result,
             "plan_steps": plan_steps,
@@ -1306,6 +1358,8 @@ async def reflector_node(
             logger.info(
                 "All %d planned steps completed — routing to planner for reassessment",
                 len(plan),
+                extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                       "decision": "continue", "current_step": current_step},
             )
             return {
                 **base_result,
@@ -1417,7 +1471,8 @@ async def reporter_node(
         response = await llm.ainvoke(messages)
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc)
+            logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc,
+                           extra={"session_id": state.get("context_id", ""), "node": "reporter"})
             return {
                 "messages": [AIMessage(content="Task completed (budget exhausted before final summary).")],
                 "final_answer": "Task completed (budget exhausted before final summary).",
@@ -1447,7 +1502,8 @@ async def reporter_node(
                 terminal_status,
                 sum(1 for s in plan_steps if s.get("status") == "done"),
                 sum(1 for s in plan_steps if s.get("status") == "failed"),
-                len(plan_steps))
+                len(plan_steps),
+                extra={"session_id": state.get("context_id", ""), "node": "reporter"})
 
     return {
         "messages": [response],

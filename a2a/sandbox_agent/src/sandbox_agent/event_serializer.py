@@ -102,12 +102,14 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
-        # Each node invocation gets a unique step index for chronological rendering.
-        # Previously only the reflector incremented _step_index, causing all events
-        # to pile into step=0.
-        if key not in ("tools",):
-            # Don't increment for tools node — it shares the executor's step
-            self._step_index += 1
+        # Use actual plan step from state instead of auto-incrementing.
+        # Auto-increment caused step numbers to reach 159+ for 5-6 plan steps.
+        current_step = value.get("current_step")
+        if current_step is not None:
+            new_step = current_step + 1  # 1-based for display
+            if new_step != self._step_index:
+                self._step_index = new_step
+                self._micro_step = 0  # reset micro_step on plan step change
 
         # Reasoning-loop nodes may emit state fields instead of messages
         if key == "router":
@@ -185,7 +187,9 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 except json.JSONDecodeError:
                     event_type = "parse_error"
                 logger.info("SERIALIZE session=%s loop=%s type=%s step=%s",
-                    self._context_id, self._loop_id, event_type, self._step_index)
+                    self._context_id, self._loop_id, event_type, self._step_index,
+                    extra={"session_id": self._context_id, "node": key,
+                           "event_type": event_type, "step": self._step_index})
 
         return result
 
