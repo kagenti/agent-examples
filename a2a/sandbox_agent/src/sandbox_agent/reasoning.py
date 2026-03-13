@@ -846,6 +846,24 @@ async def planner_node(
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
     budget.add_tokens(prompt_tokens + completion_tokens)
 
+    # If the LLM returned tool_calls (e.g., glob to inspect workspace before planning),
+    # pass through — the graph routes to planner_tools, executes them,
+    # and calls planner again with tool results.
+    if getattr(response, 'tool_calls', None):
+        logger.info("Planner called tools: %s — passing through for execution",
+                     [tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                      for tc in response.tool_calls])
+        return {
+            "messages": [response],
+            "model": model_name,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "_budget_summary": budget.summary(),
+            **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+            **({"_prompt_messages": _summarize_messages(plan_messages)} if _DEBUG_PROMPTS else {}),
+            **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+        }
+
     plan = _parse_plan(response.content)
     plan_version = state.get("plan_version", 0) + 1
     new_plan_steps = _make_plan_steps(plan, iteration=iteration)
@@ -1327,6 +1345,24 @@ async def reflector_node(
     completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
     model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
     budget.add_tokens(prompt_tokens + completion_tokens)
+
+    # If the LLM returned tool_calls (e.g., glob to verify step outcome),
+    # pass through — the graph routes to reflector_tools, executes them,
+    # and calls reflector again with tool results.
+    if getattr(response, 'tool_calls', None):
+        logger.info("Reflector called tools: %s — passing through for execution",
+                     [tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                      for tc in response.tool_calls])
+        return {
+            "messages": [response],
+            "model": model_name,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+            "_budget_summary": budget.summary(),
+            **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
+            **({"_prompt_messages": _summarize_messages(reflect_messages)} if _DEBUG_PROMPTS else {}),
+            **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+        }
 
     decision = _parse_decision(response.content)
 

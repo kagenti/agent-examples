@@ -593,14 +593,15 @@ def build_graph(
     )
 
     # -- Tools --------------------------------------------------------------
-    core_tools = [
-        _make_shell_tool(executor),
-        _make_file_read_tool(workspace_path),
-        _make_file_write_tool(workspace_path),
-        _make_grep_tool(workspace_path),
-        _make_glob_tool(workspace_path),
-        _make_web_fetch_tool(sources_config),
-    ]
+    # Create tool instances once — shared across node subsets.
+    shell_tool = _make_shell_tool(executor)
+    file_read_tool = _make_file_read_tool(workspace_path)
+    file_write_tool = _make_file_write_tool(workspace_path)
+    grep_tool = _make_grep_tool(workspace_path)
+    glob_tool = _make_glob_tool(workspace_path)
+    web_fetch_tool = _make_web_fetch_tool(sources_config)
+
+    core_tools = [shell_tool, file_read_tool, file_write_tool, grep_tool, glob_tool, web_fetch_tool]
     tools = core_tools + [
         make_explore_tool(workspace_path, llm),
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
@@ -609,31 +610,20 @@ def build_graph(
     # -- Per-node tool subsets ------------------------------------------------
     # Each reasoning node gets its own tools and tool_choice mode:
     #   executor:  ALL tools, tool_choice="any" (must call tools)
-    #   planner:   read-only (glob, grep, file_read), tool_choice="auto" (optional)
-    #   reflector: read-only (glob, grep, file_read), tool_choice="auto" (optional)
+    #   planner:   glob, grep, file_read, file_write, tool_choice="auto" (optional)
+    #   reflector: glob, grep, file_read (inline via verify_tools, no graph loop)
     #   router/reporter/step_selector: no tools (text-only)
 
-    read_only_tools = [
-        _make_file_read_tool(workspace_path),
-        _make_grep_tool(workspace_path),
-        _make_glob_tool(workspace_path),
-    ]
+    read_only_tools = [file_read_tool, grep_tool, glob_tool]
+    planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool]
 
-    # Planner gets read-only tools + file_write for saving plans
-    planner_tools = read_only_tools + [
-        _make_file_write_tool(workspace_path),
-    ]
+    # All nodes use tool_choice="auto" — the LLM decides when to call tools
+    # and when to produce text. Each node gets its own tool subset.
+    llm_executor = llm.bind_tools(tools)      # all tools
+    llm_planner = llm.bind_tools(planner_tools)  # read + file_write
 
-    _force_tool_choice = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "1") == "1"
-    if _force_tool_choice:
-        llm_executor = llm.bind_tools(tools, tool_choice="any")
-    else:
-        llm_executor = llm.bind_tools(tools)
-
-    # Planner and reflector use tool_choice="auto" — they CAN choose not to
-    # call tools when the text context is sufficient.
-    llm_planner = llm.bind_tools(planner_tools)  # defaults to auto
-    llm_reflector = llm.bind_tools(read_only_tools)  # defaults to auto
+    # All nodes with tools use tool_choice="auto"
+    llm_reflector = llm.bind_tools(read_only_tools)  # read-only for verification
 
     # ToolNodes for each node's tool subset
     _executor_tool_node = ToolNode(tools)
@@ -654,7 +644,7 @@ def build_graph(
         return await executor_node(state, llm_executor, budget=budget)
 
     async def _reflector(state: SandboxState) -> dict[str, Any]:
-        return await reflector_node(state, llm, budget=budget, verify_tools=read_only_tools)
+        return await reflector_node(state, llm_reflector, budget=budget)
 
     async def _reporter(state: SandboxState) -> dict[str, Any]:
         return await reporter_node(state, llm, budget=budget)
@@ -799,23 +789,25 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
 
     _safe_executor_tools = _make_safe_tool_wrapper(_executor_tool_node, "executor")
     _safe_planner_tools = _make_safe_tool_wrapper(_planner_tool_node, "planner")
+    _safe_reflector_tools = _make_safe_tool_wrapper(_reflector_tool_node, "reflector")
 
     # -- Assemble graph -----------------------------------------------------
     #
-    # Topology (per-node tool loops):
+    # Topology (all nodes use tool_choice="auto"):
     #
     #   router → [plan]   → planner ⇄ planner_tools → step_selector
     #            [resume] → step_selector
     #
-    #   step_selector → executor ⇄ executor_tools → reflector
+    #   step_selector → executor ⇄ tools → reflector ⇄ reflector_tools
     #
-    #   reflector ⇄ reflector_tools → [done]    → reporter → END
-    #                                  [continue] → step_selector
-    #                                  [replan]   → planner
+    #   reflector_route → [done]     → reporter → END
+    #                     [continue] → step_selector
+    #                     [replan]   → planner
     #
-    # Planner can: glob, grep, file_read, file_write (for .plans/)
-    # Reflector can: glob, grep, file_read (verify outcomes)
-    # Executor can: all tools (shell, file_read/write, grep, glob, web_fetch, explore, delegate)
+    # Tool subsets:
+    #   planner:  glob, grep, file_read, file_write (inspect workspace, save plans)
+    #   executor: all tools (shell, files, grep, glob, web_fetch, explore, delegate)
+    #   reflector: glob, grep, file_read (verify step outcomes before deciding)
     #
     graph = StateGraph(SandboxState)
     graph.add_node("router", _router)
@@ -825,7 +817,7 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
     graph.add_node("executor", _executor)
     graph.add_node("tools", _safe_executor_tools)
     graph.add_node("reflector", _reflector)
-    # reflector uses verify_tools inline (not via graph tool loop)
+    graph.add_node("reflector_tools", _safe_reflector_tools)
     graph.add_node("reporter", _reporter)
 
     # Entry: router decides resume vs plan
@@ -854,11 +846,18 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
     )
     graph.add_edge("tools", "executor")
 
-    # Reflector → reporter (done), step_selector (continue), or planner (replan)
-    # Note: reflector uses read-only tools inline (not via graph tool loop)
-    # to verify outcomes before making its decision.
+    # Reflector → reflector_tools (if tool_calls) or → route decision
     graph.add_conditional_edges(
         "reflector",
+        tools_condition,
+        {"tools": "reflector_tools", "__end__": "reflector_route"},
+    )
+    graph.add_edge("reflector_tools", "reflector")
+
+    # Reflector route → reporter (done), step_selector (continue), or planner (replan)
+    graph.add_node("reflector_route", lambda state: state)  # pass-through
+    graph.add_conditional_edges(
+        "reflector_route",
         route_reflector,
         {"done": "reporter", "execute": "step_selector", "replan": "planner"},
     )
