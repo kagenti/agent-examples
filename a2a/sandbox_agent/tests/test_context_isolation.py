@@ -928,8 +928,57 @@ class TestBuildExecutorContext:
         assert "old plan text" not in all_content
         assert "cloned!" in all_content
 
-    def test_continuing_step_has_reflection_prompt(self) -> None:
-        """On continuing step, the LAST message should be a reflection prompt."""
+    def test_continuing_step_has_reflection_after_each_tool(self) -> None:
+        """On continuing step, a HumanMessage follows each ToolMessage."""
+        from sandbox_agent.context_builders import build_executor_context
+
+        state = _base_state(
+            plan=["Clone repo"],
+            current_step=0,
+            _tool_call_count=2,
+            messages=[
+                HumanMessage(content="user request"),
+                SystemMessage(content="[STEP_BOUNDARY 0] Clone the repo"),
+                AIMessage(content="", tool_calls=[{"name": "shell", "args": {"command": "git clone ..."}, "id": "t1"}]),
+                ToolMessage(content="Cloning into 'repos/kagenti'...", tool_call_id="t1", name="shell"),
+                AIMessage(content="", tool_calls=[{"name": "shell", "args": {"command": "ls repos/"}, "id": "t2"}]),
+                ToolMessage(content="kagenti", tool_call_id="t2", name="shell"),
+            ],
+        )
+        msgs = build_executor_context(state, "System prompt")
+
+        # Each ToolMessage should be followed by a HumanMessage reflection
+        for i, m in enumerate(msgs):
+            if isinstance(m, ToolMessage) and i + 1 < len(msgs):
+                nxt = msgs[i + 1]
+                assert isinstance(nxt, HumanMessage), (
+                    f"After ToolMessage at {i}, expected HumanMessage reflection, "
+                    f"got {type(nxt).__name__}: {str(nxt.content)[:50]}"
+                )
+                assert "NEVER repeat" in nxt.content
+
+    def test_reflection_shows_error_on_failure(self) -> None:
+        """Reflection after failed tool should include error details."""
+        from sandbox_agent.context_builders import build_executor_context
+
+        state = _base_state(
+            plan=["List failures"],
+            current_step=0,
+            _tool_call_count=1,
+            messages=[
+                SystemMessage(content="[STEP_BOUNDARY 0] List failures"),
+                AIMessage(content="", tool_calls=[{"name": "shell", "args": {"command": "gh run list --head"}, "id": "t1"}]),
+                ToolMessage(content="STDERR: unknown flag: --head\nEXIT_CODE: 1", tool_call_id="t1", name="shell"),
+            ],
+        )
+        msgs = build_executor_context(state, "System prompt")
+
+        reflections = [m for m in msgs if isinstance(m, HumanMessage) and "FAILED" in m.content]
+        assert len(reflections) >= 1, "Should have a FAILED reflection after error tool result"
+        assert "unknown flag" in reflections[0].content
+
+    def test_reflection_shows_ok_on_success(self) -> None:
+        """Reflection after successful tool should say OK."""
         from sandbox_agent.context_builders import build_executor_context
 
         state = _base_state(
@@ -937,22 +986,18 @@ class TestBuildExecutorContext:
             current_step=0,
             _tool_call_count=1,
             messages=[
-                HumanMessage(content="user request"),
-                SystemMessage(content="[STEP_BOUNDARY 0] Clone the repo"),
+                SystemMessage(content="[STEP_BOUNDARY 0] Clone repo"),
                 AIMessage(content="", tool_calls=[{"name": "shell", "args": {}, "id": "t1"}]),
-                ToolMessage(content="cloned!", tool_call_id="t1", name="shell"),
+                ToolMessage(content="Cloning into 'repos/kagenti'...", tool_call_id="t1", name="shell"),
             ],
         )
         msgs = build_executor_context(state, "System prompt")
 
-        # Last message should be the reflection HumanMessage
-        last = msgs[-1]
-        assert isinstance(last, HumanMessage), f"Last message should be HumanMessage, got {type(last).__name__}"
-        assert "DECIDE" in last.content
-        assert "NEVER repeat" in last.content
+        reflections = [m for m in msgs if isinstance(m, HumanMessage) and "OK" in m.content]
+        assert len(reflections) >= 1
 
-    def test_new_step_no_reflection_prompt(self) -> None:
-        """On new step (tool_call_count=0), no reflection prompt needed."""
+    def test_new_step_no_reflection(self) -> None:
+        """On new step (tool_call_count=0), no reflection injected."""
         from sandbox_agent.context_builders import build_executor_context
 
         state = _base_state(
@@ -961,11 +1006,8 @@ class TestBuildExecutorContext:
             _tool_call_count=0,
         )
         msgs = build_executor_context(state, "System prompt")
-        # Should be just SystemMessage + HumanMessage(step brief)
         types = [type(m).__name__ for m in msgs]
         assert types == ["SystemMessage", "HumanMessage"]
-        # The HumanMessage should be the step brief, not a reflection prompt
-        assert "DECIDE" not in msgs[-1].content
 
 
 # ---------------------------------------------------------------------------

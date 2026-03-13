@@ -127,13 +127,11 @@ def build_executor_context(
     if tool_call_count == 0:
         # New step: only the step brief
         windowed: list[BaseMessage] = []
-        reflection: list[BaseMessage] = []
     else:
-        # Continuing: walk back to [STEP_BOUNDARY N] SystemMessage
-        windowed = []
+        # Continuing: walk back to [STEP_BOUNDARY N] SystemMessage,
+        # then inject a HumanMessage reflection after EACH ToolMessage.
+        raw_windowed: list[BaseMessage] = []
         used_chars = 0
-        last_tool_result = ""
-        last_tool_status = "unknown"
         for m in reversed(all_msgs):
             content = str(getattr(m, "content", ""))
             if isinstance(m, SystemMessage) and content.startswith(
@@ -143,29 +141,45 @@ def build_executor_context(
             msg_chars = len(content)
             if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
                 break
-            windowed.insert(0, m)
+            raw_windowed.insert(0, m)
             used_chars += msg_chars
-            # Track the last tool result for the reflection prompt
-            if isinstance(m, ToolMessage) and not last_tool_result:
-                last_tool_result = content[:200]
-                last_tool_status = "error" if "EXIT_CODE:" in content else "success"
 
-        # Reflection prompt — forces the LLM to THINK before next tool call.
-        # This is the LAST message, so the LLM responds to this prompt.
-        reflection = [HumanMessage(content=(
-            f"Tool call {tool_call_count} returned (status: {last_tool_status}).\n"
-            f"Review the result above. Your goal for this step: \"{step_text}\"\n\n"
-            f"DECIDE:\n"
-            f"- If the goal is ACHIEVED → stop calling tools and summarize what you accomplished.\n"
-            f"- If the result shows an ERROR → try a DIFFERENT command or approach. "
-            f"Do NOT repeat the same command that failed.\n"
-            f"- If you got data but need to process it further → call the next logical tool.\n"
-            f"- If you already called this exact command and got the same result → "
-            f"the step is done, stop and summarize.\n\n"
-            f"NEVER repeat the same tool call with the same arguments."
-        ))]
+        # Inject reflection HumanMessage after each ToolMessage
+        windowed = []
+        call_num = 0
+        for m in raw_windowed:
+            windowed.append(m)
+            if isinstance(m, ToolMessage):
+                call_num += 1
+                tool_name = getattr(m, "name", "unknown")
+                content = str(getattr(m, "content", ""))
+                # Determine status from exit code
+                if "EXIT_CODE:" in content:
+                    import re as _re
+                    ec_match = _re.search(r"EXIT_CODE:\s*(\d+)", content)
+                    status = "FAILED" if ec_match and ec_match.group(1) != "0" else "OK"
+                    error_hint = content[:150] if status == "FAILED" else ""
+                elif content.startswith("Error:") or "Permission denied" in content:
+                    status = "FAILED"
+                    error_hint = content[:150]
+                else:
+                    status = "OK"
+                    error_hint = ""
 
-    result = [SystemMessage(content=system_content)] + first_msg + windowed + reflection
+                reflection_parts = [
+                    f"Tool '{tool_name}' call {call_num} {status}.",
+                ]
+                if error_hint:
+                    reflection_parts.append(f"Error: {error_hint}")
+                reflection_parts.append(
+                    f"Goal: \"{step_text[:100]}\"\n"
+                    f"If goal ACHIEVED → stop, summarize result. "
+                    f"If FAILED → try DIFFERENT approach. "
+                    f"NEVER repeat same command."
+                )
+                windowed.append(HumanMessage(content=" ".join(reflection_parts)))
+
+    result = [SystemMessage(content=system_content)] + first_msg + windowed
     logger.info(
         "Executor context: %d messages, ~%dk chars (from %d total)",
         len(result), sum(len(str(getattr(m, "content", ""))) for m in result) // 1000,
