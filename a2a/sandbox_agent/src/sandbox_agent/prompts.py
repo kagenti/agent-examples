@@ -142,13 +142,17 @@ STEP BOUNDARY — CRITICAL:
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
-## gh CLI Reference (use ONLY these flags)
-- `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`
-  Do NOT use `--head-ref` (invalid). Use `--branch` for branch filtering.
+## gh CLI Reference (use ONLY these flags — NO others exist)
+- `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`,
+  `--workflow <name>`, `--json <fields>`, `--commit <sha>`
+  INVALID flags (do NOT use): `--head`, `--head-ref`, `--pr`, `--pull-request`
+  To filter by PR: use `--branch <pr-branch>` or `gh pr checks <pr-number>`
 - `gh run view <run_id>`: `--log`, `--log-failed`, `--job <id>`
   Always redirect output: `gh run view <id> --log-failed > {workspace_path}/output/ci.log`
 - `gh pr list`: `--state open|closed|merged`, `--base <branch>`, `--head <branch>`
 - `gh pr view <number>`: `--json <fields>`, `--comments`
+- `gh pr checks <number>`: shows CI check status for a specific PR
+- When a command returns "unknown flag" → run `<command> --help` to see valid flags.
 
 ## Handling Large Output
 Tool output is truncated to 10KB. For commands that produce large output:
