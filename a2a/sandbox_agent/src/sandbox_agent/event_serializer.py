@@ -456,8 +456,12 @@ class LangGraphSerializer(FrameworkEventSerializer):
         completion_tokens = value.get("completion_tokens", 0)
         prompt_data = self._extract_prompt_data(value)
 
+        # Distinguish initial plan from replan
+        is_replan = iteration > 1
+        event_type = "replanner_output" if is_replan else "planner_output"
+
         payload = {
-            "type": "planner_output",
+            "type": event_type,
             "loop_id": self._loop_id,
             "steps": plan,
             "iteration": iteration,
