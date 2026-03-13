@@ -736,12 +736,30 @@ async def planner_node(
                        "iteration": iteration, "step_count": len(plan),
                        "plan_version": plan_version})
 
+    # On replan, preserve completed steps — don't restart from step 0.
+    # Find the first non-done step in the NEW plan to continue from.
+    # On first plan (no prev steps), start at 0.
+    prev_steps = state.get("plan_steps", [])
+    if prev_steps:
+        # Replan: carry forward "done" status from previous steps that match
+        done_count = sum(1 for s in prev_steps if s.get("status") == "done")
+        start_step = min(done_count, len(new_plan_steps) - 1) if new_plan_steps else 0
+        # Mark steps before start_step as done in new plan (they were done before)
+        for i in range(start_step):
+            if i < len(new_plan_steps):
+                new_plan_steps[i] = {**new_plan_steps[i], "status": "done"}
+        logger.info("Replan: preserving %d done steps, starting at step %d",
+                     start_step, start_step + 1,
+                     extra={"session_id": state.get("context_id", ""), "node": "planner"})
+    else:
+        start_step = 0
+
     return {
         "messages": [response],
         "plan": plan,
         "plan_steps": new_plan_steps,
         "plan_version": plan_version,
-        "current_step": 0,
+        "current_step": start_step,
         "iteration": iteration + 1,
         "done": False,
         "model": model_name,
@@ -824,31 +842,40 @@ async def executor_node(
             result["_system_prompt"] = f"[Budget exceeded — no LLM call]\n{budget.exceeded_reason}"
         return result
 
-    # Token-aware message windowing to prevent context explosion.
-    # When starting a new step (tool_call_count == 0), use a tight window
-    # so the executor focuses on the step brief, not previous steps' history.
-    # When continuing a step (tool_call_count > 0), use the full window
-    # so the executor sees its own tool results from this step.
-    _CHARS_PER_TOKEN = 4  # rough estimate
-    _MAX_CONTEXT_TOKENS = 5_000 if tool_call_count == 0 else 30_000
+    # Step-scoped message context for the executor.
+    #
+    # The executor should ONLY see:
+    #   1. The original user request (first message)
+    #   2. Its own tool calls + results from THIS step (tool_call_count > 0)
+    #   3. The step brief (injected via system prompt)
+    #
+    # It should NOT see: the planner's numbered plan, previous steps'
+    # tool calls, reflector decisions, or other nodes' messages.
+    # This prevents the executor from executing all steps in step 1.
 
     all_msgs = state["messages"]
-    system_tokens = len(system_content) // _CHARS_PER_TOKEN
-    budget_chars = (_MAX_CONTEXT_TOKENS - system_tokens) * _CHARS_PER_TOKEN
 
-    # Always keep the first user message
+    # First message = user request (always included)
     first_msg = all_msgs[:1] if all_msgs else []
-    first_chars = sum(len(str(getattr(m, 'content', ''))) for m in first_msg)
 
-    # Walk backwards through remaining messages, accumulating until budget exhausted
-    remaining = all_msgs[1:]
-    windowed = []
-    used_chars = first_chars
-    for m in reversed(remaining):
-        msg_chars = len(str(getattr(m, 'content', '')))
-        if used_chars + msg_chars > budget_chars:
-            break
-        windowed.insert(0, m)
+    if tool_call_count == 0:
+        # New step: executor sees ONLY the user request + system prompt.
+        # The step brief in skill_instructions tells it what to do.
+        windowed = []
+    else:
+        # Continuing step: include recent tool calls/results from this step.
+        # Walk backwards to find messages from this step only (since last
+        # step_selector, which resets _tool_call_count to 0).
+        _CHARS_PER_TOKEN = 4
+        _MAX_CONTEXT_CHARS = 30_000 * _CHARS_PER_TOKEN
+        windowed = []
+        used_chars = 0
+        for m in reversed(all_msgs[1:]):
+            msg_chars = len(str(getattr(m, 'content', '')))
+            if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
+                break
+            windowed.insert(0, m)
+            used_chars += msg_chars
         used_chars += msg_chars
 
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
@@ -1347,6 +1374,28 @@ async def reflector_node(
             "done": True,
             "replan_count": replan_count,
         }
+    elif decision == "retry":
+        # Retry: re-execute current step with fresh context.
+        # Mark step as "retrying" (not failed) — executor gets another chance.
+        if current_step < len(plan_steps):
+            ps = plan_steps[current_step]
+            retry_count = ps.get("retry_count", 0) + 1
+            plan_steps[current_step] = {
+                **ps,
+                "status": "retrying",
+                "retry_count": retry_count,
+            }
+        logger.info("Retry step %d (attempt %d) — re-executing with different approach",
+                     current_step + 1, plan_steps[current_step].get("retry_count", 1),
+                     extra={"session_id": state.get("context_id", ""), "node": "reflector",
+                            "decision": "retry", "current_step": current_step})
+        return {
+            **base_result,
+            "plan_steps": plan_steps,
+            "done": False,
+            "replan_count": replan_count,
+            "_tool_call_count": 0,  # reset tool calls for retry
+        }
     elif decision == "replan":
         new_replan_count = replan_count + 1
         # Mark current step failed
@@ -1543,15 +1592,18 @@ def route_reflector(state: dict[str, Any]) -> str:
     """Route from reflector based on decision.
 
     ``done``     → reporter (final answer)
-    ``replan``   → planner (create new plan)
-    ``continue`` → executor (execute next step)
+    ``replan``   → planner (create new plan, preserving done steps)
+    ``retry``    → step_selector (re-run current step with different approach)
+    ``continue`` → step_selector (advance to next step)
     """
     if state.get("done", False):
         return "done"
-    # Check the reflector's decision to distinguish continue vs replan
+    # Check the reflector's decision to distinguish continue vs replan vs retry
     decision = (state.get("recent_decisions") or ["continue"])[-1]
     if decision == "replan":
         return "replan"
+    # Both "retry" and "continue" route to step_selector —
+    # retry keeps current_step the same, continue advances it.
     return "execute"
 
 
@@ -1597,7 +1649,7 @@ def _parse_plan(content: str | list) -> list[str]:
 def _parse_decision(content: str | list) -> str:
     """Extract the reflector decision from LLM output.
 
-    Returns one of: ``continue``, ``replan``, ``done``, ``hitl``.
+    Returns one of: ``continue``, ``retry``, ``replan``, ``done``, ``hitl``.
     Defaults to ``continue`` if the output is ambiguous.
     """
     if isinstance(content, list):
@@ -1610,11 +1662,11 @@ def _parse_decision(content: str | list) -> str:
 
     text_lower = text.strip().lower()
 
-    for decision in ("done", "replan", "hitl", "continue"):
+    for decision in ("done", "retry", "replan", "hitl", "continue"):
         if decision in text_lower:
             return decision
 
     return "continue"
 
 
-_BARE_DECISION_RE = re.compile(r'^(continue|replan|done|hitl)\s*$', re.IGNORECASE)
+_BARE_DECISION_RE = re.compile(r'^(continue|retry|replan|done|hitl)\s*$', re.IGNORECASE)

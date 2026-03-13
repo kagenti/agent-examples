@@ -167,25 +167,33 @@ STALL DETECTION:
 - If the step result is just text describing what WOULD be done (not actual
   tool output), that means the executor did not call any tools. Treat as failure.
 
-REPLAN RULES:
-- Do NOT replan with the same approach that already failed. If prior replans
-  failed for the same reason, choose "done" instead.
-- Each replan should try a fundamentally different strategy, not repeat the same steps.
+RETRY vs REPLAN:
+- **retry** = same step failed, try a DIFFERENT approach for THIS step only.
+  Example: `gh run view --log-failed` failed → retry with `gh api` instead.
+  The executor re-runs the current step with a modified brief. Completed steps
+  are preserved. Use retry FIRST before replan.
+- **replan** = the overall approach is fundamentally wrong. Creates a new plan
+  but preserves already-completed steps (never restarts from step 1).
+  Only use replan if retry won't help (e.g., wrong repo cloned, wrong PR).
+- Do NOT replan with the same approach that already failed.
 - A high replan count suggests diminishing returns — consider "done" with
-  partial results if you have already tried multiple distinct approaches.
+  partial results.
 
 DECISION PROCESS:
 1. Did the current step succeed? Check tool output for real results (not just "no output").
-2. Are there remaining steps in the plan? If yes → continue to the next step.
-3. Only choose "done" when ALL plan steps are complete OR remaining steps are "NONE".
+2. If it failed, can you try a different approach for the SAME step? → retry.
+3. If the whole approach is wrong → replan.
+4. If step succeeded and remaining steps exist → continue.
+5. If ALL plan steps are complete (remaining = NONE) → done.
 
 Decide ONE of the following (output ONLY the decision word):
 - **continue** — Current step done, remaining steps exist → move to next step.
-- **replan** — Step failed or needs a different approach (only if genuinely NEW).
+- **retry** — Current step failed, re-execute with a different approach.
+- **replan** — Overall approach is wrong, create new plan (keeps done steps).
 - **done** — ALL plan steps complete (remaining = NONE), task is fully answered.
 - **hitl** — Human input is needed to proceed.
 
-Output the single word: continue, replan, done, or hitl.
+Output the single word: continue, retry, replan, done, or hitl.
 """
 
 REPORTER_SYSTEM = """\
