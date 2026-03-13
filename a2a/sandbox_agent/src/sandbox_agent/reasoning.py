@@ -816,14 +816,13 @@ async def executor_node(
         return result
 
     step_text = plan[current_step]
-    workspace_path = state.get("workspace_path", "/workspace")
     system_content = _safe_format(
         _EXECUTOR_SYSTEM,
         current_step=current_step + 1,
         step_text=step_text,
         tool_call_count=tool_call_count,
         max_tool_calls=MAX_TOOL_CALLS_PER_STEP,
-        workspace_path=workspace_path,
+        workspace_path=state.get("workspace_path", "/workspace"),
     )
 
     # Prepend skill instructions when a skill was loaded from metadata.
@@ -864,6 +863,7 @@ async def executor_node(
         response, capture = await invoke_llm(
             llm_with_tools, messages,
             node="executor", session_id=state.get("context_id", ""),
+            workspace_path=state.get("workspace_path", "/workspace"),
         )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):

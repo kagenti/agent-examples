@@ -5,7 +5,53 @@ Each prompt corresponds to a reasoning node:
 - EXECUTOR_SYSTEM: Executes individual plan steps with tools
 - REFLECTOR_SYSTEM: Reviews step output, decides continue/replan/done
 - REPORTER_SYSTEM: Summarizes accumulated results into final answer
+
+All prompts receive the workspace preamble via ``with_workspace()``.
 """
+
+# ---------------------------------------------------------------------------
+# Universal workspace preamble — injected into ALL system prompts
+# ---------------------------------------------------------------------------
+
+WORKSPACE_PREAMBLE = """\
+WORKSPACE (MOST IMPORTANT RULE):
+Your workspace absolute path is: {workspace_path}
+ALL file access MUST use this path prefix.
+
+- shell commands: ALWAYS use absolute paths starting with {workspace_path}/
+  Example: `ls {workspace_path}/repos/kagenti`
+  Example: `cd {workspace_path}/repos/kagenti && gh run list`
+  Example: `cd {workspace_path}/repos/kagenti && gh run view 123 --log-failed > {workspace_path}/output/ci.log`
+- file_read, file_write, grep, glob: use RELATIVE paths (e.g. `output/report.md`, `repos/kagenti/README.md`).
+  These tools resolve paths relative to the workspace automatically.
+- NEVER use `../../` or guess paths. NEVER use bare `/workspace/` without the session ID.
+
+Pre-created subdirs: repos/ (clone here), output/ (reports/logs), data/, scripts/
+"""
+
+
+def with_workspace(template: str, workspace_path: str, **kwargs: str) -> str:
+    """Prepend the workspace preamble to a system prompt template and format.
+
+    Usage::
+
+        system_content = with_workspace(
+            EXECUTOR_SYSTEM,
+            workspace_path="/workspace/abc123",
+            current_step=1,
+            step_text="Clone repo",
+        )
+    """
+    full = WORKSPACE_PREAMBLE + "\n" + template
+    try:
+        return full.format(workspace_path=workspace_path, **kwargs)
+    except (KeyError, IndexError):
+        # Fallback: try formatting without workspace if template has unknown keys
+        try:
+            return WORKSPACE_PREAMBLE.format(workspace_path=workspace_path) + "\n" + template.format(**kwargs)
+        except (KeyError, IndexError):
+            return WORKSPACE_PREAMBLE.format(workspace_path=workspace_path) + "\n" + template
+
 
 PLANNER_SYSTEM = """\
 You are a planning module for a sandboxed coding assistant.
@@ -41,19 +87,18 @@ Example ("create a Python project with tests"):
 4. Run tests: shell(`python -m pytest tests/`).
 
 Example ("analyze CI failures for owner/repo PR #758"):
-1. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
-2. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
-3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > /workspace/<session>/output/ci-run.log`) — use the full workspace path for redirects after cd.
+1. Clone repo: shell(`git clone https://github.com/owner/repo.git {workspace_path}/repos/repo`).
+2. List failures: shell(`cd {workspace_path}/repos/repo && gh run list --status failure --limit 5`).
+3. Download logs: shell(`cd {workspace_path}/repos/repo && gh run view <run_id> --log-failed > {workspace_path}/output/ci-run.log`).
 4. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
 5. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
 IMPORTANT for gh CLI:
 - GH_TOKEN and GITHUB_TOKEN are ALREADY set in the environment. Do NOT
   run `export GH_TOKEN=...` — it's unnecessary and will break auth.
-- Always clone the target repo FIRST into repos/, then `cd repos/<name>` before gh commands.
+- Always clone the target repo FIRST, then `cd` into it before gh commands.
 - gh auto-detects the repo from git remote "origin" — it MUST run inside the cloned repo.
-- Use `cd repos/<name> && gh <command>` in a single shell call (each call starts from workspace root).
-- Save output to output/ for later analysis.
+- Use `cd {workspace_path}/repos/<name> && gh <command>` in a single shell call.
 """
 
 EXECUTOR_SYSTEM = """\
@@ -97,32 +142,6 @@ STEP BOUNDARY — CRITICAL:
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
-## Workspace Layout
-Your workspace absolute path is: {workspace_path}
-Your working directory is the session workspace. Pre-created subdirs:
-- **repos/** — clone repositories here
-- **output/** — write reports, logs, analysis results here
-- **data/** — intermediate data files
-- **scripts/** — generated scripts
-
-WORKSPACE RULES (MANDATORY):
-- Your working directory is the session workspace. All commands start here.
-- For file_read, file_write, grep, glob: use RELATIVE paths (e.g. `output/report.md`).
-- For shell redirects AFTER `cd`: use the FULL workspace path.
-  WRONG: `cd repos/myrepo && gh run view 123 --log-failed > output/ci.log`
-  RIGHT: `cd repos/myrepo && gh run view 123 --log-failed > {workspace_path}/output/ci.log`
-  (Because `cd` changes the working directory, `> output/ci.log` would write
-  inside `repos/myrepo/output/` which does not exist.)
-- NEVER use bare `cd dir` as a standalone command — it has no effect.
-- ALWAYS chain directory changes: `cd repos/myrepo && git status`
-- For multi-command sequences: `cd repos/myrepo && cmd1 && cmd2`
-- gh CLI requires a git repo context: `cd repos/myrepo && gh pr list`
-- GH_TOKEN and GITHUB_TOKEN are already set. Do NOT run export or gh auth.
-- NEVER waste tool calls on `pwd`, bare `cd`, or `ls` without purpose.
-  You start in your session workspace. Only verify paths if a command failed.
-- Never use `../../` or absolute paths other than {workspace_path} — these
-  will be blocked by path traversal protection.
-
 ## gh CLI Reference (use ONLY these flags)
 - `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`
   Do NOT use `--head-ref` (invalid). Use `--branch` for branch filtering.
@@ -133,21 +152,15 @@ WORKSPACE RULES (MANDATORY):
 
 ## Handling Large Output
 Tool output is truncated to 10KB. For commands that produce large output:
-- Redirect to a file: `gh api ... > output/api-response.json`
-- Then analyze with grep: `grep 'failure' output/api-response.json`
-- Or extract specific fields: `cat output/api-response.json | python3 -c "import json,sys; d=json.load(sys.stdin); print(d['total_count'])"`
+- Redirect to a file: `command > {workspace_path}/output/result.json`
+- Then analyze with grep: grep(`pattern` in output/result.json)
 - NEVER run `gh api` or `curl` without redirecting or piping — the response will be truncated.
 
 ## Debugging Guidelines
-- If a path is not accessible, run `ls` to check what exists in the workspace
 - If a command fails with "unknown flag", run `command --help` to see valid options
-- If you get "Permission denied", you may be writing outside the workspace
-- If disk is full, use `output/` dir (pre-created, writable)
 - After each tool call, analyze the output carefully before deciding the next action
-- If a command produces no output, it may have succeeded silently — verify with a follow-up check
 - Check error output (stderr) before retrying the same command
 - For `gh` CLI: use `gh <command> --help` to verify flags — do NOT guess flag names
-- For large API responses: redirect to a file first (`gh api ... > output/file.json`)
 """
 
 REFLECTOR_SYSTEM = """\

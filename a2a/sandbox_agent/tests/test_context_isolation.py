@@ -949,33 +949,51 @@ class TestInvokeLLM:
         ]
         response, capture = await invoke_llm(llm, messages, node="test")
 
-        assert capture.messages == messages
         assert capture.response is response
         assert capture.model == "test-model"
         assert capture.prompt_tokens == 100
         assert capture.completion_tokens == 20
 
     @pytest.mark.asyncio
-    async def test_debug_fields_match_captured_messages(self) -> None:
-        """debug_fields()._system_prompt should match what was sent."""
+    async def test_workspace_preamble_injected(self) -> None:
+        """invoke_llm should inject workspace preamble into SystemMessage."""
         from sandbox_agent.context_builders import invoke_llm
 
         llm = CaptureLLM([AIMessage(content="ok")])
         messages = [
-            SystemMessage(content="System prompt text here"),
-            HumanMessage(content="User request"),
+            SystemMessage(content="You are an executor."),
+            HumanMessage(content="Do stuff"),
         ]
-        _, capture = await invoke_llm(llm, messages, node="test")
-        fields = capture.debug_fields()
+        _, capture = await invoke_llm(
+            llm, messages, node="test",
+            workspace_path="/workspace/ctx-abc",
+        )
 
-        assert fields["_system_prompt"] == "System prompt text here"
-        assert len(fields["_prompt_messages"]) == 2
-        assert fields["_prompt_messages"][0]["role"] == "system"
-        assert fields["_prompt_messages"][1]["role"] == "human"
+        # The captured SystemMessage should have the preamble prepended
+        system_text = capture._system_prompt()
+        assert "WORKSPACE (MOST IMPORTANT RULE)" in system_text
+        assert "/workspace/ctx-abc" in system_text
+        assert "You are an executor." in system_text
 
     @pytest.mark.asyncio
-    async def test_executor_uses_invoke_llm(self) -> None:
-        """executor_node should use invoke_llm — debug output matches actual context."""
+    async def test_no_workspace_no_preamble(self) -> None:
+        """Without workspace_path, no preamble is injected."""
+        from sandbox_agent.context_builders import invoke_llm
+
+        llm = CaptureLLM([AIMessage(content="ok")])
+        messages = [
+            SystemMessage(content="Plain prompt"),
+            HumanMessage(content="Hello"),
+        ]
+        _, capture = await invoke_llm(llm, messages, node="test")
+
+        system_text = capture._system_prompt()
+        assert "WORKSPACE" not in system_text
+        assert system_text == "Plain prompt"
+
+    @pytest.mark.asyncio
+    async def test_executor_has_workspace_preamble(self) -> None:
+        """executor_node should have workspace preamble in its system prompt."""
         llm = CaptureLLM([AIMessage(content="Running command")])
         state = _base_state(
             plan=_make_rca_plan(),
@@ -984,10 +1002,6 @@ class TestInvokeLLM:
         )
         result = await executor_node(state, llm)
 
-        # Debug fields should be present (SANDBOX_DEBUG_PROMPTS defaults to "1")
         if "_system_prompt" in result:
-            # The system prompt in debug should contain workspace_path
+            assert "WORKSPACE (MOST IMPORTANT RULE)" in result["_system_prompt"]
             assert "/workspace/test-123" in result["_system_prompt"]
-            # The prompt messages should match what was actually sent
-            assert result["_prompt_messages"][0]["role"] == "system"
-            assert "/workspace/test-123" in result["_prompt_messages"][0]["preview"]

@@ -349,11 +349,17 @@ async def invoke_llm(
     *,
     node: str = "",
     session_id: str = "",
+    workspace_path: str = "",
 ) -> tuple[AIMessage, LLMCallCapture]:
     """Invoke the LLM and capture the exact input/output.
 
+    If ``workspace_path`` is provided, the workspace preamble is
+    automatically prepended to the first SystemMessage. This ensures
+    every LLM call sees the workspace path rule — nodes don't need
+    to inject it manually.
+
     Returns ``(response, capture)`` where capture contains:
-    - ``messages``: the exact messages sent to the LLM
+    - ``messages``: the exact messages sent to the LLM (with preamble)
     - ``response``: the AIMessage returned
     - ``prompt_tokens`` / ``completion_tokens``: token usage
     - ``model``: model name from response metadata
@@ -361,13 +367,25 @@ async def invoke_llm(
     Usage in a node::
 
         messages = build_executor_context(state, system_content)
-        response, capture = await invoke_llm(llm, messages, node="executor")
-        result = {
-            "messages": [response],
-            **capture.token_fields(),
-            **capture.debug_fields(),
-        }
+        response, capture = await invoke_llm(
+            llm, messages, node="executor",
+            workspace_path=state.get("workspace_path", "/workspace"),
+        )
     """
+    # Inject workspace preamble into the first SystemMessage
+    if workspace_path and messages:
+        from sandbox_agent.prompts import WORKSPACE_PREAMBLE
+
+        preamble = WORKSPACE_PREAMBLE.format(workspace_path=workspace_path)
+        if isinstance(messages[0], SystemMessage):
+            messages = [
+                SystemMessage(content=preamble + "\n" + messages[0].content),
+                *messages[1:],
+            ]
+        else:
+            # No SystemMessage — prepend one
+            messages = [SystemMessage(content=preamble), *messages]
+
     response = await llm.ainvoke(messages)
 
     usage = getattr(response, "usage_metadata", None) or {}
