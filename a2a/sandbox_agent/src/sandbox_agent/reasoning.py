@@ -842,40 +842,31 @@ async def executor_node(
             result["_system_prompt"] = f"[Budget exceeded — no LLM call]\n{budget.exceeded_reason}"
         return result
 
-    # Step-scoped message context for the executor.
-    #
-    # The executor should ONLY see:
-    #   1. The original user request (first message)
-    #   2. Its own tool calls + results from THIS step (tool_call_count > 0)
-    #   3. The step brief (injected via system prompt)
-    #
-    # It should NOT see: the planner's numbered plan, previous steps'
-    # tool calls, reflector decisions, or other nodes' messages.
-    # This prevents the executor from executing all steps in step 1.
+    # Token-aware message windowing to prevent context explosion.
+    # When starting a new step (tool_call_count == 0), use a tight window
+    # so the executor focuses on the step brief, not previous steps' history.
+    # When continuing a step (tool_call_count > 0), use the full window
+    # so the executor sees its own tool results from this step.
+    _CHARS_PER_TOKEN = 4  # rough estimate
+    _MAX_CONTEXT_TOKENS = 5_000 if tool_call_count == 0 else 30_000
 
     all_msgs = state["messages"]
+    system_tokens = len(system_content) // _CHARS_PER_TOKEN
+    budget_chars = (_MAX_CONTEXT_TOKENS - system_tokens) * _CHARS_PER_TOKEN
 
-    # First message = user request (always included)
+    # Always keep the first user message
     first_msg = all_msgs[:1] if all_msgs else []
+    first_chars = sum(len(str(getattr(m, 'content', ''))) for m in first_msg)
 
-    if tool_call_count == 0:
-        # New step: executor sees ONLY the user request + system prompt.
-        # The step brief in skill_instructions tells it what to do.
-        windowed = []
-    else:
-        # Continuing step: include recent tool calls/results from this step.
-        # Walk backwards to find messages from this step only (since last
-        # step_selector, which resets _tool_call_count to 0).
-        _CHARS_PER_TOKEN = 4
-        _MAX_CONTEXT_CHARS = 30_000 * _CHARS_PER_TOKEN
-        windowed = []
-        used_chars = 0
-        for m in reversed(all_msgs[1:]):
-            msg_chars = len(str(getattr(m, 'content', '')))
-            if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
-                break
-            windowed.insert(0, m)
-            used_chars += msg_chars
+    # Walk backwards through remaining messages, accumulating until budget exhausted
+    remaining = all_msgs[1:]
+    windowed = []
+    used_chars = first_chars
+    for m in reversed(remaining):
+        msg_chars = len(str(getattr(m, 'content', '')))
+        if used_chars + msg_chars > budget_chars:
+            break
+        windowed.insert(0, m)
         used_chars += msg_chars
 
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
