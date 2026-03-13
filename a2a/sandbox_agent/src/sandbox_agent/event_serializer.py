@@ -97,13 +97,17 @@ class LangGraphSerializer(FrameworkEventSerializer):
     def __init__(self, loop_id: str | None = None, context_id: str | None = None) -> None:
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
+        self._event_counter = 0  # chronological event counter (total graph passes)
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
-        # Use actual plan step from state instead of auto-incrementing.
-        # Auto-increment caused step numbers to reach 159+ for 5-6 plan steps.
+        # Chronological counter — total graph node invocations for UI display
+        if key not in ("tools", "planner_tools", "reflector_tools"):
+            self._event_counter += 1
+
+        # Track actual plan step from state for step grouping
         current_step = value.get("current_step")
         if current_step is not None:
             new_step = current_step + 1  # 1-based for display
@@ -139,7 +143,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             result = json.dumps({
                 "type": "step_selector",
                 "loop_id": self._loop_id,
-                "step": self._step_index,
+                "step": self._step_index, "event_index": self._event_counter,
                 "current_step": current_step,
                 "description": f"Advancing to step {current_step + 1}: {step_desc[:80]}",
                 "brief": brief[:500],
@@ -173,7 +177,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             budget_event = json.dumps({
                 "type": "budget_update",
                 "loop_id": self._loop_id,
-                "step": self._step_index,
+                "step": self._step_index, "event_index": self._event_counter,
                 **budget_summary,
             })
             result = result + "\n" + budget_event
@@ -239,14 +243,14 @@ class LangGraphSerializer(FrameworkEventSerializer):
             text = str(content)[:2000] if content else ""
 
         parts = []
+        _v = value or {}
 
-        # Always emit micro_reasoning — captures "why this tool?" for first call
-        # and "what did the result tell me?" for subsequent calls
-        parts.append(self._serialize_micro_reasoning(msg, value or {}))
+        # Skip micro_reasoning for dedup responses (no LLM call happened)
+        if not _v.get("_dedup"):
+            parts.append(self._serialize_micro_reasoning(msg, _v))
 
         self._micro_step += 1
 
-        _v = value or {}
         plan = _v.get("plan", [])
         model = _v.get("model", "")
         prompt_tokens = _v.get("prompt_tokens", 0)
@@ -258,7 +262,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         step_payload = {
             "type": "executor_step",
             "loop_id": self._loop_id,
-            "step": self._step_index,
+            "step": self._step_index, "event_index": self._event_counter,
             "plan_step": current_plan_step,
             "iteration": _v.get("iteration", 0),
             "total_steps": len(plan) if plan else 0,
@@ -279,7 +283,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             parts.append(json.dumps({
                 "type": "tool_call",
                 "loop_id": self._loop_id,
-                "step": self._step_index,
+                "step": self._step_index, "event_index": self._event_counter,
                 "call_id": call_id,
                 "tools": [
                     _safe_tc(tc)
@@ -296,7 +300,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             parts.append(json.dumps({
                 "type": "tool_call",
                 "loop_id": self._loop_id,
-                "step": self._step_index,
+                "step": self._step_index, "event_index": self._event_counter,
                 "call_id": call_id,
                 "tools": [
                     {"name": t["name"], "args": t.get("args", {})}
@@ -331,7 +335,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         event: dict = {
             "type": "micro_reasoning",
             "loop_id": self._loop_id,
-            "step": self._step_index,
+            "step": self._step_index, "event_index": self._event_counter,
             "micro_step": self._micro_step,
             "after_call_id": self._last_call_id,
             "reasoning": text[:50000],
@@ -365,7 +369,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         return json.dumps({
             "type": "tool_result",
             "loop_id": self._loop_id,
-            "step": self._step_index,
+            "step": self._step_index, "event_index": self._event_counter,
             "call_id": self._last_call_id,
             "name": str(name),
             "output": content_str[:2000],

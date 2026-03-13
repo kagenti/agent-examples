@@ -982,9 +982,10 @@ async def executor_node(
                 )
                 return {
                     "messages": [
-                        AIMessage(content=_DEDUP_SENTINEL)
+                        AIMessage(content="")
                     ],
                     "current_step": current_step,
+                    "_dedup": True,  # skip micro_reasoning emission
                 }
             # Keep only genuinely new calls
             response = AIMessage(
@@ -1158,9 +1159,9 @@ async def reflector_node(
     # reflector's judgment and force-terminating sessions prematurely.
     # The iteration limit and wall-clock limit are sufficient safeguards.
 
-    # If last_content is the dedup sentinel, recover the actual last tool
-    # result from the message history so the reflector sees real output.
-    if _DEDUP_SENTINEL in last_content:
+    # If last_content is empty (dedup path) or the old sentinel, recover the
+    # actual last tool result from the message history so the reflector sees real output.
+    if not last_content.strip() or _DEDUP_SENTINEL in last_content:
         for msg in reversed(messages):
             if isinstance(msg, ToolMessage):
                 last_content = str(getattr(msg, "content", ""))

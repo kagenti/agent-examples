@@ -24,11 +24,14 @@ COPY . .
 RUN uv sync --no-cache --locked --link-mode copy
 
 ENV PRODUCTION_MODE=True \
-    RELEASE_VERSION=${RELEASE_VERSION}
+    RELEASE_VERSION=${RELEASE_VERSION} \
+    GH_CACHE_DIR=/workspace/.gh-cache \
+    XDG_CACHE_HOME=/workspace/.cache
 
 # Create workspace and set permissions.
 # Use chmod g+w so OCP arbitrary UIDs (same group) can write to /app.
-RUN mkdir -p /workspace && chown -R 1001:0 /app /workspace && chmod -R g+w /app /workspace
+RUN mkdir -p /workspace /workspace/.gh-cache /workspace/.cache \
+    && chown -R 1001:0 /app /workspace && chmod -R g+w /app /workspace
 USER 1001
 
 CMD ["uv", "run", "--no-sync", "server"]
