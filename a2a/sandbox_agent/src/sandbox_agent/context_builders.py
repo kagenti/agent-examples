@@ -173,8 +173,7 @@ def build_executor_context(
                     reflection_parts.append(f"Error: {error_hint}")
                 if "unknown flag" in content.lower() or "invalid option" in content.lower():
                     reflection_parts.append(
-                        f"The flag is INVALID. Run `{tool_name} --help` or "
-                        f"check the gh CLI Reference in your system prompt for valid flags."
+                        "The flag is INVALID. Run the command with --help to see valid flags."
                     )
                 reflection_parts.append(
                     f"Goal: \"{step_text[:100]}\"\n"

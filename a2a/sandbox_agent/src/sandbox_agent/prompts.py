@@ -142,29 +142,17 @@ STEP BOUNDARY — CRITICAL:
 When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
-## gh CLI Reference (use ONLY these flags — NO others exist)
-- `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`,
-  `--workflow <name>`, `--json <fields>`, `--commit <sha>`
-  INVALID flags (do NOT use): `--head`, `--head-ref`, `--pr`, `--pull-request`
-  To filter by PR: use `--branch <pr-branch>` or `gh pr checks <pr-number>`
-- `gh run view <run_id>`: `--log`, `--log-failed`, `--job <id>`
-  Always redirect output: `gh run view <id> --log-failed > {workspace_path}/output/ci.log`
-- `gh pr list`: `--state open|closed|merged`, `--base <branch>`, `--head <branch>`
-- `gh pr view <number>`: `--json <fields>`, `--comments`
-- `gh pr checks <number>`: shows CI check status for a specific PR
-- When a command returns "unknown flag" → run `<command> --help` to see valid flags.
-
 ## Handling Large Output
 Tool output is truncated to 10KB. For commands that produce large output:
 - Redirect to a file: `command > {workspace_path}/output/result.json`
 - Then analyze with grep: grep(`pattern` in output/result.json)
-- NEVER run `gh api` or `curl` without redirecting or piping — the response will be truncated.
 
 ## Debugging Guidelines
-- If a command fails with "unknown flag", run `command --help` to see valid options
-- After each tool call, analyze the output carefully before deciding the next action
-- Check error output (stderr) before retrying the same command
-- For `gh` CLI: use `gh <command> --help` to verify flags — do NOT guess flag names
+- If a command fails with "unknown flag" or "invalid option" → run `command --help`
+  to see valid flags. Do NOT guess flag names.
+- After each tool call, analyze the output carefully before deciding the next action.
+- Check error output (stderr) and exit code before retrying.
+- If you get the same result twice → the step is done, stop and summarize.
 """
 
 REFLECTOR_SYSTEM = """\
