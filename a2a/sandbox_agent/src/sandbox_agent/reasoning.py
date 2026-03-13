@@ -687,12 +687,16 @@ async def planner_node(
     if skill_instructions:
         system_content = skill_instructions + "\n\n" + system_content
 
-    from sandbox_agent.context_builders import build_planner_context
+    from sandbox_agent.context_builders import build_planner_context, invoke_llm
 
     plan_messages = build_planner_context(state, system_content)
 
     try:
-        response = await llm.ainvoke(plan_messages)
+        response, planner_capture = await invoke_llm(
+            llm, plan_messages,
+            node="planner", session_id=state.get("context_id", ""),
+            workspace_path=state.get("workspace_path", "/workspace"),
+        )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
             logger.warning("Budget exceeded in planner (402 from proxy): %s", exc,
