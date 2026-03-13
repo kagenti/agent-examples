@@ -297,7 +297,11 @@ def _format_result(result: Any) -> str:
     if result.stdout:
         parts.append(result.stdout)
     if result.stderr:
-        parts.append(f"STDERR: {result.stderr}")
+        if result.exit_code != 0:
+            parts.append(f"STDERR: {result.stderr}")
+        else:
+            # Informational stderr (e.g., git clone progress) — not an error
+            parts.append(result.stderr)
     if result.exit_code != 0:
         parts.append(f"EXIT_CODE: {result.exit_code}")
     text = "\n".join(parts) if parts else "(no output)"
@@ -529,6 +533,28 @@ def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
 
 
 # ---------------------------------------------------------------------------
+# Escape tool for Llama 4 Scout
+# ---------------------------------------------------------------------------
+# Llama 4 Scout ALWAYS calls a tool when tools are bound (tool_choice=auto
+# acts like required). The respond_to_user tool lets planner/reflector
+# "escape" the tool loop by calling this tool with their final text output.
+
+
+@tool
+def respond_to_user(response: str) -> str:
+    """Return your final text response. Call this when you have enough
+    information and don't need any more tools.
+
+    Args:
+        response: The complete text response to return to the user.
+
+    Returns:
+        The response text unchanged.
+    """
+    return response
+
+
+# ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
 
@@ -610,12 +636,12 @@ def build_graph(
     # -- Per-node tool subsets ------------------------------------------------
     # Each reasoning node gets its own tools and tool_choice mode:
     #   executor:  ALL tools, tool_choice="any" (must call tools)
-    #   planner:   glob, grep, file_read, file_write, tool_choice="auto" (optional)
-    #   reflector: glob, grep, file_read (inline via verify_tools, no graph loop)
+    #   planner:   glob, grep, file_read, file_write + respond_to_user (escape)
+    #   reflector: glob, grep, file_read + respond_to_user (escape)
     #   router/reporter/step_selector: no tools (text-only)
 
-    read_only_tools = [file_read_tool, grep_tool, glob_tool]
-    planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool]
+    read_only_tools = [file_read_tool, grep_tool, glob_tool, respond_to_user]
+    planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool, respond_to_user]
 
     # Executor uses tool_choice="any" — MUST call tools (not produce text).
     # Planner and reflector use "auto" — CAN choose not to call tools.

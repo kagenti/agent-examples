@@ -344,7 +344,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         content = getattr(msg, "content", "")
         content_str = str(content)
         is_error = (
-            content_str.startswith("STDERR:") or
+            "EXIT_CODE:" in content_str or
             content_str.startswith("\u274c") or
             "Error:" in content_str or
             "error:" in content_str[:100] or
