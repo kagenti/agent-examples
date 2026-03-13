@@ -931,77 +931,9 @@ async def executor_node(
                        "current_step": current_step, "tool_call_count": tool_call_count},
             )
 
-    # -- Dedup: skip tool calls that already have ToolMessage responses ------
-    # The text-based parser generates fresh UUIDs each invocation, so
-    # LangGraph treats re-parsed calls as new work.  Match on (name, args)
-    # against already-executed calls in the CURRENT plan iteration to break
-    # the executor→tools→executor loop.
-    #
-    # IMPORTANT: Only dedup within the current iteration (since the last
-    # planner/replanner message). After a replan, the executor must be free
-    # to retry the same tools — the new plan may need the same commands
-    # to succeed with different context.
-    if response.tool_calls:
-        executed: set[tuple[str, str]] = set()
-        messages = state.get("messages", [])
-
-        # Find the boundary: start scanning from the last planner output.
-        # Messages before that are from previous plan iterations and should
-        # NOT cause dedup — the new plan may legitimately retry them.
-        scan_start = 0
-        for i in range(len(messages) - 1, -1, -1):
-            msg = messages[i]
-            content = getattr(msg, "content", "")
-            if isinstance(content, str) and "Plan:" in content and "Step " in content:
-                scan_start = i
-                break
-
-        # Build a map from tool_call_id → (name, args) for AIMessage
-        # tool calls SINCE the last planner output.
-        tc_id_to_key: dict[str, tuple[str, str]] = {}
-        for msg in messages[scan_start:]:
-            if isinstance(msg, AIMessage) and msg.tool_calls:
-                for tc in msg.tool_calls:
-                    key = (tc["name"], repr(sorted(tc["args"].items())))
-                    tc_id_to_key[tc["id"]] = key
-            elif isinstance(msg, ToolMessage):
-                key = tc_id_to_key.get(msg.tool_call_id)
-                if key is not None:
-                    executed.add(key)
-
-        new_calls = [
-            tc for tc in response.tool_calls
-            if (tc["name"], repr(sorted(tc["args"].items()))) not in executed
-        ]
-
-        if len(new_calls) < len(response.tool_calls):
-            skipped = len(response.tool_calls) - len(new_calls)
-            logger.info(
-                "Dedup: skipped %d already-executed tool call(s)", skipped,
-                extra={"session_id": state.get("context_id", ""), "node": "executor",
-                       "current_step": current_step},
-            )
-            if not new_calls:
-                # All calls already executed — signal reflector to advance
-                # or replan rather than looping back to tools.
-                logger.info(
-                    "All tool calls deduped for step %d — signaling step complete",
-                    state.get("current_step", 0),
-                    extra={"session_id": state.get("context_id", ""), "node": "executor",
-                           "current_step": current_step},
-                )
-                return {
-                    "messages": [
-                        AIMessage(content="")
-                    ],
-                    "current_step": current_step,
-                    "_dedup": True,  # skip micro_reasoning emission
-                }
-            # Keep only genuinely new calls
-            response = AIMessage(
-                content=response.content,
-                tool_calls=new_calls,
-            )
+    # Dedup removed — with tool_choice="any" (structured tool calls),
+    # each call has a unique LangGraph ID. The (name, args) matching
+    # caused false dedup and orphaned tool_result events.
 
     # Build parsed_tools list for event serialization when tools came
     # from text parsing (not structured tool_calls).
