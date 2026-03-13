@@ -872,8 +872,9 @@ async def executor_node(
         windowed = []
         used_chars = 0
         for m in reversed(all_msgs):
-            # Stop at the step brief boundary (HumanMessage with step brief)
-            if isinstance(m, HM) and step_brief[:50] in str(getattr(m, 'content', '')):
+            # Stop at the step boundary marker (injected on first executor call)
+            content = str(getattr(m, 'content', ''))
+            if isinstance(m, HM) and content.startswith(f"[STEP {current_step + 1}]"):
                 break
             msg_chars = len(str(getattr(m, 'content', '')))
             if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
@@ -1086,8 +1087,16 @@ async def executor_node(
             }
             break
 
+    # On first call (tool_call_count == 0), include the step_brief HumanMessage
+    # in the returned messages so it appears in state for subsequent calls.
+    # This creates a step boundary marker that the windowing logic can find.
+    step_msgs: list = []
+    if tool_call_count == 0:
+        from langchain_core.messages import HumanMessage as _HM
+        step_msgs.append(_HM(content=f"[STEP {current_step + 1}] {step_brief[:500]}"))
+
     result: dict[str, Any] = {
-        "messages": [response],
+        "messages": step_msgs + [response],
         "current_step": current_step,
         "model": model_name,
         "prompt_tokens": prompt_tokens,
