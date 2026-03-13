@@ -103,9 +103,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
-        # Chronological counter — total graph node invocations for UI display
-        if key not in ("tools", "planner_tools", "reflector_tools"):
-            self._event_counter += 1
+        # event_counter is now incremented per JSON line in post-processing,
+        # not per node invocation (ensures unique event_index per event).
 
         # Track actual plan step from state for step grouping
         current_step = value.get("current_step")
@@ -182,9 +181,10 @@ class LangGraphSerializer(FrameworkEventSerializer):
             })
             result = result + "\n" + budget_event
 
-        # Post-process: ensure ALL event lines have step + event_index.
-        # Some serialization paths (router, planner, reflector, reporter)
-        # don't include these fields, causing NULL ordering in the UI.
+        # Post-process: ensure ALL event lines have step + unique event_index.
+        # Each JSON line gets its own event_index (no duplicates).
+        # Legacy event types (plan, plan_step, reflection) are skipped from
+        # indexing to avoid inflating the counter.
         enriched_lines = []
         for line in result.split("\n"):
             line = line.strip()
@@ -194,10 +194,15 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 evt = json.loads(line)
                 if "step" not in evt:
                     evt["step"] = self._step_index
-                if "event_index" not in evt:
+                # Assign a unique event_index per line (skip legacy duplicates)
+                event_type = evt.get("type", "?")
+                if event_type in ("plan", "plan_step", "reflection"):
+                    # Legacy types share index with their new-type counterpart
+                    evt["event_index"] = self._event_counter
+                else:
+                    self._event_counter += 1
                     evt["event_index"] = self._event_counter
                 enriched_lines.append(json.dumps(evt))
-                event_type = evt.get("type", "?")
             except json.JSONDecodeError:
                 enriched_lines.append(line)
                 event_type = "parse_error"
@@ -373,14 +378,18 @@ class LangGraphSerializer(FrameworkEventSerializer):
         name = getattr(msg, "name", "unknown")
         content = getattr(msg, "content", "")
         content_str = str(content)
+        # Determine error status from exit code, not content keywords.
+        # The shell tool appends "EXIT_CODE: N" for non-zero exits.
+        # Keyword matching (e.g. "failure", "error") causes false positives
+        # when command output contains those words in normal data.
+        import re as _re
+        exit_match = _re.search(r"EXIT_CODE:\s*(\d+)", content_str)
         is_error = (
-            "EXIT_CODE:" in content_str or
-            content_str.startswith("\u274c") or
-            "Error:" in content_str or
-            "error:" in content_str[:100] or
-            "Permission denied" in content_str or
-            "command not found" in content_str or
-            "No such file" in content_str
+            (exit_match is not None and exit_match.group(1) != "0")
+            or content_str.startswith("\u274c")
+            or content_str.startswith("Error: ")
+            or "Permission denied" in content_str
+            or "command not found" in content_str
         )
         status = "error" if is_error else "success"
         # Use LangGraph's tool_call_id for proper pairing with tool_call
