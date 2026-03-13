@@ -373,6 +373,9 @@ class LangGraphSerializer(FrameworkEventSerializer):
         pm = value.get("_prompt_messages")
         if pm:
             data["prompt_messages"] = pm[:100]  # max 100 messages
+        bt = value.get("_bound_tools")
+        if bt:
+            data["bound_tools"] = bt[:50]  # max 50 tools
         return data
 
     def _serialize_planner(self, value: dict) -> str:

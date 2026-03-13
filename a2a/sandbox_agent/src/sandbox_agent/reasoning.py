@@ -125,6 +125,41 @@ def _summarize_messages(messages: list) -> list[dict[str, str]]:
     return result
 
 
+def _summarize_bound_tools(llm_with_tools: Any) -> list[dict[str, Any]]:
+    """Extract bound tool schemas from a LangChain RunnableBinding for debug display.
+
+    Returns a list of tool definitions in OpenAI format so the UI can show
+    exactly what tools + schemas the LLM receives.
+    """
+    try:
+        # LangChain bind_tools stores tools in kwargs['tools']
+        tools = getattr(llm_with_tools, "kwargs", {}).get("tools", [])
+        if not tools:
+            # Try first.kwargs for nested bindings
+            first = getattr(llm_with_tools, "first", None)
+            if first:
+                tools = getattr(first, "kwargs", {}).get("tools", [])
+        result = []
+        for t in tools:
+            if isinstance(t, dict):
+                # Already in OpenAI format
+                result.append({
+                    "name": t.get("function", {}).get("name", "?"),
+                    "description": t.get("function", {}).get("description", "")[:200],
+                    "parameters": t.get("function", {}).get("parameters", {}),
+                })
+            else:
+                # LangChain tool object
+                result.append({
+                    "name": getattr(t, "name", "?"),
+                    "description": (getattr(t, "description", "") or "")[:200],
+                    "parameters": getattr(t, "args_schema", {}) if hasattr(t, "args_schema") else {},
+                })
+        return result
+    except Exception:
+        return []
+
+
 def _make_plan_steps(
     descriptions: list[str], iteration: int = 0
 ) -> list[PlanStep]:
@@ -1054,6 +1089,7 @@ async def executor_node(
         "_budget_summary": budget.summary(),
         **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
         **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
+        **({"_bound_tools": _summarize_bound_tools(llm_with_tools)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
     }
