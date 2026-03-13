@@ -956,9 +956,12 @@ async def executor_node(
         return result
 
     # Token-aware message windowing to prevent context explosion.
-    # Keep the first user message + as many recent messages as fit in budget.
-    _MAX_CONTEXT_TOKENS = 30_000
+    # When starting a new step (tool_call_count == 0), use a tight window
+    # so the executor focuses on the step brief, not previous steps' history.
+    # When continuing a step (tool_call_count > 0), use the full window
+    # so the executor sees its own tool results from this step.
     _CHARS_PER_TOKEN = 4  # rough estimate
+    _MAX_CONTEXT_TOKENS = 5_000 if tool_call_count == 0 else 30_000
 
     all_msgs = state["messages"]
     system_tokens = len(system_content) // _CHARS_PER_TOKEN
