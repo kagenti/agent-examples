@@ -69,6 +69,7 @@ from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.reasoning import (
     PlanStep,
+    _DEBUG_PROMPTS,
     executor_node,
     planner_node,
     reflector_node,
@@ -709,27 +710,33 @@ Example: "cd repos/kagenti && gh pr list" — never just "gh pr list".
 
 Write a brief: what EXACTLY to do for step {next_step + 1}, what context from previous steps is relevant, and what to watch out for. Be specific about commands/tools to use, and always include the full `cd <dir> && command` pattern when a cloned repo is involved."""
 
+        sys_msg = SM(content="You are a concise step coordinator. Output ONLY the brief, no preamble.")
+        user_msg = HM(content=prompt)
         try:
-            response = await llm.ainvoke([
-                SM(content="You are a concise step coordinator. Output ONLY the brief, no preamble."),
-                HM(content=prompt),
-            ])
+            response = await llm.ainvoke([sys_msg, user_msg])
             brief = response.content.strip()
+            usage = getattr(response, 'usage_metadata', None) or {}
             budget.add_tokens(
-                (getattr(response, 'usage_metadata', None) or {}).get('input_tokens', 0)
-                + (getattr(response, 'usage_metadata', None) or {}).get('output_tokens', 0)
+                usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
             )
         except Exception as e:
             logger.warning("StepSelector LLM call failed: %s — using default brief", e)
             brief = f"Execute step {next_step + 1}: {step_text}"
+            response = None
 
         logger.info("StepSelector: step %d/%d brief: %s", next_step + 1, len(plan), brief[:100])
-        return {
+        result: dict[str, Any] = {
             "current_step": next_step,
             "plan_steps": plan_steps,
             "_tool_call_count": 0,
             "skill_instructions": f"STEP BRIEF FROM COORDINATOR:\n{brief}\n\n---\n",
         }
+        if _DEBUG_PROMPTS:
+            from sandbox_agent.reasoning import _format_llm_response
+            result["_system_prompt"] = prompt[:10000]
+            if response:
+                result["_llm_response"] = _format_llm_response(response)
+        return result
 
     # -- Safe ToolNode wrapper — never crashes the graph --------------------
     _tool_node = ToolNode(tools)
