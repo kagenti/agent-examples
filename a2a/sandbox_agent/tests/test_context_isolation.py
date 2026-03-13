@@ -928,6 +928,45 @@ class TestBuildExecutorContext:
         assert "old plan text" not in all_content
         assert "cloned!" in all_content
 
+    def test_continuing_step_has_reflection_prompt(self) -> None:
+        """On continuing step, the LAST message should be a reflection prompt."""
+        from sandbox_agent.context_builders import build_executor_context
+
+        state = _base_state(
+            plan=["Clone repo"],
+            current_step=0,
+            _tool_call_count=1,
+            messages=[
+                HumanMessage(content="user request"),
+                SystemMessage(content="[STEP_BOUNDARY 0] Clone the repo"),
+                AIMessage(content="", tool_calls=[{"name": "shell", "args": {}, "id": "t1"}]),
+                ToolMessage(content="cloned!", tool_call_id="t1", name="shell"),
+            ],
+        )
+        msgs = build_executor_context(state, "System prompt")
+
+        # Last message should be the reflection HumanMessage
+        last = msgs[-1]
+        assert isinstance(last, HumanMessage), f"Last message should be HumanMessage, got {type(last).__name__}"
+        assert "DECIDE" in last.content
+        assert "NEVER repeat" in last.content
+
+    def test_new_step_no_reflection_prompt(self) -> None:
+        """On new step (tool_call_count=0), no reflection prompt needed."""
+        from sandbox_agent.context_builders import build_executor_context
+
+        state = _base_state(
+            plan=["Clone repo"],
+            current_step=0,
+            _tool_call_count=0,
+        )
+        msgs = build_executor_context(state, "System prompt")
+        # Should be just SystemMessage + HumanMessage(step brief)
+        types = [type(m).__name__ for m in msgs]
+        assert types == ["SystemMessage", "HumanMessage"]
+        # The HumanMessage should be the step brief, not a reflection prompt
+        assert "DECIDE" not in msgs[-1].content
+
 
 # ---------------------------------------------------------------------------
 # invoke_llm wrapper

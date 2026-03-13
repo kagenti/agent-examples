@@ -931,9 +931,47 @@ async def executor_node(
                        "current_step": current_step, "tool_call_count": tool_call_count},
             )
 
-    # Dedup removed — with tool_choice="any" (structured tool calls),
-    # each call has a unique LangGraph ID. The (name, args) matching
-    # caused false dedup and orphaned tool_result events.
+    # -- Loop detection: stop if the executor repeats the same tool call ----
+    # With dedup removed (each call has unique LangGraph ID), we need to
+    # detect when the executor is stuck calling the same tool with the same
+    # args repeatedly. Check against the last 3 tool calls in this step.
+    if response.tool_calls and tool_call_count > 0:
+        all_msgs = state.get("messages", [])
+        # Collect recent tool calls from this step (after boundary)
+        recent_calls: list[tuple[str, str]] = []
+        for m in reversed(all_msgs):
+            content = str(getattr(m, "content", ""))
+            if isinstance(m, SystemMessage) and content.startswith(f"[STEP_BOUNDARY {current_step}]"):
+                break
+            if isinstance(m, AIMessage) and getattr(m, "tool_calls", None):
+                for tc in m.tool_calls:
+                    recent_calls.append((tc["name"], repr(sorted(tc["args"].items()))))
+                    if len(recent_calls) >= 3:
+                        break
+                if len(recent_calls) >= 3:
+                    break
+
+        # Check if the current call matches any of the last 3
+        for tc in response.tool_calls:
+            current_key = (tc["name"], repr(sorted(tc["args"].items())))
+            repeat_count = sum(1 for rc in recent_calls if rc == current_key)
+            if repeat_count >= 2:
+                logger.warning(
+                    "Loop detected: %s(%s) called %d times in last 3 — forcing step completion",
+                    tc["name"], str(tc["args"])[:80], repeat_count + 1,
+                    extra={"session_id": state.get("context_id", ""), "node": "executor",
+                           "current_step": current_step},
+                )
+                return {
+                    "messages": [AIMessage(
+                        content=f"Step {current_step + 1} stuck in loop: "
+                        f"{tc['name']}() called {repeat_count + 1} times with same args. "
+                        f"Moving to reflection."
+                    )],
+                    "current_step": current_step,
+                    "_tool_call_count": 0,
+                    "_budget_summary": budget.summary(),
+                }
 
     # Build parsed_tools list for event serialization when tools came
     # from text parsing (not structured tool_calls).
