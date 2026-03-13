@@ -606,13 +606,39 @@ def build_graph(
         make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
-    # tool_choice="any" forces structured tool calls. Required for models like
-    # Llama 4 Scout that fabricate output without it. Configurable via env var.
+    # -- Per-node tool subsets ------------------------------------------------
+    # Each reasoning node gets its own tools and tool_choice mode:
+    #   executor:  ALL tools, tool_choice="any" (must call tools)
+    #   planner:   read-only (glob, grep, file_read), tool_choice="auto" (optional)
+    #   reflector: read-only (glob, grep, file_read), tool_choice="auto" (optional)
+    #   router/reporter/step_selector: no tools (text-only)
+
+    read_only_tools = [
+        _make_file_read_tool(workspace_path),
+        _make_grep_tool(workspace_path),
+        _make_glob_tool(workspace_path),
+    ]
+
+    # Planner gets read-only tools + file_write for saving plans
+    planner_tools = read_only_tools + [
+        _make_file_write_tool(workspace_path),
+    ]
+
     _force_tool_choice = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "1") == "1"
     if _force_tool_choice:
-        llm_with_tools = llm.bind_tools(tools, tool_choice="any")
+        llm_executor = llm.bind_tools(tools, tool_choice="any")
     else:
-        llm_with_tools = llm.bind_tools(tools)
+        llm_executor = llm.bind_tools(tools)
+
+    # Planner and reflector use tool_choice="auto" — they CAN choose not to
+    # call tools when the text context is sufficient.
+    llm_planner = llm.bind_tools(planner_tools)  # defaults to auto
+    llm_reflector = llm.bind_tools(read_only_tools)  # defaults to auto
+
+    # ToolNodes for each node's tool subset
+    _executor_tool_node = ToolNode(tools)
+    _planner_tool_node = ToolNode(planner_tools)
+    _reflector_tool_node = ToolNode(read_only_tools)
 
     # -- Graph nodes (router-plan-execute-reflect) ---------------------------
     # Each node function from reasoning.py takes (state, llm) — we wrap them
@@ -622,13 +648,13 @@ def build_graph(
         return await router_node(state)
 
     async def _planner(state: SandboxState) -> dict[str, Any]:
-        return await planner_node(state, llm, budget=budget)
+        return await planner_node(state, llm_planner, budget=budget)
 
     async def _executor(state: SandboxState) -> dict[str, Any]:
-        return await executor_node(state, llm_with_tools, budget=budget)
+        return await executor_node(state, llm_executor, budget=budget)
 
     async def _reflector(state: SandboxState) -> dict[str, Any]:
-        return await reflector_node(state, llm, budget=budget)
+        return await reflector_node(state, llm, budget=budget, verify_tools=read_only_tools)
 
     async def _reporter(state: SandboxState) -> dict[str, Any]:
         return await reporter_node(state, llm, budget=budget)
@@ -738,59 +764,68 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
                 result["_llm_response"] = _format_llm_response(response)
         return result
 
-    # -- Safe ToolNode wrapper — never crashes the graph --------------------
-    _tool_node = ToolNode(tools)
+    # -- Safe ToolNode wrappers — never crash the graph ----------------------
 
-    async def _safe_tools(state: SandboxState) -> dict[str, Any]:
-        """Execute tools with error handling.
-
-        If ToolNode crashes, return an error ToolMessage so the agent
-        sees the error and can adapt, instead of crashing the graph.
-
-        GraphInterrupt (from HITL interrupt()) is re-raised so the graph
-        runner can transition the A2A task to INPUT_REQUIRED.
-        """
-        from langchain_core.messages import ToolMessage
-        try:
-            return await _tool_node.ainvoke(state)
-        except (GraphInterrupt, KeyboardInterrupt, SystemExit):
-            raise  # Let HITL interrupts and system exits propagate
-        except Exception as exc:
-            logger.error("ToolNode error: %s", exc, exc_info=True)
-            # Find tool_calls from the last message to generate error responses
-            messages = state.get("messages", [])
-            error_msgs = []
-            if messages:
-                last = messages[-1]
-                for tc in getattr(last, "tool_calls", []):
-                    tc_id = tc.get("id", "unknown") if isinstance(tc, dict) else getattr(tc, "id", "unknown")
-                    tc_name = tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown")
+    def _make_safe_tool_wrapper(tool_node: ToolNode, label: str):
+        """Create a safe tool execution wrapper for a ToolNode."""
+        async def _safe(state: SandboxState) -> dict[str, Any]:
+            from langchain_core.messages import ToolMessage
+            try:
+                return await tool_node.ainvoke(state)
+            except (GraphInterrupt, KeyboardInterrupt, SystemExit):
+                raise
+            except Exception as exc:
+                logger.error("%s ToolNode error: %s", label, exc, exc_info=True)
+                messages = state.get("messages", [])
+                error_msgs = []
+                if messages:
+                    last = messages[-1]
+                    for tc in getattr(last, "tool_calls", []):
+                        tc_id = tc.get("id", "unknown") if isinstance(tc, dict) else getattr(tc, "id", "unknown")
+                        tc_name = tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown")
+                        error_msgs.append(ToolMessage(
+                            content=f"Tool error: {exc}",
+                            tool_call_id=tc_id,
+                            name=tc_name,
+                        ))
+                if not error_msgs:
                     error_msgs.append(ToolMessage(
-                        content=f"Tool error: {exc}",
-                        tool_call_id=tc_id,
-                        name=tc_name,
+                        content=f"Tool execution failed: {exc}",
+                        tool_call_id="error",
+                        name="unknown",
                     ))
-            if not error_msgs:
-                error_msgs.append(ToolMessage(
-                    content=f"Tool execution failed: {exc}",
-                    tool_call_id="error",
-                    name="unknown",
-                ))
-            return {"messages": error_msgs}
+                return {"messages": error_msgs}
+        return _safe
+
+    _safe_executor_tools = _make_safe_tool_wrapper(_executor_tool_node, "executor")
+    _safe_planner_tools = _make_safe_tool_wrapper(_planner_tool_node, "planner")
 
     # -- Assemble graph -----------------------------------------------------
     #
-    # Topology:
-    #   router → [resume] → executor ⇄ tools → reflector → [done] → reporter → END
-    #            [plan]   → planner → executor ...          [cont] → planner
+    # Topology (per-node tool loops):
+    #
+    #   router → [plan]   → planner ⇄ planner_tools → step_selector
+    #            [resume] → step_selector
+    #
+    #   step_selector → executor ⇄ executor_tools → reflector
+    #
+    #   reflector ⇄ reflector_tools → [done]    → reporter → END
+    #                                  [continue] → step_selector
+    #                                  [replan]   → planner
+    #
+    # Planner can: glob, grep, file_read, file_write (for .plans/)
+    # Reflector can: glob, grep, file_read (verify outcomes)
+    # Executor can: all tools (shell, file_read/write, grep, glob, web_fetch, explore, delegate)
     #
     graph = StateGraph(SandboxState)
     graph.add_node("router", _router)
     graph.add_node("planner", _planner)
+    graph.add_node("planner_tools", _safe_planner_tools)
     graph.add_node("step_selector", _step_selector)
     graph.add_node("executor", _executor)
-    graph.add_node("tools", _safe_tools)
+    graph.add_node("tools", _safe_executor_tools)
     graph.add_node("reflector", _reflector)
+    # reflector uses verify_tools inline (not via graph tool loop)
     graph.add_node("reporter", _reporter)
 
     # Entry: router decides resume vs plan
@@ -800,20 +835,28 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
         route_entry,
         {"resume": "step_selector", "plan": "planner"},
     )
-    graph.add_edge("planner", "step_selector")
+
+    # Planner → planner_tools (if tool_calls) or → step_selector (if no tool_calls)
+    graph.add_conditional_edges(
+        "planner",
+        tools_condition,
+        {"tools": "planner_tools", "__end__": "step_selector"},
+    )
+    graph.add_edge("planner_tools", "planner")
+
     graph.add_edge("step_selector", "executor")
 
-    # Executor → tools (if tool_calls) or → reflector (if no tool_calls)
+    # Executor → executor_tools (if tool_calls) or → reflector (if no tool_calls)
     graph.add_conditional_edges(
         "executor",
         tools_condition,
         {"tools": "tools", "__end__": "reflector"},
     )
-    # After tools execute, go back to executor so the LLM can see tool
-    # results and decide on next actions (or signal completion).
     graph.add_edge("tools", "executor")
 
     # Reflector → reporter (done), step_selector (continue), or planner (replan)
+    # Note: reflector uses read-only tools inline (not via graph tool loop)
+    # to verify outcomes before making its decision.
     graph.add_conditional_edges(
         "reflector",
         route_reflector,
