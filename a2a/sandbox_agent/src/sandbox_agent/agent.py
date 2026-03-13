@@ -460,6 +460,7 @@ class SandboxAgentExecutor(AgentExecutor):
                                 await asyncio.sleep(delay)
                                 continue
                             else:
+                                logger.error("Graph execution failed: %s", retry_err, exc_info=True)
                                 await event_queue.put({"_error": str(retry_err)})
                                 break
                     await event_queue.put(_SENTINEL)

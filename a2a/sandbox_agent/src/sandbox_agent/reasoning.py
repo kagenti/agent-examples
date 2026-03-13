@@ -842,31 +842,44 @@ async def executor_node(
             result["_system_prompt"] = f"[Budget exceeded — no LLM call]\n{budget.exceeded_reason}"
         return result
 
-    # Token-aware message windowing to prevent context explosion.
-    # When starting a new step (tool_call_count == 0), use a tight window
-    # so the executor focuses on the step brief, not previous steps' history.
-    # When continuing a step (tool_call_count > 0), use the full window
-    # so the executor sees its own tool results from this step.
-    _CHARS_PER_TOKEN = 4  # rough estimate
-    _MAX_CONTEXT_TOKENS = 5_000 if tool_call_count == 0 else 30_000
+    # Step-scoped message context for the executor.
+    #
+    # On NEW step (tool_call_count == 0):
+    #   Only the step brief as a HumanMessage — executor treats this as a
+    #   fresh task. Does NOT see the plan, previous steps, or reflector msgs.
+    #
+    # On CONTINUING step (tool_call_count > 0):
+    #   The step brief + this step's tool calls/results only. Walk backwards
+    #   from current messages, stopping when we hit a non-tool/non-AI message
+    #   (which marks the boundary of this step's context).
 
     all_msgs = state["messages"]
-    system_tokens = len(system_content) // _CHARS_PER_TOKEN
-    budget_chars = (_MAX_CONTEXT_TOKENS - system_tokens) * _CHARS_PER_TOKEN
+    step_brief = state.get("skill_instructions", f"Execute step {current_step + 1}: {step_text}")
 
-    # Always keep the first user message
-    first_msg = all_msgs[:1] if all_msgs else []
-    first_chars = sum(len(str(getattr(m, 'content', ''))) for m in first_msg)
+    from langchain_core.messages import HumanMessage as HM
 
-    # Walk backwards through remaining messages, accumulating until budget exhausted
-    remaining = all_msgs[1:]
-    windowed = []
-    used_chars = first_chars
-    for m in reversed(remaining):
-        msg_chars = len(str(getattr(m, 'content', '')))
-        if used_chars + msg_chars > budget_chars:
-            break
-        windowed.insert(0, m)
+    if tool_call_count == 0:
+        # New step: executor gets only the step brief as its "user request".
+        # The system prompt already contains the step description and rules.
+        first_msg = [HM(content=step_brief)]
+        windowed = []
+    else:
+        # Continuing step: include the step brief + this step's tool history.
+        # Walk backwards to collect AI→Tool message pairs from this step.
+        first_msg = [HM(content=step_brief)]
+        _CHARS_PER_TOKEN = 4
+        _MAX_CONTEXT_CHARS = 30_000 * _CHARS_PER_TOKEN
+        windowed = []
+        used_chars = 0
+        for m in reversed(all_msgs):
+            # Stop at the step brief boundary (HumanMessage with step brief)
+            if isinstance(m, HM) and step_brief[:50] in str(getattr(m, 'content', '')):
+                break
+            msg_chars = len(str(getattr(m, 'content', '')))
+            if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
+                break
+            windowed.insert(0, m)
+            used_chars += msg_chars
         used_chars += msg_chars
 
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
