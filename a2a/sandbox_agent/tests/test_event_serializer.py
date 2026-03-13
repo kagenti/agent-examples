@@ -425,7 +425,8 @@ class TestReflectorEvents:
             "current_step": 2,
             "messages": [],
         })
-        assert s._step_index == 2
+        # _step_index is 1-based: current_step=2 → _step_index=3
+        assert s._step_index == 3
 
     def test_reflector_with_step_results(self) -> None:
         """step_results field is accepted without error."""
@@ -928,30 +929,147 @@ class TestEventIndexUniqueness:
         assert legacy_evt["event_index"] == new_evt["event_index"]
 
     def test_full_flow_no_duplicate_indexes(self) -> None:
-        """Simulate planner → executor → tool → reflector and check uniqueness."""
+        """Simulate planner -> executor -> tool -> reflector and check uniqueness."""
         s = LangGraphSerializer()
+        all_events: list[dict] = []
 
         # Planner
-        s.serialize("planner", {"plan": ["A", "B"], "iteration": 1, "messages": []})
+        result = s.serialize("planner", {"plan": ["A", "B"], "iteration": 1, "messages": []})
+        all_events.extend(_parse_lines(result))
 
         # Step selector
-        s.serialize("step_selector", {"current_step": 0, "plan_steps": [{"description": "A"}]})
+        result = s.serialize("step_selector", {"current_step": 0, "plan_steps": [{"description": "A"}]})
+        all_events.extend(_parse_lines(result))
 
         # Executor with tool call
         exec_msg = _make_msg(
             content="",
             tool_calls=[{"name": "shell", "args": {"command": "ls"}, "id": "tc1"}],
         )
-        s.serialize("executor", {"messages": [exec_msg]})
+        result = s.serialize("executor", {"messages": [exec_msg]})
+        all_events.extend(_parse_lines(result))
 
         # Tool result
         tool_msg = _make_msg(content="file1.txt", name="shell", tool_call_id="tc1")
-        s.serialize("tools", {"messages": [tool_msg]})
+        result = s.serialize("tools", {"messages": [tool_msg]})
+        all_events.extend(_parse_lines(result))
 
         # Reflector
         reflect_msg = _make_msg(content="continue")
-        s.serialize("reflector", {"done": False, "current_step": 0, "messages": [reflect_msg]})
+        result = s.serialize("reflector", {"done": False, "current_step": 0, "messages": [reflect_msg]})
+        all_events.extend(_parse_lines(result))
 
-        # Check: all non-legacy events across the full flow should have unique indexes
-        # (We can't easily collect all events here since serialize returns strings,
-        # but the per-call tests above verify the contract)
+        # All non-legacy events across the full flow should have unique indexes
+        legacy_types = {"plan", "plan_step", "reflection"}
+        non_legacy = [e for e in all_events if e["type"] not in legacy_types]
+        indexes = [e["event_index"] for e in non_legacy]
+        assert len(indexes) == len(set(indexes)), (
+            f"Non-legacy events have duplicate event_index values: {indexes}"
+        )
+
+    def test_consecutive_serialize_calls_monotonically_increasing(self) -> None:
+        """Consecutive serialize() calls should produce monotonically increasing event_index."""
+        s = LangGraphSerializer()
+        all_indexes: list[int] = []
+
+        # Call 1: executor
+        msg1 = _make_msg(content="step 1 work",
+                         tool_calls=[{"name": "shell", "args": {"cmd": "ls"}, "id": "t1"}])
+        result = s.serialize("executor", {"messages": [msg1], "current_step": 0})
+        events = _parse_lines(result)
+        non_legacy = [e for e in events if e["type"] not in ("plan_step",)]
+        all_indexes.extend(e["event_index"] for e in non_legacy)
+
+        # Call 2: tool result
+        msg2 = _make_msg(content="output", name="shell", tool_call_id="t1")
+        result = s.serialize("tools", {"messages": [msg2]})
+        events = _parse_lines(result)
+        all_indexes.extend(e["event_index"] for e in events)
+
+        # Call 3: another executor
+        msg3 = _make_msg(content="step 2 work",
+                         tool_calls=[{"name": "file_read", "args": {"path": "/tmp"}, "id": "t2"}])
+        result = s.serialize("executor", {"messages": [msg3], "current_step": 1})
+        events = _parse_lines(result)
+        non_legacy = [e for e in events if e["type"] not in ("plan_step",)]
+        all_indexes.extend(e["event_index"] for e in non_legacy)
+
+        # Verify strictly monotonically increasing
+        for i in range(1, len(all_indexes)):
+            assert all_indexes[i] > all_indexes[i - 1], (
+                f"event_index not monotonically increasing at position {i}: {all_indexes}"
+            )
+
+
+# ---------------------------------------------------------------------------
+# Step field reflects actual current_step (Bug 2 regression tests)
+# ---------------------------------------------------------------------------
+
+
+class TestStepFieldAccuracy:
+    """The step field in events should reflect the actual current_step,
+    not a stale cached value from a previous serialize() call."""
+
+    def test_step_reflects_current_step_not_cached(self) -> None:
+        """When step_selector sets current_step=5 but executor has current_step=2,
+        the executor events should show step=3 (2+1), not step=6."""
+        s = LangGraphSerializer()
+
+        # Step selector sets current_step to 5 (which updates _step_index to 6)
+        s.serialize("step_selector", {
+            "current_step": 5,
+            "plan_steps": [{"description": f"Step {i}"} for i in range(6)],
+        })
+        assert s._step_index == 6  # cached value is now 6
+
+        # Executor comes with current_step=2 in its value dict
+        msg = _make_msg(content="working on step 2")
+        result = s.serialize("executor", {
+            "messages": [msg],
+            "current_step": 2,
+        })
+        events = _parse_lines(result)
+
+        # The executor_step event should show step=3 (current_step 2 + 1),
+        # because the value dict carried current_step=2
+        step_event = [e for e in events if e["type"] == "executor_step"][0]
+        assert step_event["step"] == 3, (
+            f"Expected step=3 (from current_step=2), got step={step_event['step']}"
+        )
+
+    def test_step_uses_cached_when_no_current_step(self) -> None:
+        """When no current_step is in the value dict, fall back to cached _step_index."""
+        s = LangGraphSerializer()
+
+        # Set the cached step via a call with current_step
+        s.serialize("step_selector", {
+            "current_step": 3,
+            "plan_steps": [{"description": f"S{i}"} for i in range(4)],
+        })
+        assert s._step_index == 4
+
+        # Now serialize a tools event (no current_step in value)
+        msg = _make_msg(content="output", name="shell")
+        result = s.serialize("tools", {"messages": [msg]})
+        data = json.loads(result)
+        assert data["step"] == 4  # uses cached _step_index
+
+    def test_step_updates_when_current_step_changes(self) -> None:
+        """Consecutive executor calls with different current_step values
+        should each reflect their own step, not a stale one."""
+        s = LangGraphSerializer()
+
+        steps_seen = []
+        for cs in [0, 1, 4]:
+            msg = _make_msg(content=f"working on step {cs}")
+            result = s.serialize("executor", {
+                "messages": [msg],
+                "current_step": cs,
+            })
+            events = _parse_lines(result)
+            step_event = [e for e in events if e["type"] == "executor_step"][0]
+            steps_seen.append(step_event["step"])
+
+        assert steps_seen == [1, 2, 5], (
+            f"Expected steps [1, 2, 5] from current_step [0, 1, 4], got {steps_seen}"
+        )
