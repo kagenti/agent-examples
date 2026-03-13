@@ -114,6 +114,16 @@ WORKSPACE RULES (MANDATORY):
 - For multi-command sequences: `cd repos/myrepo && cmd1 && cmd2`
 - gh CLI requires a git repo context: `cd repos/myrepo && gh pr list`
 - GH_TOKEN and GITHUB_TOKEN are already set. Do NOT run export or gh auth.
+- NEVER waste tool calls on `pwd`, bare `cd`, or `ls` without purpose.
+  You know you start in /workspace. Only verify paths if a command failed.
+
+## gh CLI Reference (use ONLY these flags)
+- `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`
+  Do NOT use `--head-ref` (invalid). Use `--branch` for branch filtering.
+- `gh run view <run_id>`: `--log`, `--log-failed`, `--job <id>`
+  Always redirect output: `gh run view <id> --log-failed > output/ci.log`
+- `gh pr list`: `--state open|closed|merged`, `--base <branch>`, `--head <branch>`
+- `gh pr view <number>`: `--json <fields>`, `--comments`
 
 ## Handling Large Output
 Tool output is truncated to 10KB. For commands that produce large output:

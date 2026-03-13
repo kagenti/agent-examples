@@ -1041,6 +1041,19 @@ async def executor_node(
     # Increment tool call count for micro-reflection tracking
     new_tool_call_count = tool_call_count + len(response.tool_calls)
 
+    # Extract last tool result for micro_reasoning context (shows WHY the
+    # agent made this decision in the UI event stream).
+    _last_tool_result = None
+    for m in reversed(state.get("messages", [])):
+        if isinstance(m, ToolMessage):
+            content_str = str(getattr(m, "content", ""))
+            _last_tool_result = {
+                "name": getattr(m, "name", "unknown"),
+                "output": content_str[:500],
+                "status": "error" if "EXIT_CODE:" in content_str else "success",
+            }
+            break
+
     result: dict[str, Any] = {
         "messages": [response],
         "current_step": current_step,
@@ -1054,6 +1067,7 @@ async def executor_node(
         **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
+        **({"_last_tool_result": _last_tool_result} if _last_tool_result else {}),
     }
     if parsed_tools:
         result["parsed_tools"] = parsed_tools

@@ -328,7 +328,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 summaries.append(f"→ {name}({args_str})")
             text = "Decided next action:\n" + "\n".join(summaries)
 
-        return json.dumps({
+        event: dict = {
             "type": "micro_reasoning",
             "loop_id": self._loop_id,
             "step": self._step_index,
@@ -340,7 +340,12 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "prompt_tokens": value.get("prompt_tokens", 0),
             "completion_tokens": value.get("completion_tokens", 0),
             **self._extract_prompt_data(value),
-        })
+        }
+        # Include previous tool result for UI context (shows WHY this decision)
+        prev = value.get("_last_tool_result")
+        if prev:
+            event["previous_tool"] = prev
+        return json.dumps(event)
 
     def _serialize_tool_result(self, msg: Any) -> str:
         """Serialize a tool node output with loop_id."""
