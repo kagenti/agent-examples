@@ -387,7 +387,11 @@ class SandboxAgentExecutor(AgentExecutor):
 
         async with lock:
             messages = [HumanMessage(content=context.get_user_input())]
-            input_state: dict[str, Any] = {"messages": messages}
+            input_state: dict[str, Any] = {
+                "messages": messages,
+                "workspace_path": workspace_path,
+                "context_id": context_id or "stateless",
+            }
 
             # Extract skill from A2A message metadata and load its content.
             # TODO(Session N): Once base image moves to kagenti repo, use

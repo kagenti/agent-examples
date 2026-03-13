@@ -94,17 +94,27 @@ class LangGraphSerializer(FrameworkEventSerializer):
     an expandable AgentLoopCard.
     """
 
+    # Nodes whose events are sub-items of the preceding node visit
+    # (they don't get their own node_visit number).
+    _TOOL_NODES = frozenset({"tools", "planner_tools", "reflector_tools"})
+
     def __init__(self, loop_id: str | None = None, context_id: str | None = None) -> None:
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
-        self._event_counter = 0  # chronological event counter (total graph passes)
+        self._event_counter = 0  # global sequence number for ordering
+        self._node_visit = 0     # graph node visit counter (main sections)
+        self._sub_index = 0      # position within current node visit
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
-        # event_counter is now incremented per JSON line in post-processing,
-        # not per node invocation (ensures unique event_index per event).
+        # Node visit tracking: each non-tool node gets a new visit number.
+        # Tool nodes inherit the preceding executor/planner/reflector's visit.
+        if key not in self._TOOL_NODES:
+            self._node_visit += 1
+            self._sub_index = 0  # reset sub-index for new visit
+        # event_counter incremented per JSON line in post-processing.
 
         # Track actual plan step from state for step grouping
         current_step = value.get("current_step")
@@ -193,18 +203,23 @@ class LangGraphSerializer(FrameworkEventSerializer):
             try:
                 evt = json.loads(line)
                 if "step" not in evt:
-                    # Use per-event current_step when available (0-based → 1-based),
-                    # otherwise fall back to the cached _step_index.
                     cs = evt.get("current_step")
                     evt["step"] = (cs + 1) if cs is not None else self._step_index
-                # Assign a unique event_index per line (skip legacy duplicates)
+                # Assign unique event_index per line (legacy types share with counterpart)
                 event_type = evt.get("type", "?")
                 if event_type in ("plan", "plan_step", "reflection"):
-                    # Legacy types share index with their new-type counterpart
                     evt["event_index"] = self._event_counter
                 else:
                     self._event_counter += 1
                     evt["event_index"] = self._event_counter
+                # Node visit + sub_index for UI section grouping
+                evt["node_visit"] = self._node_visit
+                if event_type not in ("plan", "plan_step", "reflection"):
+                    evt["sub_index"] = self._sub_index
+                    self._sub_index += 1
+                else:
+                    # Legacy types share sub_index with counterpart
+                    evt["sub_index"] = max(0, self._sub_index - 1)
                 enriched_lines.append(json.dumps(evt))
             except json.JSONDecodeError:
                 enriched_lines.append(line)
@@ -265,11 +280,11 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts = []
         _v = value or {}
 
+        self._micro_step += 1
+
         # Skip micro_reasoning for dedup responses (no LLM call happened)
         if not _v.get("_dedup"):
             parts.append(self._serialize_micro_reasoning(msg, _v))
-
-        self._micro_step += 1
 
         plan = _v.get("plan", [])
         model = _v.get("model", "")
