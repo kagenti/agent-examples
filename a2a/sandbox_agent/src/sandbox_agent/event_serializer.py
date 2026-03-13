@@ -290,7 +290,12 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts.append(json.dumps(dict(step_payload, type="plan_step")))
 
         if tool_calls:
-            call_id = str(uuid.uuid4())[:8]
+            # Use LangGraph's tool_call_id for proper pairing with tool_result
+            tc0 = tool_calls[0] if tool_calls else {}
+            call_id = (
+                tc0.get("id") if isinstance(tc0, dict)
+                else getattr(tc0, "id", None)
+            ) or str(uuid.uuid4())[:8]
             self._last_call_id = call_id
             parts.append(json.dumps({
                 "type": "tool_call",
@@ -378,11 +383,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "No such file" in content_str
         )
         status = "error" if is_error else "success"
+        # Use LangGraph's tool_call_id for proper pairing with tool_call
+        call_id = getattr(msg, "tool_call_id", None) or self._last_call_id
         return json.dumps({
             "type": "tool_result",
             "loop_id": self._loop_id,
             "step": self._step_index, "event_index": self._event_counter,
-            "call_id": self._last_call_id,
+            "call_id": call_id,
             "name": str(name),
             "output": content_str[:2000],
             "status": status,

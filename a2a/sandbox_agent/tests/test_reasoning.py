@@ -18,6 +18,8 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 from langchain_core.messages import AIMessage, HumanMessage
 
+from langchain_core.messages import SystemMessage
+
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.reasoning import (
     _parse_decision,
@@ -221,6 +223,119 @@ class TestExecutorNode:
 
         assert result["done"] is True
         mock_llm.ainvoke.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_workspace_path_in_system_prompt(self) -> None:
+        """P0: executor system prompt should contain the workspace_path."""
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = AIMessage(content="Done")
+
+        state = {
+            "messages": [HumanMessage(content="do stuff")],
+            "plan": ["Clone repo"],
+            "current_step": 0,
+            "workspace_path": "/workspace/abc-123",
+        }
+        result = await executor_node(state, mock_llm)
+
+        # Verify the system prompt was passed to LLM with workspace_path
+        call_args = mock_llm.ainvoke.call_args[0][0]
+        system_text = call_args[0].content
+        assert "/workspace/abc-123" in system_text
+
+    @pytest.mark.asyncio
+    async def test_workspace_path_defaults_to_workspace(self) -> None:
+        """P0: when workspace_path is not in state, default to /workspace."""
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = AIMessage(content="Done")
+
+        state = {
+            "messages": [HumanMessage(content="do stuff")],
+            "plan": ["Clone repo"],
+            "current_step": 0,
+            # No workspace_path in state
+        }
+        await executor_node(state, mock_llm)
+
+        call_args = mock_llm.ainvoke.call_args[0][0]
+        system_text = call_args[0].content
+        assert "/workspace" in system_text
+
+    @pytest.mark.asyncio
+    async def test_step_boundary_is_system_message(self) -> None:
+        """P1: step boundary should be a SystemMessage, not HumanMessage."""
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = AIMessage(content="Step done")
+
+        state = {
+            "messages": [HumanMessage(content="do stuff")],
+            "plan": ["Clone repo"],
+            "current_step": 0,
+            "_tool_call_count": 0,  # first call — should inject boundary
+        }
+        result = await executor_node(state, mock_llm)
+
+        # The returned messages should include a SystemMessage boundary
+        msgs = result["messages"]
+        boundary_msgs = [
+            m for m in msgs
+            if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
+        ]
+        assert len(boundary_msgs) == 1
+        assert "[STEP_BOUNDARY 0]" in boundary_msgs[0].content
+
+    @pytest.mark.asyncio
+    async def test_step_boundary_not_injected_on_continuing(self) -> None:
+        """P1: no boundary SystemMessage on continuing step (tool_call_count > 0)."""
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = AIMessage(content="Continuing")
+
+        state = {
+            "messages": [
+                HumanMessage(content="do stuff"),
+                SystemMessage(content="[STEP_BOUNDARY 0] Execute step 1"),
+                AIMessage(content="first call"),
+            ],
+            "plan": ["Clone repo"],
+            "current_step": 0,
+            "_tool_call_count": 1,  # continuing — no new boundary
+        }
+        result = await executor_node(state, mock_llm)
+
+        msgs = result["messages"]
+        boundary_msgs = [
+            m for m in msgs
+            if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
+        ]
+        assert len(boundary_msgs) == 0
+
+    @pytest.mark.asyncio
+    async def test_step_boundary_windows_context(self) -> None:
+        """P1: continuing executor should only see messages after the boundary."""
+        mock_llm = AsyncMock()
+        mock_llm.ainvoke.return_value = AIMessage(content="Next action")
+
+        state = {
+            "messages": [
+                HumanMessage(content="user request"),  # before boundary — should NOT be seen
+                AIMessage(content="planner plan output"),  # before boundary — should NOT be seen
+                SystemMessage(content="[STEP_BOUNDARY 0] Execute step 1: Clone repo"),
+                AIMessage(content="cloning..."),  # after boundary — should be seen
+            ],
+            "plan": ["Clone repo"],
+            "current_step": 0,
+            "_tool_call_count": 1,
+        }
+        await executor_node(state, mock_llm)
+
+        # Check what messages were sent to the LLM
+        call_args = mock_llm.ainvoke.call_args[0][0]
+        # Should have: SystemMessage(executor prompt), HumanMessage(step brief), AIMessage(cloning)
+        # Should NOT have: HumanMessage(user request) or AIMessage(planner plan output)
+        msg_contents = [str(m.content) for m in call_args]
+        assert not any("user request" in c for c in msg_contents)
+        assert not any("planner plan output" in c for c in msg_contents)
+        assert any("cloning" in c for c in msg_contents)
 
 
 # ---------------------------------------------------------------------------

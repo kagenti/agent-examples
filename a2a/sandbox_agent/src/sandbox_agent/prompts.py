@@ -43,7 +43,7 @@ Example ("create a Python project with tests"):
 Example ("analyze CI failures for owner/repo PR #758"):
 1. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
 2. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
-3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > output/ci-run.log`).
+3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > /workspace/<session>/output/ci-run.log`) — use the full workspace path for redirects after cd.
 4. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
 5. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
@@ -98,16 +98,21 @@ When the step is COMPLETE (goal achieved or cannot be achieved), stop calling
 tools and summarize what you accomplished with the actual tool output.
 
 ## Workspace Layout
+Your workspace absolute path is: {workspace_path}
 Your working directory is the session workspace. Pre-created subdirs:
 - **repos/** — clone repositories here
 - **output/** — write reports, logs, analysis results here
 - **data/** — intermediate data files
 - **scripts/** — generated scripts
-Use relative paths (e.g. `repos/kagenti`, `output/report.md`).
 
 WORKSPACE RULES (MANDATORY):
 - Your working directory is the session workspace. All commands start here.
-- Use RELATIVE paths only: `repos/kagenti`, `output/report.md` — never absolute paths.
+- For file_read, file_write, grep, glob: use RELATIVE paths (e.g. `output/report.md`).
+- For shell redirects AFTER `cd`: use the FULL workspace path.
+  WRONG: `cd repos/myrepo && gh run view 123 --log-failed > output/ci.log`
+  RIGHT: `cd repos/myrepo && gh run view 123 --log-failed > {workspace_path}/output/ci.log`
+  (Because `cd` changes the working directory, `> output/ci.log` would write
+  inside `repos/myrepo/output/` which does not exist.)
 - NEVER use bare `cd dir` as a standalone command — it has no effect.
 - ALWAYS chain directory changes: `cd repos/myrepo && git status`
 - For multi-command sequences: `cd repos/myrepo && cmd1 && cmd2`
@@ -115,15 +120,14 @@ WORKSPACE RULES (MANDATORY):
 - GH_TOKEN and GITHUB_TOKEN are already set. Do NOT run export or gh auth.
 - NEVER waste tool calls on `pwd`, bare `cd`, or `ls` without purpose.
   You start in your session workspace. Only verify paths if a command failed.
-- For file_read, file_write, grep, glob: use paths relative to workspace root
-  (e.g. `output/report.md`, `repos/kagenti/README.md`). Never use `../../` or
-  absolute paths — these will be blocked by path traversal protection.
+- Never use `../../` or absolute paths other than {workspace_path} — these
+  will be blocked by path traversal protection.
 
 ## gh CLI Reference (use ONLY these flags)
 - `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`
   Do NOT use `--head-ref` (invalid). Use `--branch` for branch filtering.
 - `gh run view <run_id>`: `--log`, `--log-failed`, `--job <id>`
-  Always redirect output: `gh run view <id> --log-failed > output/ci.log`
+  Always redirect output: `gh run view <id> --log-failed > {workspace_path}/output/ci.log`
 - `gh pr list`: `--state open|closed|merged`, `--base <branch>`, `--head <branch>`
 - `gh pr view <number>`: `--json <fields>`, `--comments`
 

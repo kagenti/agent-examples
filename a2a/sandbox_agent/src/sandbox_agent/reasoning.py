@@ -814,12 +814,14 @@ async def executor_node(
         return result
 
     step_text = plan[current_step]
+    workspace_path = state.get("workspace_path", "/workspace")
     system_content = _safe_format(
         _EXECUTOR_SYSTEM,
         current_step=current_step + 1,
         step_text=step_text,
         tool_call_count=tool_call_count,
         max_tool_calls=MAX_TOOL_CALLS_PER_STEP,
+        workspace_path=workspace_path,
     )
 
     # Prepend skill instructions when a skill was loaded from metadata.
@@ -866,17 +868,19 @@ async def executor_node(
     else:
         # Continuing step: include the step brief + this step's tool history.
         # Walk backwards to collect AI→Tool message pairs from this step.
+        # Stop at the [STEP_BOUNDARY N] SystemMessage (invisible to LLM,
+        # stays in state purely for windowing).
         first_msg = [HM(content=step_brief)]
         _CHARS_PER_TOKEN = 4
         _MAX_CONTEXT_CHARS = 30_000 * _CHARS_PER_TOKEN
         windowed = []
         used_chars = 0
         for m in reversed(all_msgs):
-            # Stop at the step boundary marker (injected on first executor call)
             content = str(getattr(m, 'content', ''))
-            if isinstance(m, HM) and content.startswith(f"[STEP {current_step + 1}]"):
+            # Stop at the SystemMessage step boundary marker
+            if isinstance(m, SystemMessage) and content.startswith(f"[STEP_BOUNDARY {current_step}]"):
                 break
-            msg_chars = len(str(getattr(m, 'content', '')))
+            msg_chars = len(content)
             if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
                 break
             windowed.insert(0, m)
@@ -1087,13 +1091,13 @@ async def executor_node(
             }
             break
 
-    # On first call (tool_call_count == 0), include the step_brief HumanMessage
-    # in the returned messages so it appears in state for subsequent calls.
-    # This creates a step boundary marker that the windowing logic can find.
+    # On first call (tool_call_count == 0), inject a SystemMessage boundary
+    # marker into state. SystemMessage is NOT sent to the LLM (the executor
+    # builds its own message list), but stays in state["messages"] so the
+    # windowing logic on subsequent calls can find where this step started.
     step_msgs: list = []
     if tool_call_count == 0:
-        from langchain_core.messages import HumanMessage as _HM
-        step_msgs.append(_HM(content=f"[STEP {current_step + 1}] {step_brief[:500]}"))
+        step_msgs.append(SystemMessage(content=f"[STEP_BOUNDARY {current_step}] {step_brief[:500]}"))
 
     result: dict[str, Any] = {
         "messages": step_msgs + [response],

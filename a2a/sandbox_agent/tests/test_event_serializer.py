@@ -23,13 +23,20 @@ import pytest
 from sandbox_agent.event_serializer import LangGraphSerializer, _safe_tc
 
 
-def _make_msg(content: str = "", tool_calls: list | None = None, name: str | None = None) -> MagicMock:
-    """Create a mock message with content, tool_calls, and name attributes."""
-    msg = MagicMock()
+def _make_msg(
+    content: str = "",
+    tool_calls: list | None = None,
+    name: str | None = None,
+    tool_call_id: str | None = None,
+) -> MagicMock:
+    """Create a mock message with content, tool_calls, name, and tool_call_id."""
+    # Use spec=[] to prevent MagicMock from auto-creating attributes
+    # that would interfere with getattr(..., default) calls.
+    msg = MagicMock(spec=["content", "tool_calls", "name", "tool_call_id"])
     msg.content = content
     msg.tool_calls = tool_calls or []
-    if name is not None:
-        msg.name = name
+    msg.name = name if name is not None else "unknown"
+    msg.tool_call_id = tool_call_id
     return msg
 
 
@@ -712,3 +719,85 @@ class TestSafeTc:
     def test_none_returns_unknown(self) -> None:
         result = _safe_tc(None)
         assert result == {"name": "unknown", "args": {}}
+
+
+# ---------------------------------------------------------------------------
+# Tool call ID pairing (P2)
+# ---------------------------------------------------------------------------
+
+
+class TestToolCallIdPairing:
+    """Tool call and tool result events should share the same call_id
+    when the LLM provides a tool_call_id (LangGraph structured calls)."""
+
+    def test_tool_call_uses_langgraph_id(self) -> None:
+        """When tool_calls include an 'id' field, call_id should match."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{"name": "shell", "args": {"command": "ls"}, "id": "tc_abc123"}],
+        )
+        result = s.serialize("executor", {"messages": [msg]})
+        events = _parse_lines(result)
+        tc_event = [e for e in events if e["type"] == "tool_call"][0]
+        assert tc_event["call_id"] == "tc_abc123"
+
+    def test_tool_result_uses_tool_call_id(self) -> None:
+        """ToolMessage's tool_call_id should be used as call_id."""
+        s = LangGraphSerializer()
+        msg = _make_msg(content="file1.txt\nfile2.txt", name="shell")
+        msg.tool_call_id = "tc_abc123"
+        result = s.serialize("tools", {"messages": [msg]})
+        data = json.loads(result)
+        assert data["call_id"] == "tc_abc123"
+
+    def test_tool_call_and_result_ids_match(self) -> None:
+        """End-to-end: tool_call and tool_result should share the same call_id."""
+        s = LangGraphSerializer()
+        # Emit tool call
+        call_msg = _make_msg(
+            content="",
+            tool_calls=[{"name": "shell", "args": {"command": "pwd"}, "id": "call_xyz"}],
+        )
+        call_result = s.serialize("executor", {"messages": [call_msg]})
+        call_events = _parse_lines(call_result)
+        tc_event = [e for e in call_events if e["type"] == "tool_call"][0]
+
+        # Emit tool result
+        result_msg = _make_msg(content="/workspace/abc123", name="shell")
+        result_msg.tool_call_id = "call_xyz"
+        result_output = s.serialize("tools", {"messages": [result_msg]})
+        result_data = json.loads(result_output)
+
+        assert tc_event["call_id"] == result_data["call_id"] == "call_xyz"
+
+    def test_tool_call_falls_back_to_uuid_when_no_id(self) -> None:
+        """When tool_calls don't include an 'id' field, a UUID is generated."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{"name": "shell", "args": {"command": "ls"}}],
+        )
+        result = s.serialize("executor", {"messages": [msg]})
+        events = _parse_lines(result)
+        tc_event = [e for e in events if e["type"] == "tool_call"][0]
+        assert len(tc_event["call_id"]) == 8  # uuid4()[:8]
+
+    def test_tool_result_falls_back_to_last_call_id(self) -> None:
+        """When ToolMessage has no tool_call_id, falls back to _last_call_id."""
+        s = LangGraphSerializer()
+        # First emit a tool call to set _last_call_id
+        call_msg = _make_msg(
+            content="",
+            tool_calls=[{"name": "shell", "args": {}, "id": "prev_call"}],
+        )
+        s.serialize("executor", {"messages": [call_msg]})
+
+        # Then emit tool result without tool_call_id
+        result_msg = MagicMock(spec=[])
+        result_msg.content = "output"
+        result_msg.name = "shell"
+        # No tool_call_id attribute
+        result_output = s.serialize("tools", {"messages": [result_msg]})
+        result_data = json.loads(result_output)
+        assert result_data["call_id"] == "prev_call"
