@@ -687,7 +687,9 @@ async def planner_node(
     if skill_instructions:
         system_content = skill_instructions + "\n\n" + system_content
 
-    plan_messages = [SystemMessage(content=system_content)] + messages
+    from sandbox_agent.context_builders import build_planner_context
+
+    plan_messages = build_planner_context(state, system_content)
 
     try:
         response = await llm.ainvoke(plan_messages)
@@ -855,43 +857,9 @@ async def executor_node(
     #   from current messages, stopping when we hit a non-tool/non-AI message
     #   (which marks the boundary of this step's context).
 
-    all_msgs = state["messages"]
-    step_brief = state.get("skill_instructions", f"Execute step {current_step + 1}: {step_text}")
+    from sandbox_agent.context_builders import build_executor_context
 
-    from langchain_core.messages import HumanMessage as HM
-
-    if tool_call_count == 0:
-        # New step: executor gets only the step brief as its "user request".
-        # The system prompt already contains the step description and rules.
-        first_msg = [HM(content=step_brief)]
-        windowed = []
-    else:
-        # Continuing step: include the step brief + this step's tool history.
-        # Walk backwards to collect AI→Tool message pairs from this step.
-        # Stop at the [STEP_BOUNDARY N] SystemMessage (invisible to LLM,
-        # stays in state purely for windowing).
-        first_msg = [HM(content=step_brief)]
-        _CHARS_PER_TOKEN = 4
-        _MAX_CONTEXT_CHARS = 30_000 * _CHARS_PER_TOKEN
-        windowed = []
-        used_chars = 0
-        for m in reversed(all_msgs):
-            content = str(getattr(m, 'content', ''))
-            # Stop at the SystemMessage step boundary marker
-            if isinstance(m, SystemMessage) and content.startswith(f"[STEP_BOUNDARY {current_step}]"):
-                break
-            msg_chars = len(content)
-            if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
-                break
-            windowed.insert(0, m)
-            used_chars += msg_chars
-
-    messages = [SystemMessage(content=system_content)] + first_msg + windowed
-    _total_chars = sum(len(str(getattr(m, 'content', ''))) for m in messages)
-    logger.info("Executor context: %d messages, ~%dk chars (from %d total)",
-                len(messages), _total_chars // 1000, len(all_msgs),
-                extra={"session_id": state.get("context_id", ""), "node": "executor",
-                       "current_step": current_step, "tool_call_count": tool_call_count})
+    messages = build_executor_context(state, system_content)
     try:
         response = await llm_with_tools.ainvoke(messages)
     except Exception as exc:
@@ -1095,6 +1063,7 @@ async def executor_node(
     # marker into state. SystemMessage is NOT sent to the LLM (the executor
     # builds its own message list), but stays in state["messages"] so the
     # windowing logic on subsequent calls can find where this step started.
+    step_brief = state.get("skill_instructions", f"Execute step {current_step + 1}: {step_text}")
     step_msgs: list = []
     if tool_call_count == 0:
         step_msgs.append(SystemMessage(content=f"[STEP_BOUNDARY {current_step}] {step_brief[:500]}"))
@@ -1270,20 +1239,9 @@ async def reflector_node(
         recent_decisions=recent_str,
         replan_history=replan_history_text,
     )
-    # Include last tool call pairs (AIMessage with tool_calls + ToolMessage with result)
-    # so reflector sees WHAT was run and WHAT the output was.
-    # Walk backwards to find complete AI→Tool pairs (last 3 pairs = 6 messages).
-    recent_msgs = []
-    pair_count = 0
-    for m in reversed(messages):
-        if isinstance(m, SystemMessage):
-            continue
-        recent_msgs.insert(0, m)
-        if isinstance(m, AIMessage) and getattr(m, 'tool_calls', None):
-            pair_count += 1
-            if pair_count >= 3:
-                break
-    reflect_messages = [SystemMessage(content=system_content)] + recent_msgs
+    from sandbox_agent.context_builders import build_reflector_context
+
+    reflect_messages = build_reflector_context(state, system_content)
     try:
         response = await llm.ainvoke(reflect_messages)
     except Exception as exc:
