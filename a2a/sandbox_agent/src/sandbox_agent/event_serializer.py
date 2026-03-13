@@ -182,20 +182,32 @@ class LangGraphSerializer(FrameworkEventSerializer):
             })
             result = result + "\n" + budget_event
 
-        # Log each serialized event for pipeline observability (Stage 1)
+        # Post-process: ensure ALL event lines have step + event_index.
+        # Some serialization paths (router, planner, reflector, reporter)
+        # don't include these fields, causing NULL ordering in the UI.
+        enriched_lines = []
         for line in result.split("\n"):
             line = line.strip()
-            if line:
-                try:
-                    event_type = json.loads(line).get("type", "?")
-                except json.JSONDecodeError:
-                    event_type = "parse_error"
-                logger.info("SERIALIZE session=%s loop=%s type=%s step=%s",
-                    self._context_id, self._loop_id, event_type, self._step_index,
-                    extra={"session_id": self._context_id, "node": key,
-                           "event_type": event_type, "step": self._step_index})
+            if not line:
+                continue
+            try:
+                evt = json.loads(line)
+                if "step" not in evt:
+                    evt["step"] = self._step_index
+                if "event_index" not in evt:
+                    evt["event_index"] = self._event_counter
+                enriched_lines.append(json.dumps(evt))
+                event_type = evt.get("type", "?")
+            except json.JSONDecodeError:
+                enriched_lines.append(line)
+                event_type = "parse_error"
+            logger.info("SERIALIZE session=%s loop=%s type=%s step=%s ei=%s",
+                self._context_id, self._loop_id, event_type,
+                self._step_index, self._event_counter,
+                extra={"session_id": self._context_id, "node": key,
+                       "event_type": event_type, "step": self._step_index})
 
-        return result
+        return "\n".join(enriched_lines)
 
     def _serialize_assistant(self, msg: Any) -> str:
         """Serialize an assistant (LLM) node output.
