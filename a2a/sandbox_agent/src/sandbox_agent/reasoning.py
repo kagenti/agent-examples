@@ -880,11 +880,11 @@ async def executor_node(
                 break
             windowed.insert(0, m)
             used_chars += msg_chars
-        used_chars += msg_chars
 
     messages = [SystemMessage(content=system_content)] + first_msg + windowed
-    logger.info("Executor context: %d messages, ~%dk tokens (from %d total)",
-                len(messages), used_chars // (_CHARS_PER_TOKEN * 1000), len(all_msgs),
+    _total_chars = sum(len(str(getattr(m, 'content', ''))) for m in messages)
+    logger.info("Executor context: %d messages, ~%dk chars (from %d total)",
+                len(messages), _total_chars // 1000, len(all_msgs),
                 extra={"session_id": state.get("context_id", ""), "node": "executor",
                        "current_step": current_step, "tool_call_count": tool_call_count})
     try:
