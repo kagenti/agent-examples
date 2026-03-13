@@ -630,7 +630,8 @@ def build_graph(
     core_tools = [shell_tool, file_read_tool, file_write_tool, grep_tool, glob_tool, web_fetch_tool]
     tools = core_tools + [
         make_explore_tool(workspace_path, llm),
-        make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
+        # delegate disabled — causes crashes when agent can't resolve paths
+        # make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
 
     # -- Per-node tool subsets ------------------------------------------------

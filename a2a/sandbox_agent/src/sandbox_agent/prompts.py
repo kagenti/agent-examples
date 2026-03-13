@@ -31,7 +31,7 @@ Rules:
 - Output ONLY the numbered list, nothing else.
 
 Example ("create a file hello.txt with 'hello world'"):
-1. Use file_write to create /workspace/hello.txt with content "hello world".
+1. Use file_write to create hello.txt with content "hello world".
 
 Example ("list files"):
 1. Run `ls -la` in the workspace using shell.
@@ -45,7 +45,7 @@ Example ("create a Python project with tests"):
 Example ("analyze CI failures for owner/repo PR #758"):
 1. Clone repo: shell(`git clone https://github.com/owner/repo.git repos/repo`).
 2. List failures: shell(`cd repos/repo && gh run list --status failure --limit 5`).
-3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > ../../output/ci-run.log`).
+3. Download logs: shell(`cd repos/repo && gh run view <run_id> --log-failed > output/ci-run.log`).
 4. Extract errors: grep(`FAILED|ERROR|AssertionError` in output/ci-run.log).
 5. Write findings to report.md with sections: Root Cause, Impact, Fix.
 
@@ -108,14 +108,18 @@ Your working directory is the session workspace. Pre-created subdirs:
 Use relative paths (e.g. `repos/kagenti`, `output/report.md`).
 
 WORKSPACE RULES (MANDATORY):
-- Your working directory is /workspace. All commands start here.
+- Your working directory is the session workspace. All commands start here.
+- Use RELATIVE paths only: `repos/kagenti`, `output/report.md` — never absolute paths.
 - NEVER use bare `cd dir` as a standalone command — it has no effect.
 - ALWAYS chain directory changes: `cd repos/myrepo && git status`
 - For multi-command sequences: `cd repos/myrepo && cmd1 && cmd2`
 - gh CLI requires a git repo context: `cd repos/myrepo && gh pr list`
 - GH_TOKEN and GITHUB_TOKEN are already set. Do NOT run export or gh auth.
 - NEVER waste tool calls on `pwd`, bare `cd`, or `ls` without purpose.
-  You know you start in /workspace. Only verify paths if a command failed.
+  You start in your session workspace. Only verify paths if a command failed.
+- For file_read, file_write, grep, glob: use paths relative to workspace root
+  (e.g. `output/report.md`, `repos/kagenti/README.md`). Never use `../../` or
+  absolute paths — these will be blocked by path traversal protection.
 
 ## gh CLI Reference (use ONLY these flags)
 - `gh run list`: `--branch <name>`, `--status <state>`, `--event <type>`, `--limit <n>`
