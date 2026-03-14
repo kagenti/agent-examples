@@ -152,8 +152,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             plan_steps = value.get("plan_steps", [])
             step_desc = ""
             if current_step < len(plan_steps):
-                ps = plan_steps[current_step]
-                step_desc = ps.get("description", "") if isinstance(ps, dict) else str(ps)
+                step_entry = plan_steps[current_step]
+                step_desc = step_entry.get("description", "") if isinstance(step_entry, dict) else str(step_entry)
             brief = value.get("skill_instructions", "")
             # Strip the "STEP BRIEF FROM COORDINATOR:" prefix
             if "STEP BRIEF" in brief:
