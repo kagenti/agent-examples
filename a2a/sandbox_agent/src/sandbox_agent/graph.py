@@ -710,6 +710,7 @@ def build_graph(
         return await reporter_node(
             state, llm_reporter, budget=budget,
             llm_reason=llm_executor_reason,
+            tools=read_only_tools,
         )
 
     async def _step_selector(state: SandboxState) -> dict[str, Any]:
@@ -906,7 +907,6 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
     graph.add_node("reflector", _reflector)
     graph.add_node("reflector_tools", _safe_reflector_tools)
     graph.add_node("reporter", _reporter)
-    graph.add_node("reporter_tools", _safe_reporter_tools)
 
     # Entry: router decides resume vs plan
     graph.set_entry_point("router")
@@ -949,12 +949,7 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
         route_reflector,
         {"done": "reporter", "execute": "step_selector", "replan": "planner"},
     )
-    # Reporter can call tools (file verification) or go to end
-    graph.add_conditional_edges(
-        "reporter",
-        tools_condition,
-        {"tools": "reporter_tools", "__end__": "__end__"},
-    )
-    graph.add_edge("reporter_tools", "reporter")
+    # Reporter executes tools internally via invoke_with_tool_loop
+    graph.add_edge("reporter", "__end__")
 
     return graph.compile(checkpointer=checkpointer)

@@ -1365,6 +1365,7 @@ async def reporter_node(
     llm: Any,
     budget: AgentBudget | None = None,
     llm_reason: Any | None = None,
+    tools: list | None = None,
 ) -> dict[str, Any]:
     """Format accumulated step results into a final answer.
 
@@ -1468,6 +1469,8 @@ async def reporter_node(
                 workspace_path=state.get("workspace_path", "/workspace"),
                 thinking_budget=2,
                 max_parallel_tool_calls=3,
+                max_cycles=3,
+                tools=tools,
             )
         except Exception as exc:
             if _is_budget_exceeded_error(exc):

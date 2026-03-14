@@ -508,161 +508,202 @@ async def invoke_with_tool_loop(
     workspace_path: str,
     thinking_budget: int = 5,
     max_parallel_tool_calls: int = 5,
+    max_cycles: int = 1,
+    tools: list | None = None,
 ) -> tuple[AIMessage, LLMCallCapture, list[dict[str, Any]]]:
-    """Invoke LLM with optional thinking iterations + micro-reasoning.
+    """Invoke LLM with optional thinking iterations + micro-reasoning + tool execution.
 
     Returns ``(response, capture, sub_events)`` where sub_events is a list
     of thinking event dicts — one per thinking iteration.
 
+    When ``tools`` is provided AND ``max_cycles > 1``, runs a full
+    think → tool-call → execute → see-result → think loop internally.
+    Tools are executed via ``asyncio.gather`` for parallel calls.
+
     When ``llm_reason`` is provided (thinking mode):
       1. Thinking loop (up to ``thinking_budget`` iterations):
-         Bare LLM reasons about what to do. Each iteration sees previous
-         thinking texts and tool descriptions (no actual tool bindings).
-      2. Micro-reasoning: LLM with tools (tool_choice=any) makes tool calls.
-         Allows up to ``max_parallel_tool_calls`` parallel calls.
-
-    Each thinking sub_event has full debug data (system_prompt, prompt_messages,
-    bound_tools, llm_response) so the UI can inspect every call.
+         Bare LLM reasons about what to do.
+      2. Micro-reasoning: LLM with tools makes tool calls.
+      3. If ``tools`` provided: execute tools, feed results back, loop.
 
     When ``llm_reason`` is None (single-phase mode):
       One call to llm_with_tools with implicit auto. No sub_events.
     """
+    import asyncio
+
     sub_events: list[dict[str, Any]] = []
+    total_thinking_tokens = 0
+    all_captures: list[LLMCallCapture] = []
 
-    if llm_reason is not None:
-        # Build textual tool descriptions for the thinking prompt
-        tool_desc_text = _build_tool_descriptions(llm_with_tools)
+    # Build tool lookup for direct execution
+    tool_map: dict[str, Any] = {}
+    if tools:
+        for t in tools:
+            name = getattr(t, "name", None)
+            if name:
+                tool_map[name] = t
 
-        # Thinking loop: up to thinking_budget bare LLM iterations
-        thinking_history: list[BaseMessage] = []
-        total_thinking_tokens = 0
+    # Track conversation for multi-cycle loops
+    cycle_messages = list(messages)
+
+    for cycle in range(max(max_cycles, 1)):
         last_reasoning = ""
 
-        for i in range(thinking_budget):
-            # Build thinking messages: original messages + thinking history
-            # (tool descriptions are already in the executor system prompt)
-            thinking_messages = list(messages)
+        if llm_reason is not None:
+            # --- Thinking phase ---
+            thinking_history: list[BaseMessage] = []
 
-            # Add thinking history from previous iterations
-            thinking_messages.extend(thinking_history)
+            for i in range(thinking_budget):
+                thinking_messages = list(cycle_messages) + thinking_history
 
-            # Add thinking prompt — keep it concise to avoid verbose LLM output
-            if i == 0:
-                thinking_messages.append(
-                    HumanMessage(content="Brief analysis (2-3 sentences max): "
-                                 "What is the best tool call for this step? "
-                                 "If step is already done, say READY: step complete.")
+                if i == 0:
+                    thinking_messages.append(
+                        HumanMessage(content="Brief analysis (2-3 sentences max): "
+                                     "What is the best tool call for this step? "
+                                     "If step is already done, say READY: step complete.")
+                    )
+                else:
+                    thinking_messages.append(
+                        HumanMessage(content="Refine in 1-2 sentences. "
+                                     "When ready: READY: <one-line action plan>")
+                    )
+
+                reason_response, reason_capture = await invoke_llm(
+                    llm_reason, thinking_messages,
+                    node=f"{node}-think-{cycle+1}.{i+1}", session_id=session_id,
+                    workspace_path="",
                 )
-            else:
-                thinking_messages.append(
-                    HumanMessage(content="Refine in 1-2 sentences. "
-                                 "When ready: READY: <one-line action plan>")
-                )
+                last_reasoning = str(reason_response.content or "").strip()
+                total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
 
-            reason_response, reason_capture = await invoke_llm(
-                llm_reason, thinking_messages,
-                node=f"{node}-think-{i+1}", session_id=session_id,
-                workspace_path="",  # skip preamble — already in messages from build_executor_context
+                sub_events.append({
+                    "type": "thinking",
+                    "node": node,
+                    "cycle": cycle + 1,
+                    "iteration": i + 1,
+                    "total_iterations": 0,
+                    "reasoning": last_reasoning,
+                    **reason_capture.debug_fields(),
+                    **reason_capture.token_fields(),
+                })
+
+                thinking_summary = last_reasoning[:200] + ("..." if len(last_reasoning) > 200 else "")
+                thinking_history.extend([
+                    AIMessage(content=thinking_summary),
+                    HumanMessage(content=f"(Thinking {i+1} recorded. Continue or signal READY:)"),
+                ])
+
+                if last_reasoning.upper().startswith("READY:"):
+                    break
+
+            # --- Micro-reasoning: LLM with tools ---
+            tool_messages = cycle_messages + [
+                AIMessage(content=last_reasoning or "I need to call a tool for this step."),
+                HumanMessage(content="Now execute your planned action. Rules:\n"
+                             "- Call step_done(summary='...') if the step is ALREADY COMPLETE.\n"
+                             "- Call ONE tool if there's a single action to take.\n"
+                             "- Call multiple tools ONLY if they are independent (can run in parallel).\n"
+                             "- NEVER call the same tool twice with similar args."),
+            ]
+            response, capture = await invoke_llm(
+                llm_with_tools, tool_messages,
+                node=f"{node}-tool-{cycle+1}", session_id=session_id,
+                workspace_path="",
             )
-            last_reasoning = str(reason_response.content or "").strip()
-            total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
+            capture.prompt_tokens += total_thinking_tokens
+            all_captures.append(capture)
 
-            # Emit thinking iteration as a sub_event with full debug data
-            sub_events.append({
-                "type": "thinking",
-                "node": node,
-                "iteration": i + 1,
-                "total_iterations": 0,  # updated after loop
-                "reasoning": last_reasoning,
-                **reason_capture.debug_fields(),
-                **reason_capture.token_fields(),
-            })
+        else:
+            # Single-phase: one LLM call with implicit auto
+            response, capture = await invoke_llm(
+                llm_with_tools, cycle_messages,
+                node=f"{node}-{cycle+1}" if max_cycles > 1 else node,
+                session_id=session_id,
+                workspace_path=workspace_path if cycle == 0 else "",
+            )
+            all_captures.append(capture)
 
-            # Add TRUNCATED thinking to history for next iteration (save tokens)
-            thinking_summary = last_reasoning[:200] + ("..." if len(last_reasoning) > 200 else "")
-            thinking_history.extend([
-                AIMessage(content=thinking_summary),
-                HumanMessage(content=f"(Thinking {i+1} recorded. Continue or signal READY:)"),
-            ])
-
-            # Early break if LLM signals readiness
-            if last_reasoning.upper().startswith("READY:"):
-                break
-
-        # Update total_iterations on all sub_events
-        total_iters = len(sub_events)
-        for evt in sub_events:
-            evt["total_iterations"] = total_iters
-
-        logger.info(
-            "Thinking %s: %d iterations, %d tokens",
-            node, total_iters, total_thinking_tokens,
-            extra={"session_id": session_id, "node": node,
-                   "thinking_iterations": total_iters},
-        )
-
-        # Micro-reasoning: LLM with tools makes the actual tool call(s)
-        # Include last thinking text as context
-        tool_messages = messages + [
-            AIMessage(content=last_reasoning or "I need to call a tool for this step."),
-            HumanMessage(content="Now execute your planned action. Rules:\n"
-                         "- Call step_done(summary='...') if the step is ALREADY COMPLETE.\n"
-                         "- Call ONE tool if there's a single action to take.\n"
-                         "- Call multiple tools ONLY if they are independent (can run in parallel).\n"
-                         "- NEVER call the same tool twice with similar args."),
-        ]
-        response, capture = await invoke_llm(
-            llm_with_tools, tool_messages,
-            node=f"{node}-tool", session_id=session_id,
-            workspace_path="",  # skip preamble — already in messages from build_executor_context
-        )
-        # Merge all thinking tokens into the capture
-        capture.prompt_tokens += total_thinking_tokens
-        capture.completion_tokens += 0  # thinking completion tokens already counted
-
-        # Intercept step_done tool call — exit the loop immediately
+        # --- Intercept step_done ---
         if response.tool_calls:
             done_calls = [tc for tc in response.tool_calls if tc.get("name") == "step_done"]
             if done_calls:
-                summary = done_calls[0].get("args", {}).get("summary", last_reasoning)
-                logger.info(
-                    "step_done called — exiting think-act loop: %s",
-                    summary[:100],
-                    extra={"session_id": session_id, "node": node},
-                )
+                summary = done_calls[0].get("args", {}).get("summary", last_reasoning or "")
+                logger.info("step_done called in cycle %d: %s", cycle + 1, summary[:100],
+                            extra={"session_id": session_id, "node": node})
                 response = AIMessage(content=summary)
-                return response, capture, sub_events
+                break
 
         # If micro-reasoning produced tool calls but no text, merge last thinking
         if last_reasoning and response.tool_calls and not response.content:
-            response = AIMessage(
-                content=last_reasoning,
-                tool_calls=response.tool_calls,
-            )
+            response = AIMessage(content=last_reasoning, tool_calls=response.tool_calls)
 
         # Enforce max parallel tool calls
         if len(response.tool_calls) > max_parallel_tool_calls:
-            logger.info(
-                "Micro-reasoning returned %d tool calls — keeping first %d",
-                len(response.tool_calls), max_parallel_tool_calls,
-                extra={"session_id": session_id, "node": node},
-            )
             response = AIMessage(
                 content=response.content,
                 tool_calls=response.tool_calls[:max_parallel_tool_calls],
             )
 
-        logger.info(
-            "Think-act %s: %d thinking + micro-reasoning → %d tool calls",
-            node, total_iters, len(response.tool_calls),
-            extra={"session_id": session_id, "node": node},
-        )
-    else:
-        # Single-phase: one LLM call with implicit auto
-        response, capture = await invoke_llm(
-            llm_with_tools, messages,
-            node=node, session_id=session_id,
-            workspace_path=workspace_path,
-        )
+        # --- Execute tools if we have them and there are tool calls ---
+        if response.tool_calls and tool_map and max_cycles > 1:
+            # Execute all tool calls in parallel via asyncio.gather
+            async def _run_tool(tc: dict) -> ToolMessage:
+                name = tc.get("name", "unknown")
+                args = tc.get("args", {})
+                tc_id = tc.get("id", "unknown")
+                tool_fn = tool_map.get(name)
+                if tool_fn is None:
+                    return ToolMessage(content=f"Error: tool '{name}' not found", tool_call_id=tc_id, name=name)
+                try:
+                    result = await tool_fn.ainvoke(args)
+                    return ToolMessage(content=str(result)[:10000], tool_call_id=tc_id, name=name)
+                except Exception as exc:
+                    return ToolMessage(content=f"Error: {exc}", tool_call_id=tc_id, name=name)
 
-    return response, capture, sub_events
+            tool_results = await asyncio.gather(*[_run_tool(tc) for tc in response.tool_calls])
+
+            # Add tool call + results to conversation for next cycle
+            cycle_messages.append(response)
+            cycle_messages.extend(tool_results)
+
+            # Emit tool execution info as sub_events
+            for tm in tool_results:
+                sub_events.append({
+                    "type": "tool_result",
+                    "node": node,
+                    "cycle": cycle + 1,
+                    "name": getattr(tm, "name", "unknown"),
+                    "output": str(getattr(tm, "content", ""))[:500],
+                    "status": "error" if str(getattr(tm, "content", "")).startswith("Error:") else "success",
+                })
+
+            logger.info(
+                "Cycle %d/%d [%s]: %d tool calls executed, continuing",
+                cycle + 1, max_cycles, node, len(response.tool_calls),
+                extra={"session_id": session_id, "node": node},
+            )
+            continue  # Next cycle
+        else:
+            # No tools to execute or last cycle — return response
+            break
+
+    # Update total_iterations on all thinking sub_events
+    thinking_events = [e for e in sub_events if e.get("type") == "thinking"]
+    total_iters = len(thinking_events)
+    for evt in thinking_events:
+        evt["total_iterations"] = total_iters
+
+    # Merge all captures into the last one
+    final_capture = all_captures[-1] if all_captures else LLMCallCapture()
+    for c in all_captures[:-1]:
+        final_capture.prompt_tokens += c.prompt_tokens
+        final_capture.completion_tokens += c.completion_tokens
+
+    logger.info(
+        "Tool loop %s: %d cycles, %d thinking iterations, %d total tokens",
+        node, cycle + 1, total_iters,
+        final_capture.prompt_tokens + final_capture.completion_tokens,
+        extra={"session_id": session_id, "node": node},
+    )
+
+    return response, final_capture, sub_events
