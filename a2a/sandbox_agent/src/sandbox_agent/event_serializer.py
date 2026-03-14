@@ -30,6 +30,8 @@ import uuid
 from abc import ABC, abstractmethod
 from typing import Any
 
+from sandbox_agent import plan_store as ps
+
 logger = logging.getLogger(__name__)
 
 
@@ -440,6 +442,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         })
 
     @staticmethod
+    def _enrich_with_plan_store(payload: dict, value: dict) -> None:
+        """Add PlanStore flat steps to payload if available."""
+        store = value.get("_plan_store", {})
+        if store and store.get("steps"):
+            payload["plan_steps"] = ps.to_flat_plan_steps(store)
+
+    @staticmethod
     def _extract_prompt_data(value: dict) -> dict:
         """Extract prompt visibility fields from node output."""
         data: dict = {}
@@ -493,6 +502,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "completion_tokens": completion_tokens,
             **prompt_data,
         }
+
+        self._enrich_with_plan_store(payload, value)
 
         return json.dumps(payload)
 
@@ -555,6 +566,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "completion_tokens": completion_tokens,
             **prompt_data,
         }
+
+        self._enrich_with_plan_store(payload, value)
 
         return json.dumps(payload)
 

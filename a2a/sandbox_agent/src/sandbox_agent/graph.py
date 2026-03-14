@@ -78,6 +78,7 @@ from sandbox_agent.reasoning import (
     route_reflector,
     router_node,
 )
+from sandbox_agent import plan_store as ps
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
 
@@ -157,6 +158,7 @@ class SandboxState(MessagesState):
     _last_tool_result: dict
     _bound_tools: list[dict]
     _llm_response: dict
+    _plan_store: dict
     model: str
 
 
@@ -719,11 +721,22 @@ def build_graph(
         current = state.get("current_step", 0)
         messages = state.get("messages", [])
 
+        # --- PlanStore: parallel nested plan tracking ---
+        store = state.get("_plan_store", {})
+        if store and store.get("steps"):
+            current_info = ps.get_current_step(store)
+            if current_info:
+                step_key, step_data = current_info
+                try:
+                    store = ps.set_step_status(store, step_key, "running")
+                except ValueError:
+                    logger.warning("PlanStore: step %s not found, skipping", step_key)
+
         # Find next non-done step
         next_step = current
         for i in range(current, len(plan_steps)):
-            ps = plan_steps[i]
-            status = ps.get("status", "pending") if isinstance(ps, dict) else "pending"
+            _ps = plan_steps[i]
+            status = _ps.get("status", "pending") if isinstance(_ps, dict) else "pending"
             if status != "done":
                 next_step = i
                 break
@@ -737,12 +750,12 @@ def build_graph(
         # Build plan status summary
         plan_summary = []
         for i, step in enumerate(plan):
-            ps = plan_steps[i] if i < len(plan_steps) else {}
-            status = ps.get("status", "pending") if isinstance(ps, dict) else "pending"
+            _ps = plan_steps[i] if i < len(plan_steps) else {}
+            status = _ps.get("status", "pending") if isinstance(_ps, dict) else "pending"
             marker = "✓" if status == "done" else "→" if i == next_step else " "
             result_hint = ""
-            if isinstance(ps, dict) and ps.get("result_summary"):
-                result_hint = f" — {ps['result_summary'][:100]}"
+            if isinstance(_ps, dict) and _ps.get("result_summary"):
+                result_hint = f" — {_ps['result_summary'][:100]}"
             plan_summary.append(f"  {marker} {i+1}. [{status}] {step[:80]}{result_hint}")
 
         # Gather recent tool results (last 3 ToolMessages)
@@ -757,12 +770,15 @@ def build_graph(
         if next_step >= len(plan):
             # All done
             logger.info("StepSelector: all %d steps complete", len(plan))
-            return {
+            result_done: dict[str, Any] = {
                 "current_step": next_step,
                 "plan_steps": plan_steps,
                 "_tool_call_count": 0,
                 "done": True,
             }
+            if store:
+                result_done["_plan_store"] = store
+            return result_done
 
         # Quick LLM call — write a focused brief for the executor
         step_text = plan[next_step] if next_step < len(plan) else "N/A"
@@ -803,6 +819,8 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
             "_tool_call_count": 0,
             "skill_instructions": f"STEP BRIEF FROM COORDINATOR:\n{brief}\n\n---\n",
         }
+        if store:
+            result["_plan_store"] = store
         if _DEBUG_PROMPTS:
             from sandbox_agent.context_builders import LLMCallCapture
             result["_system_prompt"] = prompt[:10000]

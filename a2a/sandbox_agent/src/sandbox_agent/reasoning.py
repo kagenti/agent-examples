@@ -37,6 +37,7 @@ from typing import Any, TypedDict
 from langchain_core.messages import AIMessage, SystemMessage, ToolMessage
 
 from sandbox_agent.budget import AgentBudget
+from sandbox_agent import plan_store as ps
 
 # openai raises APIStatusError for non-2xx responses (e.g. 402 from the budget proxy)
 try:
@@ -523,6 +524,7 @@ async def planner_node(
                     extra={"session_id": state.get("context_id", ""), "node": "planner",
                            "iteration": 0, "step_count": 1, "plan_version": 1})
         trivial_steps = _make_plan_steps(["Respond to the user."], iteration=0)
+        store = ps.create_plan(["Respond to the user."], creator="planner")
         return {
             "plan": ["Respond to the user."],
             "plan_steps": trivial_steps,
@@ -530,6 +532,7 @@ async def planner_node(
             "current_step": 0,
             "iteration": 1,
             "done": False,
+            "_plan_store": store,
         }
 
     # Build context for the planner — include previous plan with per-step status
@@ -537,11 +540,11 @@ async def planner_node(
     if prev_plan_steps:
         # Show the structured plan with per-step status
         context_parts.append("Previous plan (with status):")
-        for ps in prev_plan_steps:
-            idx = ps.get("index", 0)
-            desc = ps.get("description", "")
-            status = ps.get("status", "pending").upper()
-            result = ps.get("result_summary", "")
+        for prev_ps in prev_plan_steps:
+            idx = prev_ps.get("index", 0)
+            desc = prev_ps.get("description", "")
+            status = prev_ps.get("status", "pending").upper()
+            result = prev_ps.get("result_summary", "")
             line = f"  {idx+1}. [{status}] {desc}"
             if result:
                 line += f" — {result[:150]}"
@@ -643,6 +646,7 @@ async def planner_node(
     plan = _parse_plan(response.content)
     plan_version = state.get("plan_version", 0) + 1
     new_plan_steps = _make_plan_steps(plan, iteration=iteration)
+    store = ps.create_plan(plan, creator="planner" if iteration == 0 else "replanner")
 
     logger.info("Planner produced %d steps (iteration %d, version %d): %s",
                 len(plan), iteration, plan_version, plan,
@@ -676,6 +680,7 @@ async def planner_node(
         "current_step": start_step,
         "iteration": iteration + 1,
         "done": False,
+        "_plan_store": store,
         **planner_capture.token_fields(),
         "_budget_summary": budget.summary(),
         **planner_capture.debug_fields(),
@@ -1007,6 +1012,7 @@ async def reflector_node(
     replan_count = state.get("replan_count", 0)
     done = state.get("done", False)
     recent_decisions = list(state.get("recent_decisions", []))
+    store = state.get("_plan_store", {})
 
     # If executor signaled done (ran out of steps), go straight to done
     if done:
@@ -1017,19 +1023,19 @@ async def reflector_node(
 
     def _force_done(reason: str, *, mark_failed: bool = False) -> dict[str, Any]:
         """Helper for early termination — marks current step partial/failed, rest skipped."""
-        ps = list(state.get("plan_steps", []))
+        fd_ps = list(state.get("plan_steps", []))
         step_status = "failed" if mark_failed else "partial"
-        if current_step < len(ps):
-            ps[current_step] = {**ps[current_step], "status": step_status}
-        for i in range(current_step + 1, len(ps)):
-            if ps[i].get("status") == "pending":
-                ps[i] = {**ps[i], "status": "skipped"}
+        if current_step < len(fd_ps):
+            fd_ps[current_step] = {**fd_ps[current_step], "status": step_status}
+        for i in range(current_step + 1, len(fd_ps)):
+            if fd_ps[i].get("status") == "pending":
+                fd_ps[i] = {**fd_ps[i], "status": "skipped"}
         logger.warning("%s — forcing done", reason,
                        extra={"session_id": state.get("context_id", ""), "node": "reflector",
                               "current_step": current_step, "replan_count": replan_count})
         result: dict[str, Any] = {
             "step_results": step_results,
-            "plan_steps": ps,
+            "plan_steps": fd_ps,
             "current_step": current_step + 1,
             "done": True,
             "replan_count": replan_count,
@@ -1040,6 +1046,8 @@ async def reflector_node(
         # terminated early (budget, stall, duplicate output).
         if _DEBUG_PROMPTS:
             result["_system_prompt"] = f"[Early termination — no LLM call]\n{reason}"
+        if store:
+            result["_plan_store"] = store
         return result
 
     # Budget guard — force termination if ANY budget limit exceeded
@@ -1101,11 +1109,11 @@ async def reflector_node(
             f"REPLAN HISTORY ({replan_count} prior replan(s)):"
         ]
         # Collect failed step summaries from plan_steps
-        for ps in state.get("plan_steps", []):
-            if ps.get("status") == "failed":
-                summary = ps.get("result_summary", "no details")
+        for hist_ps in state.get("plan_steps", []):
+            if hist_ps.get("status") == "failed":
+                summary = hist_ps.get("result_summary", "no details")
                 replan_history_lines.append(
-                    f"  - Step {ps.get('index', '?')+1} FAILED: {ps.get('description', '?')[:80]}"
+                    f"  - Step {hist_ps.get('index', '?')+1} FAILED: {hist_ps.get('description', '?')[:80]}"
                     f" — {summary[:150]}"
                 )
         replan_history_lines.append(
@@ -1200,10 +1208,10 @@ async def reflector_node(
                 step_tools.append(name)
 
     if current_step < len(plan_steps):
-        ps = {**plan_steps[current_step]}
-        ps["tool_calls"] = step_tools
-        ps["result_summary"] = last_content[:200]
-        plan_steps[current_step] = ps
+        cur_ps = {**plan_steps[current_step]}
+        cur_ps["tool_calls"] = step_tools
+        cur_ps["result_summary"] = last_content[:200]
+        plan_steps[current_step] = cur_ps
 
     logger.info(
         "Reflector decision: %s (step %d/%d, iter %d, replans=%d, tools=%d, recent=%s)",
@@ -1215,7 +1223,7 @@ async def reflector_node(
                "replan_count": replan_count, "iteration": iteration},
     )
 
-    base_result = {
+    base_result: dict[str, Any] = {
         "messages": [response],
         "step_results": step_results,
         "recent_decisions": recent_decisions,
@@ -1224,6 +1232,21 @@ async def reflector_node(
         "_budget_summary": budget.summary(),
         **capture.debug_fields(),
     }
+
+    # Update PlanStore status (parallel to plan_steps updates below)
+    step_key = str(current_step + 1)
+    if store:
+        try:
+            if decision in ("done", "continue"):
+                store = ps.set_step_status(store, step_key, "done")
+            elif decision == "replan":
+                store = ps.set_step_status(store, step_key, "failed")
+            elif decision == "retry":
+                store = ps.set_step_status(store, step_key, "running")
+        except ValueError:
+            logger.warning("PlanStore: step %s not found (replan?), skipping status update",
+                           step_key, extra={"session_id": state.get("context_id", ""), "node": "reflector"})
+        base_result["_plan_store"] = store
 
     if decision == "done":
         # Mark current step done, remaining as skipped
@@ -1243,10 +1266,10 @@ async def reflector_node(
         # Retry: re-execute current step with fresh context.
         # Mark step as "retrying" (not failed) — executor gets another chance.
         if current_step < len(plan_steps):
-            ps = plan_steps[current_step]
-            retry_count = ps.get("retry_count", 0) + 1
+            cur_ps = plan_steps[current_step]
+            retry_count = cur_ps.get("retry_count", 0) + 1
             plan_steps[current_step] = {
-                **ps,
+                **cur_ps,
                 "status": "retrying",
                 "retry_count": retry_count,
             }
@@ -1322,7 +1345,8 @@ async def reporter_node(
     """
     if budget is None:
         budget = DEFAULT_BUDGET
-    plan = state.get("plan", [])
+    store = state.get("_plan_store", {})
+    plan = ps.to_flat_plan(store) if store else state.get("plan", [])
     step_results = state.get("step_results", [])
     plan_steps = state.get("plan_steps", [])
 
@@ -1359,13 +1383,13 @@ async def reporter_node(
     # Build step status summary from plan_steps
     step_status_lines = []
     has_partial = False
-    for ps in plan_steps:
-        idx = ps.get("index", 0)
-        status = ps.get("status", "unknown").upper()
+    for rpt_ps in plan_steps:
+        idx = rpt_ps.get("index", 0)
+        status = rpt_ps.get("status", "unknown").upper()
         if status == "PARTIAL":
             has_partial = True
-        desc = ps.get("description", "")[:80]
-        result = ps.get("result_summary", "")[:100]
+        desc = rpt_ps.get("description", "")[:80]
+        result = rpt_ps.get("result_summary", "")[:100]
         line = f"{idx+1}. [{status}] {desc}"
         if result and status in ("FAILED", "PARTIAL"):
             line += f" — {result}"
@@ -1438,7 +1462,7 @@ async def reporter_node(
                 len(plan_steps),
                 extra={"session_id": state.get("context_id", ""), "node": "reporter"})
 
-    return {
+    result: dict[str, Any] = {
         "messages": [response],
         "final_answer": text,
         "plan_status": terminal_status,
@@ -1446,6 +1470,9 @@ async def reporter_node(
         "_budget_summary": budget.summary(),
         **capture.debug_fields(),
     }
+    if store:
+        result["_plan_store"] = store
+    return result
 
 
 # ---------------------------------------------------------------------------
