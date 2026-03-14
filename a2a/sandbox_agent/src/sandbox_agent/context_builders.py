@@ -539,14 +539,9 @@ async def invoke_with_tool_loop(
         last_reasoning = ""
 
         for i in range(thinking_budget):
-            # Build thinking messages: original messages + tool descriptions + thinking history
+            # Build thinking messages: original messages + thinking history
+            # (tool descriptions are already in the executor system prompt)
             thinking_messages = list(messages)
-
-            # Inject tool descriptions into the system message
-            if tool_desc_text and thinking_messages and isinstance(thinking_messages[0], SystemMessage):
-                thinking_messages[0] = SystemMessage(
-                    content=thinking_messages[0].content + "\n\n" + tool_desc_text
-                )
 
             # Add thinking history from previous iterations
             thinking_messages.extend(thinking_history)
@@ -568,7 +563,7 @@ async def invoke_with_tool_loop(
             reason_response, reason_capture = await invoke_llm(
                 llm_reason, thinking_messages,
                 node=f"{node}-think-{i+1}", session_id=session_id,
-                workspace_path=workspace_path,
+                workspace_path="",  # skip preamble — already in messages from build_executor_context
             )
             last_reasoning = str(reason_response.content or "").strip()
             total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
@@ -584,9 +579,10 @@ async def invoke_with_tool_loop(
                 **reason_capture.token_fields(),
             })
 
-            # Add to thinking history for next iteration
+            # Add TRUNCATED thinking to history for next iteration (save tokens)
+            thinking_summary = last_reasoning[:200] + ("..." if len(last_reasoning) > 200 else "")
             thinking_history.extend([
-                AIMessage(content=last_reasoning),
+                AIMessage(content=thinking_summary),
                 HumanMessage(content=f"(Thinking {i+1} recorded. Continue or signal READY:)"),
             ])
 
@@ -611,16 +607,30 @@ async def invoke_with_tool_loop(
         tool_messages = messages + [
             AIMessage(content=last_reasoning or "I need to call a tool for this step."),
             HumanMessage(content="Now execute the action you described above. "
-                         f"Call up to {max_parallel_tool_calls} tools."),
+                         "Call exactly ONE tool. "
+                         "If the step is ALREADY COMPLETE, call step_done(summary='...') instead."),
         ]
         response, capture = await invoke_llm(
             llm_with_tools, tool_messages,
             node=f"{node}-tool", session_id=session_id,
-            workspace_path=workspace_path,
+            workspace_path="",  # skip preamble — already in messages from build_executor_context
         )
         # Merge all thinking tokens into the capture
         capture.prompt_tokens += total_thinking_tokens
         capture.completion_tokens += 0  # thinking completion tokens already counted
+
+        # Intercept step_done tool call — exit the loop immediately
+        if response.tool_calls:
+            done_calls = [tc for tc in response.tool_calls if tc.get("name") == "step_done"]
+            if done_calls:
+                summary = done_calls[0].get("args", {}).get("summary", last_reasoning)
+                logger.info(
+                    "step_done called — exiting think-act loop: %s",
+                    summary[:100],
+                    extra={"session_id": session_id, "node": node},
+                )
+                response = AIMessage(content=summary)
+                return response, capture, sub_events
 
         # If micro-reasoning produced tool calls but no text, merge last thinking
         if last_reasoning and response.tool_calls and not response.content:

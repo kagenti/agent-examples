@@ -558,6 +558,21 @@ def respond_to_user(response: str) -> str:
     return response
 
 
+@tool
+def step_done(summary: str) -> str:
+    """Signal that the current step is COMPLETE. Call this instead of
+    other tools when the step goal has been achieved and no more
+    tool calls are needed.
+
+    Args:
+        summary: Brief summary of what was accomplished in this step.
+
+    Returns:
+        The summary text.
+    """
+    return summary
+
+
 # ---------------------------------------------------------------------------
 # Graph builder
 # ---------------------------------------------------------------------------
@@ -634,6 +649,7 @@ def build_graph(
     core_tools = [shell_tool, file_read_tool, file_write_tool, grep_tool, glob_tool, web_fetch_tool]
     tools = core_tools + [
         make_explore_tool(workspace_path, llm),
+        step_done,
         # delegate disabled — causes crashes when agent can't resolve paths
         # make_delegate_tool(workspace_path, llm, context_id, core_tools, namespace),
     ]
