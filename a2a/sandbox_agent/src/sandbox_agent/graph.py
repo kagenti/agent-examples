@@ -645,13 +645,17 @@ def build_graph(
     planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool, respond_to_user]
 
     # SANDBOX_FORCE_TOOL_CHOICE=1 (wizard "Force Tool Calling" toggle):
-    # Forces tool_choice="any" which uses JSON schema constraint at the
-    # vLLM decoding level. Required for Llama 4 Scout — both explicit and
-    # implicit "auto" produce text-based tool calls (0/58 structured).
-    # Without the flag, uses implicit auto (model chooses text or tools).
+    # When forced: two-phase executor call:
+    #   Phase 1: llm_executor_reason (implicit auto) — produces text reasoning
+    #   Phase 2: llm_executor (tool_choice="any") — produces structured tool call
+    # When not forced: single-phase (implicit auto, model chooses text or tools)
     force_tools = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "0") == "1"
-    executor_tool_choice = {"tool_choice": "any"} if force_tools else {}
-    llm_executor = llm.bind_tools(tools, **executor_tool_choice)
+    if force_tools:
+        llm_executor = llm.bind_tools(tools, tool_choice="any")
+        llm_executor_reason = llm.bind_tools(tools)  # implicit auto for reasoning
+    else:
+        llm_executor = llm.bind_tools(tools)  # implicit auto
+        llm_executor_reason = None  # no two-phase needed
     llm_planner = llm.bind_tools(planner_tools)  # always auto
 
     # All nodes with tools use tool_choice="auto"
@@ -673,7 +677,7 @@ def build_graph(
         return await planner_node(state, llm_planner, budget=budget)
 
     async def _executor(state: SandboxState) -> dict[str, Any]:
-        return await executor_node(state, llm_executor, budget=budget)
+        return await executor_node(state, llm_executor, budget=budget, llm_reason=llm_executor_reason)
 
     async def _reflector(state: SandboxState) -> dict[str, Any]:
         return await reflector_node(state, llm_reflector, budget=budget)

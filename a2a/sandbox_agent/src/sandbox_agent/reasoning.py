@@ -785,8 +785,15 @@ async def executor_node(
     state: dict[str, Any],
     llm_with_tools: Any,
     budget: AgentBudget | None = None,
+    llm_reason: Any | None = None,
 ) -> dict[str, Any]:
-    """Execute the current plan step using the LLM with bound tools."""
+    """Execute the current plan step using the LLM with bound tools.
+
+    When ``llm_reason`` is provided (two-phase mode, force tool choice on):
+    1. Phase 1: call ``llm_reason`` (implicit auto) to get text reasoning
+    2. Phase 2: call ``llm_with_tools`` (tool_choice=any) with the reasoning
+       as context to get the structured tool call.
+    """
     if budget is None:
         budget = DEFAULT_BUDGET
     plan = state.get("plan", [])
@@ -861,26 +868,86 @@ async def executor_node(
     #   (which marks the boundary of this step's context).
 
     from sandbox_agent.context_builders import build_executor_context, invoke_llm
+    from langchain_core.messages import HumanMessage as HM
 
     messages = build_executor_context(state, system_content)
-    try:
-        response, capture = await invoke_llm(
-            llm_with_tools, messages,
-            node="executor", session_id=state.get("context_id", ""),
-            workspace_path=state.get("workspace_path", "/workspace"),
-        )
-    except Exception as exc:
-        if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
-                           extra={"session_id": state.get("context_id", ""), "node": "executor",
-                                  "current_step": current_step})
-            return {
-                "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
-                "current_step": current_step,
-                "done": True,
-                "_budget_summary": budget.summary(),
-            }
-        raise
+
+    # Two-phase executor when llm_reason is provided (force tool choice on):
+    # Phase 1: reasoning LLM (implicit auto) → text about what to do
+    # Phase 2: tool LLM (tool_choice="any") → structured tool call
+    reasoning_text = ""
+    if llm_reason is not None:
+        try:
+            reason_response, reason_capture = await invoke_llm(
+                llm_reason, messages,
+                node="executor-reason", session_id=state.get("context_id", ""),
+                workspace_path=state.get("workspace_path", "/workspace"),
+            )
+            reasoning_text = str(reason_response.content or "").strip()
+            budget.add_tokens(reason_capture.prompt_tokens + reason_capture.completion_tokens)
+
+            # If the reasoning LLM produced structured tool_calls (it can with auto),
+            # use them directly — no need for Phase 2
+            if reason_response.tool_calls:
+                logger.info(
+                    "Phase 1 produced structured tool_calls — skipping Phase 2",
+                    extra={"session_id": state.get("context_id", ""), "node": "executor",
+                           "current_step": current_step},
+                )
+                response = reason_response
+                capture = reason_capture
+            else:
+                # Phase 2: append reasoning as context, call with forced tool choice
+                phase2_messages = messages + [
+                    AIMessage(content=reasoning_text),
+                    HM(content="Now execute the action you described above. Call exactly ONE tool."),
+                ]
+                response, capture = await invoke_llm(
+                    llm_with_tools, phase2_messages,
+                    node="executor-tool", session_id=state.get("context_id", ""),
+                    workspace_path=state.get("workspace_path", "/workspace"),
+                )
+                # Merge token usage from both phases
+                capture.prompt_tokens += reason_capture.prompt_tokens
+                capture.completion_tokens += reason_capture.completion_tokens
+                logger.info(
+                    "Two-phase executor: reasoning=%d chars, tool_calls=%d",
+                    len(reasoning_text), len(response.tool_calls),
+                    extra={"session_id": state.get("context_id", ""), "node": "executor",
+                           "current_step": current_step},
+                )
+        except Exception as exc:
+            if _is_budget_exceeded_error(exc):
+                logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
+                               extra={"session_id": state.get("context_id", ""), "node": "executor",
+                                      "current_step": current_step})
+                return {
+                    "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
+                    "current_step": current_step,
+                    "done": True,
+                    "_budget_summary": budget.summary(),
+                }
+            raise
+    else:
+        # Single-phase: one LLM call with implicit auto
+        try:
+            response, capture = await invoke_llm(
+                llm_with_tools, messages,
+                node="executor", session_id=state.get("context_id", ""),
+                workspace_path=state.get("workspace_path", "/workspace"),
+            )
+        except Exception as exc:
+            if _is_budget_exceeded_error(exc):
+                logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
+                               extra={"session_id": state.get("context_id", ""), "node": "executor",
+                                      "current_step": current_step})
+                return {
+                    "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
+                    "current_step": current_step,
+                    "done": True,
+                    "_budget_summary": budget.summary(),
+                }
+            raise
 
     # Track no-tool executions — if the LLM produces text instead of
     # tool calls, increment counter. After 2 consecutive no-tool runs
@@ -892,6 +959,14 @@ async def executor_node(
     completion_tokens = capture.completion_tokens
     model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
+
+    # If two-phase reasoning produced text, merge it into the response content
+    # so the serializer includes it in the micro_reasoning event.
+    if reasoning_text and response.tool_calls and not response.content:
+        response = AIMessage(
+            content=reasoning_text,
+            tool_calls=response.tool_calls,
+        )
 
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),

@@ -308,9 +308,16 @@ class LLMCallCapture:
         return ""
 
     def _summarize_messages(self) -> list[dict[str, str]]:
-        """Summarize messages as {role, preview} dicts."""
+        """Summarize messages as {role, preview} dicts.
+
+        Skips the first SystemMessage since it's already shown as _system_prompt.
+        """
         result = []
+        skip_first_system = True
         for msg in self.messages:
+            if skip_first_system and isinstance(msg, SystemMessage):
+                skip_first_system = False
+                continue
             role = getattr(msg, "type", "unknown")
             content = getattr(msg, "content", "")
             if isinstance(content, list):
