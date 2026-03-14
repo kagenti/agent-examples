@@ -644,9 +644,11 @@ def build_graph(
     read_only_tools = [file_read_tool, grep_tool, glob_tool, respond_to_user]
     planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool, respond_to_user]
 
-    # Executor uses tool_choice="any" — MUST call tools (not produce text).
-    # Planner and reflector use "auto" — CAN choose not to call tools.
-    llm_executor = llm.bind_tools(tools, tool_choice="any")
+    # All nodes use implicit auto (tool_choice omitted from request).
+    # Per vllm-tool-choice-auto-issue.md: implicit auto gives best results
+    # for both Llama 4 Scout and Mistral. Model can produce text reasoning
+    # OR tool calls. Text-only responses route to reflector (step complete).
+    llm_executor = llm.bind_tools(tools)  # implicit auto — no tool_choice field
     llm_planner = llm.bind_tools(planner_tools)  # defaults to auto
 
     # All nodes with tools use tool_choice="auto"
