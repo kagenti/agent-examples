@@ -278,6 +278,11 @@ class LangGraphSerializer(FrameworkEventSerializer):
 
         # Emit thinking sub_events BEFORE the micro_reasoning
         sub_events = _v.get("_sub_events", [])
+        if sub_events:
+            logger.info("THINKING_EMIT: %d sub_events found in executor result", len(sub_events))
+        else:
+            logger.info("THINKING_EMIT: no _sub_events in executor result (keys: %s)",
+                        [k for k in _v.keys() if k.startswith("_")])
         for se in sub_events:
             thinking_event = {
                 "type": "thinking",
