@@ -225,9 +225,9 @@ class TestSubIndexContinuity:
                 f"Cycle {i}: tools nv={tool_nv} should match executor nv={exec_nv}"
             )
 
-        # Each executor visit should have a different node_visit
-        assert visits[0] != visits[1], (
-            f"Two executor cycles should have different node_visits: {visits}"
+        # Both executor re-entries in tool loop share the SAME node_visit
+        assert visits[0] == visits[1], (
+            f"Executor re-entries in tool loop should share visit: {visits}"
         )
 
 

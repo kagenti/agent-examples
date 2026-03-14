@@ -104,16 +104,21 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._event_counter = 0  # global sequence number for ordering
         self._node_visit = 0     # graph node visit counter (main sections)
         self._sub_index = 0      # position within current node visit
+        self._last_node_key: str = ""  # track previous node for visit grouping
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
         self._last_call_id: str = ""
 
     def serialize(self, key: str, value: dict) -> str:
-        # Node visit tracking: each non-tool node gets a new visit number.
-        # Tool nodes inherit the preceding executor/planner/reflector's visit.
+        # Node visit tracking:
+        # - Tool nodes (tools, planner_tools, reflector_tools) inherit parent visit
+        # - Same node type re-entering (executor→tools→executor) stays on same visit
+        # - Different node type (executor→reflector, reflector→planner) = new visit
         if key not in self._TOOL_NODES:
-            self._node_visit += 1
-            self._sub_index = 0  # reset sub-index for new visit
+            if key != self._last_node_key:
+                self._node_visit += 1
+                self._sub_index = 0
+            self._last_node_key = key
         # event_counter incremented per JSON line in post-processing.
 
         # Track actual plan step from state for step grouping

@@ -97,7 +97,7 @@ class TestNodeVisitField:
             )
 
     def test_sequential_visits_increment(self) -> None:
-        """Full flow: each non-tool node gets an incrementing visit number."""
+        """Full flow: different node types get incrementing visit numbers."""
         s = LangGraphSerializer()
         visits = []
 
@@ -118,20 +118,48 @@ class TestNodeVisitField:
         r = s.serialize("executor", {"messages": [msg]})
         visits.append(_get_non_legacy(_parse_lines(r))[0]["node_visit"])
 
-        # tools (should NOT increment)
+        # tools (should NOT increment — inherits executor's visit)
         tool_msg = _make_msg(content="ok", name="shell", tool_call_id="t1")
         r = s.serialize("tools", {"messages": [tool_msg]})
         tool_visit = _parse_lines(r)[0]["node_visit"]
 
-        # reflector
+        # executor again (same node type re-entering — stays on SAME visit)
+        msg2 = _make_msg(content="", tool_calls=[{"name": "shell", "args": {}, "id": "t2"}])
+        r = s.serialize("executor", {"messages": [msg2]})
+        exec2_visit = _get_non_legacy(_parse_lines(r))[0]["node_visit"]
+
+        # reflector (different node type — NEW visit)
         ref_msg = _make_msg(content="continue")
         r = s.serialize("reflector", {"done": False, "current_step": 0, "messages": [ref_msg]})
         visits.append(_get_non_legacy(_parse_lines(r))[0]["node_visit"])
 
-        # Visits should be [1, 2, 3, 4, 5] — monotonically increasing
+        # Visits: router=1, planner=2, step_selector=3, executor=4, reflector=5
         assert visits == [1, 2, 3, 4, 5], f"Visits should be sequential: {visits}"
-        # tools should match executor's visit
+        # tools inherits executor's visit
         assert tool_visit == 4, f"Tools visit should match executor (4), got {tool_visit}"
+        # executor re-entry stays on same visit (tool loop)
+        assert exec2_visit == 4, f"Executor re-entry should stay on visit 4, got {exec2_visit}"
+
+    def test_executor_tool_loop_same_visit(self) -> None:
+        """Multiple executor→tools→executor cycles share the same node_visit."""
+        s = LangGraphSerializer()
+        # Simulate: step_selector → executor → tools → executor → tools → executor
+
+        s.serialize("step_selector", {"current_step": 0, "plan_steps": [{"description": "A"}]})
+
+        executor_visits = []
+        for i in range(3):
+            msg = _make_msg(content="", tool_calls=[{"name": "shell", "args": {}, "id": f"t{i}"}])
+            r = s.serialize("executor", {"messages": [msg]})
+            executor_visits.append(_get_non_legacy(_parse_lines(r))[0]["node_visit"])
+
+            tool_msg = _make_msg(content=f"out{i}", name="shell", tool_call_id=f"t{i}")
+            s.serialize("tools", {"messages": [tool_msg]})
+
+        # All 3 executor calls should share the same node_visit
+        assert len(set(executor_visits)) == 1, (
+            f"All executor calls in tool loop should share one visit: {executor_visits}"
+        )
 
 
 # ---------------------------------------------------------------------------
