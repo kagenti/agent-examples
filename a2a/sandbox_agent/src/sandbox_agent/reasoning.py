@@ -698,7 +698,6 @@ async def executor_node(
     llm_with_tools: Any,
     budget: AgentBudget | None = None,
     llm_reason: Any | None = None,
-    tools: list | None = None,
 ) -> dict[str, Any]:
     """Execute the current plan step using the LLM with bound tools.
 
@@ -795,8 +794,6 @@ async def executor_node(
             workspace_path=state.get("workspace_path", "/workspace"),
             thinking_budget=THINKING_ITERATION_BUDGET,
             max_parallel_tool_calls=MAX_PARALLEL_TOOL_CALLS,
-            max_cycles=MAX_THINK_ACT_CYCLES,
-            tools=tools,
         )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
