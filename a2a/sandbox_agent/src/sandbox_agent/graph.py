@@ -153,6 +153,10 @@ class SandboxState(MessagesState):
     _prompt_messages: list[dict]
     _budget_summary: dict
     _no_tool_count: int
+    _sub_events: list[dict]
+    _last_tool_result: dict
+    _bound_tools: list[dict]
+    _llm_response: dict
     model: str
 
 
