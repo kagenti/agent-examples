@@ -701,7 +701,7 @@ def build_graph(
         return await planner_node(state, llm_planner, budget=budget)
 
     async def _executor(state: SandboxState) -> dict[str, Any]:
-        return await executor_node(state, llm_executor, budget=budget, llm_reason=llm_executor_reason)
+        return await executor_node(state, llm_executor, budget=budget, llm_reason=llm_executor_reason, tools=tools)
 
     async def _reflector(state: SandboxState) -> dict[str, Any]:
         return await reflector_node(state, llm_reflector, budget=budget)

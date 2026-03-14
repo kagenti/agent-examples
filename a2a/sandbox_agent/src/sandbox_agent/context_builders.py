@@ -687,6 +687,14 @@ async def invoke_with_tool_loop(
             # No tools to execute or last cycle — return response
             break
 
+    # If we executed tools internally, strip tool_calls from final response
+    # so the graph doesn't try to re-execute them via ToolNode
+    if tool_map and max_cycles > 1 and response.tool_calls:
+        last_content = str(response.content or "")
+        if not last_content:
+            last_content = f"Completed {cycle + 1} think-act cycles."
+        response = AIMessage(content=last_content)
+
     # Update total_iterations on all thinking sub_events
     thinking_events = [e for e in sub_events if e.get("type") == "thinking"]
     total_iters = len(thinking_events)
