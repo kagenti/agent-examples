@@ -1074,11 +1074,16 @@ async def executor_node(
                 logger.warning("Executor failed to call tools after 2 attempts — marking step failed",
                                extra={"session_id": state.get("context_id", ""), "node": "executor",
                                       "current_step": current_step, "tool_call_count": 0})
+                # Keep the actual LLM response (with text reasoning) for the UI.
+                # Append failure note but preserve the model's output for micro_reasoning.
+                actual_content = str(response.content or "")
+                failure_note = f"\n\n[Step {current_step + 1} failed: executor could not call tools after 2 attempts.]"
                 return {
-                    "messages": [AIMessage(content=f"Step {current_step + 1} failed: executor could not call tools after 2 attempts.")],
+                    "messages": [AIMessage(content=actual_content + failure_note)],
                     "current_step": current_step,
                     "done": True if current_step + 1 >= len(plan) else False,
                     "_no_tool_count": 0,
+                    **capture.debug_fields(),
                 }
     else:
         no_tool_count = 0  # reset on successful tool call
