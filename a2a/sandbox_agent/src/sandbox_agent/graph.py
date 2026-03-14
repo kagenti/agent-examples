@@ -784,10 +784,11 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
             "skill_instructions": f"STEP BRIEF FROM COORDINATOR:\n{brief}\n\n---\n",
         }
         if _DEBUG_PROMPTS:
-            from sandbox_agent.reasoning import _format_llm_response
+            from sandbox_agent.context_builders import LLMCallCapture
             result["_system_prompt"] = prompt[:10000]
             if response:
-                result["_llm_response"] = _format_llm_response(response)
+                capture = LLMCallCapture(response=response)
+                result["_llm_response"] = capture._format_response()
         return result
 
     # -- Safe ToolNode wrappers — never crash the graph ----------------------
