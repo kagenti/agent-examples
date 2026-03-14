@@ -278,26 +278,45 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts = []
         _v = value or {}
 
-        # Emit thinking sub_events BEFORE the micro_reasoning
+        # Emit sub_events: thinking iterations, tool calls, tool results
         sub_events = _v.get("_sub_events", [])
         for se in sub_events:
-            thinking_event = {
-                "type": "thinking",
-                "loop_id": self._loop_id,
-                "iteration": se.get("iteration", 1),
-                "total_iterations": se.get("total_iterations", 1),
-                "reasoning": se.get("reasoning", "")[:50000],
-                "node": se.get("node", "executor"),
-                "model": se.get("model", ""),
-                "prompt_tokens": se.get("prompt_tokens", 0),
-                "completion_tokens": se.get("completion_tokens", 0),
-            }
-            # Include prompt debug data for the PromptInspector
-            for field in ("_system_prompt", "_prompt_messages", "_bound_tools", "_llm_response"):
-                if field in se:
-                    # Strip leading underscore for the event field name
-                    thinking_event[field.lstrip("_")] = se[field]
-            parts.append(json.dumps(thinking_event))
+            se_type = se.get("type", "")
+            if se_type == "thinking":
+                thinking_event = {
+                    "type": "thinking",
+                    "loop_id": self._loop_id,
+                    "cycle": se.get("cycle", 1),
+                    "iteration": se.get("iteration", 1),
+                    "total_iterations": se.get("total_iterations", 1),
+                    "reasoning": se.get("reasoning", "")[:50000],
+                    "node": se.get("node", "executor"),
+                    "model": se.get("model", ""),
+                    "prompt_tokens": se.get("prompt_tokens", 0),
+                    "completion_tokens": se.get("completion_tokens", 0),
+                }
+                for field in ("_system_prompt", "_prompt_messages", "_bound_tools", "_llm_response"):
+                    if field in se:
+                        thinking_event[field.lstrip("_")] = se[field]
+                parts.append(json.dumps(thinking_event))
+            elif se_type == "tool_call":
+                parts.append(json.dumps({
+                    "type": "tool_call",
+                    "loop_id": self._loop_id,
+                    "call_id": se.get("call_id", ""),
+                    "cycle": se.get("cycle", 1),
+                    "tools": se.get("tools", []),
+                }))
+            elif se_type == "tool_result":
+                parts.append(json.dumps({
+                    "type": "tool_result",
+                    "loop_id": self._loop_id,
+                    "call_id": se.get("call_id", ""),
+                    "cycle": se.get("cycle", 1),
+                    "name": se.get("name", "unknown"),
+                    "output": se.get("output", "")[:2000],
+                    "status": se.get("status", "success"),
+                }))
 
         self._micro_step += 1
 

@@ -646,6 +646,20 @@ async def invoke_with_tool_loop(
 
         # --- Execute tools if we have them and there are tool calls ---
         if response.tool_calls and tool_map and max_cycles > 1:
+            # Emit tool_call sub_event BEFORE execution (so UI shows the call)
+            import uuid as _uuid
+            call_id = str(_uuid.uuid4())[:8]
+            sub_events.append({
+                "type": "tool_call",
+                "node": node,
+                "cycle": cycle + 1,
+                "call_id": call_id,
+                "tools": [
+                    {"name": tc.get("name", "?"), "args": tc.get("args", {})}
+                    for tc in response.tool_calls
+                ],
+            })
+
             # Execute all tool calls in parallel via asyncio.gather
             async def _run_tool(tc: dict) -> ToolMessage:
                 name = tc.get("name", "unknown")
@@ -666,15 +680,23 @@ async def invoke_with_tool_loop(
             cycle_messages.append(response)
             cycle_messages.extend(tool_results)
 
-            # Emit tool execution info as sub_events
+            # Emit tool_result sub_events AFTER execution (so UI shows results)
             for tm in tool_results:
+                content_str = str(getattr(tm, "content", ""))
+                import re as _re
+                exit_match = _re.search(r"EXIT_CODE:\s*(\d+)", content_str)
+                is_error = (
+                    (exit_match is not None and exit_match.group(1) != "0")
+                    or content_str.startswith("Error:")
+                )
                 sub_events.append({
                     "type": "tool_result",
                     "node": node,
                     "cycle": cycle + 1,
+                    "call_id": call_id,
                     "name": getattr(tm, "name", "unknown"),
-                    "output": str(getattr(tm, "content", ""))[:500],
-                    "status": "error" if str(getattr(tm, "content", "")).startswith("Error:") else "success",
+                    "output": content_str[:2000],
+                    "status": "error" if is_error else "success",
                 })
 
             logger.info(
