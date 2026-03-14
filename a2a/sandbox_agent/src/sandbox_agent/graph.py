@@ -644,13 +644,15 @@ def build_graph(
     read_only_tools = [file_read_tool, grep_tool, glob_tool, respond_to_user]
     planner_tools = [file_read_tool, grep_tool, glob_tool, file_write_tool, respond_to_user]
 
-    # Executor uses tool_choice="any" (required) — forces structured tool_calls.
-    # TESTED: Both explicit and implicit "auto" fail with Llama 4 Scout on
-    # vLLM — model writes tool calls as text in content instead of structured
-    # API calls (0/58 events had tool_calls). "any" forces JSON schema
-    # constraint at the decoding level, bypassing vLLM's parser entirely.
-    llm_executor = llm.bind_tools(tools, tool_choice="any")
-    llm_planner = llm.bind_tools(planner_tools)  # defaults to auto
+    # SANDBOX_FORCE_TOOL_CHOICE=1 (wizard "Force Tool Calling" toggle):
+    # Forces tool_choice="any" which uses JSON schema constraint at the
+    # vLLM decoding level. Required for Llama 4 Scout — both explicit and
+    # implicit "auto" produce text-based tool calls (0/58 structured).
+    # Without the flag, uses implicit auto (model chooses text or tools).
+    force_tools = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "0") == "1"
+    executor_tool_choice = {"tool_choice": "any"} if force_tools else {}
+    llm_executor = llm.bind_tools(tools, **executor_tool_choice)
+    llm_planner = llm.bind_tools(planner_tools)  # always auto
 
     # All nodes with tools use tool_choice="auto"
     llm_reflector = llm.bind_tools(read_only_tools)  # read-only for verification
