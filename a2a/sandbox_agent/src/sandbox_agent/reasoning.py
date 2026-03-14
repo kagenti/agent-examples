@@ -1337,16 +1337,21 @@ async def reflector_node(
         if next_step < len(plan_steps):
             plan_steps[next_step] = {**plan_steps[next_step], "status": "running"}
         if next_step >= len(plan):
+            # All steps done — route to done (reporter will summarize).
+            # Mark all steps done.
+            for i in range(len(plan_steps)):
+                if plan_steps[i].get("status") not in ("done", "failed", "skipped"):
+                    plan_steps[i] = {**plan_steps[i], "status": "done"}
             logger.info(
-                "All %d planned steps completed — routing to planner for reassessment",
+                "All %d planned steps completed — routing to reporter",
                 len(plan),
                 extra={"session_id": state.get("context_id", ""), "node": "reflector",
-                       "decision": "continue", "current_step": current_step},
+                       "decision": "done", "current_step": current_step},
             )
             return {
                 **base_result,
                 "plan_steps": plan_steps,
-                "done": False,
+                "done": True,
                 "replan_count": replan_count,
                 "_tool_call_count": 0,
             }
