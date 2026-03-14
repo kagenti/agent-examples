@@ -886,36 +886,25 @@ async def executor_node(
             reasoning_text = str(reason_response.content or "").strip()
             budget.add_tokens(reason_capture.prompt_tokens + reason_capture.completion_tokens)
 
-            # If the reasoning LLM produced structured tool_calls (it can with auto),
-            # use them directly — no need for Phase 2
-            if reason_response.tool_calls:
-                logger.info(
-                    "Phase 1 produced structured tool_calls — skipping Phase 2",
-                    extra={"session_id": state.get("context_id", ""), "node": "executor",
-                           "current_step": current_step},
-                )
-                response = reason_response
-                capture = reason_capture
-            else:
-                # Phase 2: append reasoning as context, call with forced tool choice
-                phase2_messages = messages + [
-                    AIMessage(content=reasoning_text),
-                    HM(content="Now execute the action you described above. Call exactly ONE tool."),
-                ]
-                response, capture = await invoke_llm(
-                    llm_with_tools, phase2_messages,
-                    node="executor-tool", session_id=state.get("context_id", ""),
-                    workspace_path=state.get("workspace_path", "/workspace"),
-                )
-                # Merge token usage from both phases
-                capture.prompt_tokens += reason_capture.prompt_tokens
-                capture.completion_tokens += reason_capture.completion_tokens
-                logger.info(
-                    "Two-phase executor: reasoning=%d chars, tool_calls=%d",
-                    len(reasoning_text), len(response.tool_calls),
-                    extra={"session_id": state.get("context_id", ""), "node": "executor",
-                           "current_step": current_step},
-                )
+            # Phase 2: append reasoning as context, call with forced tool choice
+            phase2_messages = messages + [
+                AIMessage(content=reasoning_text or "I need to call a tool for this step."),
+                HM(content="Now execute the action you described above. Call exactly ONE tool."),
+            ]
+            response, capture = await invoke_llm(
+                llm_with_tools, phase2_messages,
+                node="executor-tool", session_id=state.get("context_id", ""),
+                workspace_path=state.get("workspace_path", "/workspace"),
+            )
+            # Merge token usage from both phases
+            capture.prompt_tokens += reason_capture.prompt_tokens
+            capture.completion_tokens += reason_capture.completion_tokens
+            logger.info(
+                "Two-phase executor: reasoning=%d chars, tool_calls=%d",
+                len(reasoning_text), len(response.tool_calls),
+                extra={"session_id": state.get("context_id", ""), "node": "executor",
+                       "current_step": current_step},
+            )
         except Exception as exc:
             if _is_budget_exceeded_error(exc):
                 logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,

@@ -652,7 +652,7 @@ def build_graph(
     force_tools = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "0") == "1"
     if force_tools:
         llm_executor = llm.bind_tools(tools, tool_choice="any")
-        llm_executor_reason = llm.bind_tools(tools)  # implicit auto for reasoning
+        llm_executor_reason = llm  # bare LLM, NO tools — forces text output
     else:
         llm_executor = llm.bind_tools(tools)  # implicit auto
         llm_executor_reason = None  # no two-phase needed
