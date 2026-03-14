@@ -590,7 +590,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         completion_tokens = value.get("completion_tokens", 0)
         prompt_data = self._extract_prompt_data(value)
 
-        return json.dumps({
+        payload = {
             "type": "reporter_output",
             "loop_id": self._loop_id,
             "content": final_answer[:2000],
@@ -598,7 +598,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
             "prompt_tokens": prompt_tokens,
             "completion_tokens": completion_tokens,
             **prompt_data,
-        })
+        }
+
+        files_touched = value.get("files_touched", [])
+        if files_touched:
+            payload["files_touched"] = files_touched[:30]
+
+        return json.dumps(payload)
 
     @staticmethod
     def _extract_decision(text: str) -> str:

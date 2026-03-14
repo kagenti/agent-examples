@@ -370,7 +370,7 @@ class TestReflectorContext:
 
     @pytest.mark.asyncio
     async def test_reflector_sees_limited_history(self) -> None:
-        """Reflector should see at most last 3 AI→Tool pairs."""
+        """Reflector should see at most last 10 AI→Tool pairs."""
         # Build long message history
         messages: list = [HumanMessage(content="user request")]
         messages.append(AIMessage(content="Plan: 1. A\n2. B\n3. C"))
@@ -394,10 +394,10 @@ class TestReflectorContext:
 
         # Reflector should NOT send all 20+ messages to the LLM
         total = len(llm.last_messages)
-        # System + at most 6 messages (3 AI→Tool pairs) + maybe step summary
-        assert total <= 10, (
-            f"Reflector sent {total} messages to LLM — should be ≤10 "
-            f"(system + last 3 AI→Tool pairs)"
+        # System + at most 20 messages (10 AI→Tool pairs) + maybe step summary
+        assert total <= 22, (
+            f"Reflector sent {total} messages to LLM — should be ≤22 "
+            f"(system + last 10 AI→Tool pairs)"
         )
 
     @pytest.mark.asyncio
@@ -874,7 +874,7 @@ class TestBuildReflectorContext:
                 f"Reflector should only see AIMessages with tool_calls, got: {ai.content[:50]}"
             )
 
-    def test_max_3_pairs(self) -> None:
+    def test_max_10_pairs(self) -> None:
         from sandbox_agent.context_builders import build_reflector_context
 
         messages: list = [HumanMessage(content="user")]
@@ -887,9 +887,9 @@ class TestBuildReflectorContext:
         state = _base_state(messages=messages)
         msgs = build_reflector_context(state, "System prompt")
 
-        # Should have at most 3 pairs + SystemMessage = 7 messages
+        # Should have at most 10 pairs + SystemMessage = 21 messages
         ai_count = sum(1 for m in msgs if isinstance(m, AIMessage))
-        assert ai_count <= 3
+        assert ai_count <= 10
 
 
 class TestBuildExecutorContext:

@@ -688,8 +688,8 @@ async def planner_node(
 
 
 MAX_THINK_ACT_CYCLES = int(_os.environ.get("SANDBOX_MAX_THINK_ACT_CYCLES",
-                                             _os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP", "10")))
-THINKING_ITERATION_BUDGET = int(_os.environ.get("SANDBOX_THINKING_ITERATION_BUDGET", "5"))
+                                             _os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP", "20")))
+THINKING_ITERATION_BUDGET = int(_os.environ.get("SANDBOX_THINKING_ITERATION_BUDGET", "2"))
 MAX_PARALLEL_TOOL_CALLS = int(_os.environ.get("SANDBOX_MAX_PARALLEL_TOOL_CALLS", "5"))
 
 
@@ -736,6 +736,8 @@ async def executor_node(
         }
         if _DEBUG_PROMPTS:
             result["_system_prompt"] = f"[Think-act cycle limit reached — no LLM call]\nStep {current_step + 1}: {tool_call_count}/{MAX_THINK_ACT_CYCLES} cycles"
+            result["_prompt_messages"] = [{"role": "system", "preview": f"Step {current_step + 1} cycle limit ({tool_call_count}/{MAX_THINK_ACT_CYCLES})"}]
+            result["_llm_response"] = "[no LLM call — cycle limit]"
         return result
 
     step_text = plan[current_step]
@@ -766,6 +768,8 @@ async def executor_node(
         }
         if _DEBUG_PROMPTS:
             result["_system_prompt"] = f"[Budget exceeded — no LLM call]\n{budget.exceeded_reason}"
+            result["_prompt_messages"] = [{"role": "system", "preview": f"Budget exceeded: {budget.exceeded_reason}"}]
+            result["_llm_response"] = "[no LLM call — budget exceeded]"
         return result
 
     # Step-scoped message context for the executor.
@@ -1128,6 +1132,31 @@ async def reflector_node(
     remaining = [f"{i+1}. {plan[i]}" for i in range(current_step + 1, len(plan))]
     remaining_text = ", ".join(remaining[:5]) if remaining else "NONE — all steps complete"
 
+    # Build step execution summary for reflector context
+    step_tool_calls = 0
+    step_tools_used: set[str] = set()
+    step_errors = 0
+    for msg in messages:
+        content = str(getattr(msg, "content", ""))
+        if isinstance(msg, SystemMessage) and content.startswith(f"[STEP_BOUNDARY {current_step}]"):
+            step_tool_calls = 0
+            step_tools_used = set()
+            step_errors = 0
+            continue
+        if isinstance(msg, AIMessage) and getattr(msg, "tool_calls", None):
+            for tc in msg.tool_calls:
+                step_tool_calls += 1
+                name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+                step_tools_used.add(name)
+        if isinstance(msg, ToolMessage):
+            if "EXIT_CODE:" in content and "EXIT_CODE: 0" not in content:
+                step_errors += 1
+
+    step_summary = (
+        f"Step execution summary: {step_tool_calls} tool calls using {', '.join(sorted(step_tools_used)) or 'none'}, "
+        f"{step_errors} errors"
+    )
+
     system_content = _safe_format(
         _REFLECTOR_SYSTEM,
         plan_text=plan_text,
@@ -1143,6 +1172,7 @@ async def reflector_node(
         recent_decisions=recent_str,
         replan_history=replan_history_text,
     )
+    system_content = step_summary + "\n\n" + system_content
     from sandbox_agent.context_builders import build_reflector_context, invoke_llm
 
     reflect_messages = build_reflector_context(state, system_content)
@@ -1334,6 +1364,7 @@ async def reporter_node(
     state: dict[str, Any],
     llm: Any,
     budget: AgentBudget | None = None,
+    llm_reason: Any | None = None,
 ) -> dict[str, Any]:
     """Format accumulated step results into a final answer.
 
@@ -1342,6 +1373,10 @@ async def reporter_node(
     - Stall/budget forced done → ``"failed"`` (with ``awaiting_continue``
       so user/looper can retry)
     - Plan steps remain → ``"awaiting_continue"``
+
+    When ``llm_reason`` is provided, uses ``invoke_with_tool_loop`` for
+    thinking iterations and read-only tool calls (file verification).
+    Falls back to single ``invoke_llm`` when ``llm_reason`` is None.
     """
     if budget is None:
         budget = DEFAULT_BUDGET
@@ -1418,33 +1453,73 @@ async def reporter_node(
         m for m in state["messages"]
         if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
     ]
-    from sandbox_agent.context_builders import invoke_llm
-
     reporter_messages = [SystemMessage(content=system_content)] + filtered_msgs
 
-    try:
-        response, capture = await invoke_llm(
-            llm, reporter_messages,
-            node="reporter", session_id=state.get("context_id", ""),
-            workspace_path=state.get("workspace_path", "/workspace"),
-        )
-    except Exception as exc:
-        if _is_budget_exceeded_error(exc):
-            logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc,
-                           extra={"session_id": state.get("context_id", ""), "node": "reporter"})
-            return {
-                "messages": [AIMessage(content="Task completed (budget exhausted before final summary).")],
-                "final_answer": "Task completed (budget exhausted before final summary).",
-                "plan_status": terminal_status,
-                "done": True,
-                "_budget_summary": budget.summary(),
-            }
-        raise
+    # Use invoke_with_tool_loop when llm_reason is available (thinking mode),
+    # otherwise fall back to single invoke_llm call.
+    sub_events: list[dict[str, Any]] = []
+    if llm_reason is not None:
+        from sandbox_agent.context_builders import invoke_with_tool_loop
+
+        try:
+            response, capture, sub_events = await invoke_with_tool_loop(
+                llm, llm_reason, reporter_messages,
+                node="reporter", session_id=state.get("context_id", ""),
+                workspace_path=state.get("workspace_path", "/workspace"),
+                thinking_budget=2,
+                max_parallel_tool_calls=3,
+            )
+        except Exception as exc:
+            if _is_budget_exceeded_error(exc):
+                logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc,
+                               extra={"session_id": state.get("context_id", ""), "node": "reporter"})
+                return {
+                    "messages": [AIMessage(content="Task completed (budget exhausted before final summary).")],
+                    "final_answer": "Task completed (budget exhausted before final summary).",
+                    "plan_status": terminal_status,
+                    "done": True,
+                    "_budget_summary": budget.summary(),
+                }
+            raise
+    else:
+        from sandbox_agent.context_builders import invoke_llm
+
+        try:
+            response, capture = await invoke_llm(
+                llm, reporter_messages,
+                node="reporter", session_id=state.get("context_id", ""),
+                workspace_path=state.get("workspace_path", "/workspace"),
+            )
+        except Exception as exc:
+            if _is_budget_exceeded_error(exc):
+                logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc,
+                               extra={"session_id": state.get("context_id", ""), "node": "reporter"})
+                return {
+                    "messages": [AIMessage(content="Task completed (budget exhausted before final summary).")],
+                    "final_answer": "Task completed (budget exhausted before final summary).",
+                    "plan_status": terminal_status,
+                    "done": True,
+                    "_budget_summary": budget.summary(),
+                }
+            raise
 
     prompt_tokens = capture.prompt_tokens
     completion_tokens = capture.completion_tokens
     model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
+
+    # Handle respond_to_user escape tool (Llama 4 Scout always calls tools)
+    escaped = _intercept_respond_to_user(response, "Reporter")
+    if escaped is not None:
+        response = escaped
+    elif getattr(response, 'tool_calls', None):
+        # Response has real tool calls — return to graph for tool execution
+        return {
+            "messages": [response],
+            **capture.token_fields(),
+            "_budget_summary": budget.summary(),
+            **capture.debug_fields(),
+        }
 
     content = response.content
     if isinstance(content, list):
@@ -1454,6 +1529,24 @@ async def reporter_node(
         )
     else:
         text = str(content)
+
+    # Extract files touched from tool call history
+    files_touched: list[str] = []
+    for msg in state.get("messages", []):
+        for tc in getattr(msg, "tool_calls", []) or []:
+            name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
+            args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
+            if name in ("file_write", "file_read"):
+                path = args.get("path", "")
+                if path and path not in files_touched:
+                    files_touched.append(path)
+            elif name == "shell":
+                cmd = args.get("command", "")
+                # Extract file paths from common shell patterns
+                import re as _re
+                for match in _re.findall(r'(?:>|>>|tee)\s+(\S+)', cmd):
+                    if match not in files_touched:
+                        files_touched.append(match)
 
     logger.info("Reporter: plan_status=%s (done=%d, failed=%d, total=%d)",
                 terminal_status,
@@ -1466,10 +1559,13 @@ async def reporter_node(
         "messages": [response],
         "final_answer": text,
         "plan_status": terminal_status,
+        "files_touched": files_touched[:30],  # cap at 30 files
         **capture.token_fields(),
         "_budget_summary": budget.summary(),
         **capture.debug_fields(),
     }
+    if sub_events:
+        result["_sub_events"] = sub_events
     if store:
         result["_plan_store"] = store
     return result

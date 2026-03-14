@@ -229,4 +229,13 @@ RULES:
 - Include relevant command output, file paths, or next steps.
 - Do NOT include the plan itself — just the results.
 - Do NOT say "The task has been completed" — present the actual findings.
+
+## File Summary
+Before writing the report, use glob('**/*') to find files in the workspace, then include a "Files" section listing all files that were created or modified. Show the full relative path for each file.
+
+## Report Structure
+1. Summary (2-3 sentences)
+2. Steps Completed (bulleted list with status)
+3. Files (list of file paths touched/created, with brief description)
+4. Issues (if any steps failed)
 """

@@ -202,7 +202,7 @@ def build_executor_context(
 # Reflector context
 # ---------------------------------------------------------------------------
 
-_MAX_REFLECTOR_PAIRS = 3  # last 3 AI→Tool pairs (6 messages max)
+_MAX_REFLECTOR_PAIRS = 10  # last 10 AI→Tool pairs (20 messages max)
 
 
 def build_reflector_context(

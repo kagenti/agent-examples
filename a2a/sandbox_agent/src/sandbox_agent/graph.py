@@ -159,6 +159,7 @@ class SandboxState(MessagesState):
     _bound_tools: list[dict]
     _llm_response: dict
     _plan_store: dict
+    files_touched: list[str]
     model: str
 
 
@@ -682,6 +683,7 @@ def build_graph(
 
     # All nodes with tools use tool_choice="auto"
     llm_reflector = llm.bind_tools(read_only_tools)  # read-only for verification
+    llm_reporter = llm.bind_tools(read_only_tools)  # read-only for file verification
 
     # ToolNodes for each node's tool subset
     _executor_tool_node = ToolNode(tools)
@@ -705,7 +707,10 @@ def build_graph(
         return await reflector_node(state, llm_reflector, budget=budget)
 
     async def _reporter(state: SandboxState) -> dict[str, Any]:
-        return await reporter_node(state, llm, budget=budget)
+        return await reporter_node(
+            state, llm_reporter, budget=budget,
+            llm_reason=llm_executor_reason,
+        )
 
     async def _step_selector(state: SandboxState) -> dict[str, Any]:
         """Pick the next step and prepare focused context for the executor.
@@ -824,6 +829,10 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
         if _DEBUG_PROMPTS:
             from sandbox_agent.context_builders import LLMCallCapture
             result["_system_prompt"] = prompt[:10000]
+            result["_prompt_messages"] = [
+                {"role": "system", "preview": "Step coordinator brief prompt"},
+                {"role": "human", "preview": prompt[:500]},
+            ]
             if response:
                 capture = LLMCallCapture(response=response)
                 result["_llm_response"] = capture._format_response()
@@ -862,9 +871,12 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
                 return {"messages": error_msgs}
         return _safe
 
+    _reporter_tool_node = ToolNode(read_only_tools)
+
     _safe_executor_tools = _make_safe_tool_wrapper(_executor_tool_node, "executor")
     _safe_planner_tools = _make_safe_tool_wrapper(_planner_tool_node, "planner")
     _safe_reflector_tools = _make_safe_tool_wrapper(_reflector_tool_node, "reflector")
+    _safe_reporter_tools = _make_safe_tool_wrapper(_reporter_tool_node, "reporter")
 
     # -- Assemble graph -----------------------------------------------------
     #
@@ -894,6 +906,7 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
     graph.add_node("reflector", _reflector)
     graph.add_node("reflector_tools", _safe_reflector_tools)
     graph.add_node("reporter", _reporter)
+    graph.add_node("reporter_tools", _safe_reporter_tools)
 
     # Entry: router decides resume vs plan
     graph.set_entry_point("router")
@@ -936,6 +949,12 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
         route_reflector,
         {"done": "reporter", "execute": "step_selector", "replan": "planner"},
     )
-    graph.add_edge("reporter", "__end__")
+    # Reporter can call tools (file verification) or go to end
+    graph.add_conditional_edges(
+        "reporter",
+        tools_condition,
+        {"tools": "reporter_tools", "__end__": "__end__"},
+    )
+    graph.add_edge("reporter_tools", "reporter")
 
     return graph.compile(checkpointer=checkpointer)
