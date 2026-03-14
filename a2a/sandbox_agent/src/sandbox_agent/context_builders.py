@@ -267,6 +267,7 @@ class LLMCallCapture:
     prompt_tokens: int = 0
     completion_tokens: int = 0
     model: str = ""
+    bound_tools: list = field(default_factory=list)  # tool schemas sent to LLM
 
     # -- Convenience methods for node result dicts -------------------------
 
@@ -280,11 +281,14 @@ class LLMCallCapture:
         """
         if not _DEBUG_PROMPTS:
             return {}
-        return {
+        result: dict[str, Any] = {
             "_system_prompt": self._system_prompt()[:10000],
             "_prompt_messages": self._summarize_messages(),
             "_llm_response": self._format_response(),
         }
+        if self.bound_tools:
+            result["_bound_tools"] = self.bound_tools[:50]
+        return result
 
     def token_fields(self) -> dict[str, Any]:
         """Return token usage fields for the node result dict."""
@@ -382,6 +386,26 @@ class LLMCallCapture:
             return {"error": "Failed to format response"}
 
 
+def _extract_bound_tools(llm: Any) -> list[dict[str, Any]]:
+    """Extract tool schemas from a LangChain RunnableBinding."""
+    try:
+        tools = getattr(llm, "kwargs", {}).get("tools", [])
+        if not tools:
+            first = getattr(llm, "first", None)
+            if first:
+                tools = getattr(first, "kwargs", {}).get("tools", [])
+        result = []
+        for t in tools[:50]:
+            if isinstance(t, dict):
+                fn = t.get("function", t)
+                result.append({"name": fn.get("name", "?"), "description": fn.get("description", "")[:100]})
+            elif hasattr(t, "name"):
+                result.append({"name": t.name, "description": getattr(t, "description", "")[:100]})
+        return result
+    except Exception:
+        return []
+
+
 async def invoke_llm(
     llm: Any,
     messages: list[BaseMessage],
@@ -432,12 +456,16 @@ async def invoke_llm(
     completion_tokens = usage.get("output_tokens", 0) or usage.get("completion_tokens", 0)
     model_name = (getattr(response, "response_metadata", None) or {}).get("model", "")
 
+    # Extract bound tools from the LLM (RunnableBinding stores them in kwargs)
+    bound_tools = _extract_bound_tools(llm)
+
     capture = LLMCallCapture(
         messages=list(messages),
         response=response,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
         model=model_name,
+        bound_tools=bound_tools,
     )
 
     logger.info(

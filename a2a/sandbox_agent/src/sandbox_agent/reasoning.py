@@ -1052,7 +1052,6 @@ async def executor_node(
         "completion_tokens": completion_tokens,
         "_budget_summary": budget.summary(),
         **capture.debug_fields(),
-        **({"_bound_tools": _summarize_bound_tools(llm_with_tools)} if _DEBUG_PROMPTS else {}),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
         **({"_last_tool_result": _last_tool_result} if _last_tool_result else {}),
