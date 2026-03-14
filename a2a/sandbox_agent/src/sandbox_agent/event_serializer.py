@@ -210,21 +210,12 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 if "step" not in evt:
                     cs = evt.get("current_step")
                     evt["step"] = (cs + 1) if cs is not None else self._step_index
-                # Assign unique event_index per line (legacy types share with counterpart)
                 event_type = evt.get("type", "?")
-                if event_type in ("plan", "plan_step", "reflection"):
-                    evt["event_index"] = self._event_counter
-                else:
-                    self._event_counter += 1
-                    evt["event_index"] = self._event_counter
-                # Node visit + sub_index for UI section grouping
+                self._event_counter += 1
+                evt["event_index"] = self._event_counter
                 evt["node_visit"] = self._node_visit
-                if event_type not in ("plan", "plan_step", "reflection"):
-                    evt["sub_index"] = self._sub_index
-                    self._sub_index += 1
-                else:
-                    # Legacy types share sub_index with counterpart
-                    evt["sub_index"] = max(0, self._sub_index - 1)
+                evt["sub_index"] = self._sub_index
+                self._sub_index += 1
                 enriched_lines.append(json.dumps(evt))
             except json.JSONDecodeError:
                 enriched_lines.append(line)
@@ -313,8 +304,6 @@ class LangGraphSerializer(FrameworkEventSerializer):
             **prompt_data,
         }
         parts.append(json.dumps(step_payload))
-        # Legacy alias for backward compatibility
-        parts.append(json.dumps(dict(step_payload, type="plan_step")))
 
         if tool_calls:
             # Use LangGraph's tool_call_id for proper pairing with tool_result
@@ -477,9 +466,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             **prompt_data,
         }
 
-        # Emit new type + legacy type for backward compatibility
-        legacy = dict(payload, type="plan")
-        return "\n".join([json.dumps(payload), json.dumps(legacy)])
+        return json.dumps(payload)
 
     def _serialize_reflector(self, value: dict) -> str:
         """Serialize a reflector node output — emits reflector_decision + legacy reflection."""
@@ -541,18 +528,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
             **prompt_data,
         }
 
-        # Emit new type + legacy type for backward compatibility
-        legacy = {
-            "type": "reflection",
-            "loop_id": self._loop_id,
-            "done": done,
-            "current_step": current_step,
-            "assessment": text,
-            "content": text,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
-        }
-        return "\n".join([json.dumps(payload), json.dumps(legacy)])
+        return json.dumps(payload)
 
     def _serialize_reporter(self, value: dict) -> str:
         """Serialize a reporter node output — emits reporter_output."""

@@ -66,18 +66,6 @@ class TestPlannerEvents:
         assert new_event["steps"] == ["List files", "Read config"]
         assert new_event["iteration"] == 1
 
-    def test_planner_emits_legacy_plan_type(self) -> None:
-        s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": ["Step A"],
-            "iteration": 2,
-            "messages": [],
-        })
-        events = _parse_lines(result)
-        legacy = events[1]
-        assert legacy["type"] == "plan"
-        assert legacy["steps"] == ["Step A"]
-        assert legacy["iteration"] == 2
 
     def test_planner_includes_loop_id(self) -> None:
         s = LangGraphSerializer(loop_id="test-loop")
@@ -164,13 +152,6 @@ class TestExecutorEvents:
         types = [e["type"] for e in events]
         assert "executor_step" in types
 
-    def test_executor_emits_legacy_plan_step(self) -> None:
-        s = LangGraphSerializer()
-        msg = _make_msg(content="Working on step")
-        result = s.serialize("executor", {"messages": [msg]})
-        events = _parse_lines(result)
-        types = [e["type"] for e in events]
-        assert "plan_step" in types
 
     def test_executor_tool_call_events(self) -> None:
         s = LangGraphSerializer()
@@ -182,7 +163,6 @@ class TestExecutorEvents:
         events = _parse_lines(result)
         types = [e["type"] for e in events]
         assert "executor_step" in types
-        assert "plan_step" in types
         assert "tool_call" in types
 
     def test_tool_call_has_name_and_args(self) -> None:
@@ -320,16 +300,6 @@ class TestReflectorEvents:
         events = _parse_lines(result)
         assert events[0]["type"] == "reflector_decision"
 
-    def test_reflector_emits_legacy_reflection_type(self) -> None:
-        s = LangGraphSerializer()
-        msg = _make_msg(content="continue")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 1,
-            "messages": [msg],
-        })
-        events = _parse_lines(result)
-        assert events[1]["type"] == "reflection"
 
     def test_reflector_never_emits_llm_response(self) -> None:
         """The reflector must NOT emit 'llm_response' -- that is not a valid reflector type."""
@@ -404,18 +374,6 @@ class TestReflectorEvents:
         events = _parse_lines(result)
         assert events[0]["assessment"] == "Output looks correct, continue"
 
-    def test_reflector_legacy_has_content_and_assessment(self) -> None:
-        """Legacy event has both content and assessment fields."""
-        s = LangGraphSerializer()
-        msg = _make_msg(content="all good")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 0,
-            "messages": [msg],
-        })
-        events = _parse_lines(result)
-        legacy = events[1]
-        assert legacy["content"] == legacy["assessment"]
 
     def test_reflector_advances_step_index(self) -> None:
         s = LangGraphSerializer()
@@ -914,19 +872,6 @@ class TestEventIndexUniqueness:
             f"Non-legacy events have duplicate indexes: {indexes}"
         )
 
-    def test_planner_legacy_shares_index(self) -> None:
-        """Legacy 'plan' event should share index with 'planner_output'."""
-        s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": ["Step 1", "Step 2"],
-            "iteration": 1,
-            "messages": [],
-        })
-        events = _parse_lines(result)
-        new_evt = [e for e in events if e["type"] == "planner_output"][0]
-        legacy_evt = [e for e in events if e["type"] == "plan"][0]
-        # Legacy shares index with its new-type counterpart
-        assert legacy_evt["event_index"] == new_evt["event_index"]
 
     def test_full_flow_no_duplicate_indexes(self) -> None:
         """Simulate planner -> executor -> tool -> reflector and check uniqueness."""
