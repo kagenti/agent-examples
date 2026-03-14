@@ -546,18 +546,17 @@ async def invoke_with_tool_loop(
             # Add thinking history from previous iterations
             thinking_messages.extend(thinking_history)
 
-            # Add thinking prompt
+            # Add thinking prompt — keep it concise to avoid verbose LLM output
             if i == 0:
                 thinking_messages.append(
-                    HumanMessage(content="Think step by step about what to do. "
-                                 "Reason about the best approach before acting. "
-                                 "Do NOT call any tools — just think.")
+                    HumanMessage(content="Brief analysis (2-3 sentences max): "
+                                 "What is the best tool call for this step? "
+                                 "If step is already done, say READY: step complete.")
                 )
             else:
                 thinking_messages.append(
-                    HumanMessage(content="Continue thinking. Refine your approach "
-                                 "based on your previous reasoning. "
-                                 "When ready to act, start with 'READY:' followed by your action plan.")
+                    HumanMessage(content="Refine in 1-2 sentences. "
+                                 "When ready: READY: <one-line action plan>")
                 )
 
             reason_response, reason_capture = await invoke_llm(
@@ -606,9 +605,11 @@ async def invoke_with_tool_loop(
         # Include last thinking text as context
         tool_messages = messages + [
             AIMessage(content=last_reasoning or "I need to call a tool for this step."),
-            HumanMessage(content="Now execute the action you described above. "
-                         "Call exactly ONE tool. "
-                         "If the step is ALREADY COMPLETE, call step_done(summary='...') instead."),
+            HumanMessage(content="Now execute your planned action. Rules:\n"
+                         "- Call step_done(summary='...') if the step is ALREADY COMPLETE.\n"
+                         "- Call ONE tool if there's a single action to take.\n"
+                         "- Call multiple tools ONLY if they are independent (can run in parallel).\n"
+                         "- NEVER call the same tool twice with similar args."),
         ]
         response, capture = await invoke_llm(
             llm_with_tools, tool_messages,
