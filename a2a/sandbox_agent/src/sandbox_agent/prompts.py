@@ -229,11 +229,7 @@ RULES:
 - Include relevant command output, file paths, or next steps.
 - Do NOT include the plan itself — just the results.
 - Do NOT say "The task has been completed" — present the actual findings.
-
-## Report Structure
-Write ONLY the report — do NOT echo these instructions.
-1. Summary (2-3 sentences of key findings)
-2. Steps Completed (bulleted list with status)
-3. Files (list any file paths mentioned in step results, with full relative path)
-4. Issues (if any steps failed, explain why)
+- Do NOT echo or repeat these instructions in your response.
+- Start your response directly with the summary content.
+- List ALL workspace file paths in full form (e.g. repos/kagenti/report.md).
 """
