@@ -89,93 +89,6 @@ class PlanStep(TypedDict, total=False):
     iteration_added: int
 
 
-def _summarize_messages(messages: list) -> list[dict[str, str]]:
-    """Summarize a message list for prompt visibility in the UI.
-
-    Returns a list of {role, content_preview} dicts showing what
-    was sent to the LLM.
-    """
-    result = []
-    for msg in messages:
-        role = getattr(msg, "type", "unknown")
-        content = getattr(msg, "content", "")
-        if isinstance(content, list):
-            content = " ".join(
-                b.get("text", "") for b in content
-                if isinstance(b, dict) and b.get("type") == "text"
-            )
-        text = str(content)
-        # Tool calls — include name + args so the preview shows what was executed
-        tool_calls = getattr(msg, "tool_calls", None)
-        if tool_calls:
-            tc_summaries = []
-            for tc in tool_calls:
-                name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
-                args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-                args_str = str(args)[:500] if args else ""
-                tc_summaries.append(f"{name}({args_str})" if args_str else name)
-            text = f"[tool_calls: {'; '.join(tc_summaries)}] {text[:2000]}"
-        # ToolMessage
-        tool_name = getattr(msg, "name", None)
-        if role == "tool" and tool_name:
-            text = f"[{tool_name}] {text[:3000]}"
-        else:
-            text = text[:5000]
-        result.append({"role": role, "preview": text})
-    return result
-
-
-def _format_llm_response(response: Any) -> dict[str, Any]:
-    """Format a LangChain AIMessage as an OpenAI-style response for debug display.
-
-    Shows the full response structure including content, tool_calls,
-    finish_reason, and usage — matching the OpenAI Chat Completions format.
-    """
-    try:
-        meta = getattr(response, "response_metadata", {}) or {}
-        usage_meta = getattr(response, "usage_metadata", {}) or {}
-        content = response.content
-        if isinstance(content, list):
-            content = " ".join(
-                b.get("text", "") for b in content
-                if isinstance(b, dict) and b.get("type") == "text"
-            ) or None
-
-        tool_calls_out = None
-        if response.tool_calls:
-            tool_calls_out = []
-            for tc in response.tool_calls:
-                name = tc.get("name", "?") if isinstance(tc, dict) else getattr(tc, "name", "?")
-                args = tc.get("args", {}) if isinstance(tc, dict) else getattr(tc, "args", {})
-                tc_id = tc.get("id", "") if isinstance(tc, dict) else getattr(tc, "id", "")
-                tool_calls_out.append({
-                    "id": tc_id,
-                    "type": "function",
-                    "function": {
-                        "name": name,
-                        "arguments": json.dumps(args) if isinstance(args, dict) else str(args),
-                    },
-                })
-
-        return {
-            "choices": [{
-                "message": {
-                    "role": "assistant",
-                    "content": content if content else None,
-                    "tool_calls": tool_calls_out,
-                },
-                "finish_reason": meta.get("finish_reason", "unknown"),
-            }],
-            "model": meta.get("model", ""),
-            "usage": {
-                "prompt_tokens": usage_meta.get("input_tokens", 0) or usage_meta.get("prompt_tokens", 0),
-                "completion_tokens": usage_meta.get("output_tokens", 0) or usage_meta.get("completion_tokens", 0),
-            },
-            "id": meta.get("id", ""),
-        }
-    except Exception:
-        return {"error": "Failed to format response"}
-
 
 def _summarize_bound_tools(llm_with_tools: Any) -> list[dict[str, Any]]:
     """Extract bound tool schemas from a LangChain RunnableBinding for debug display.
@@ -709,10 +622,9 @@ async def planner_node(
             }
         raise
 
-    usage = getattr(response, 'usage_metadata', None) or {}
-    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    prompt_tokens = planner_capture.prompt_tokens
+    completion_tokens = planner_capture.completion_tokens
+    model_name = planner_capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
 
     # Check for respond_to_user escape tool (needed for Llama 4 Scout).
@@ -723,13 +635,9 @@ async def planner_node(
         # Non-escape tools — pass through for graph tool execution
         return {
             "messages": [response],
-            "model": model_name,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
+            **planner_capture.token_fields(),
             "_budget_summary": budget.summary(),
-            **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-            **({"_prompt_messages": _summarize_messages(plan_messages)} if _DEBUG_PROMPTS else {}),
-            **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+            **planner_capture.debug_fields(),
         }
 
     plan = _parse_plan(response.content)
@@ -768,17 +676,16 @@ async def planner_node(
         "current_step": start_step,
         "iteration": iteration + 1,
         "done": False,
-        "model": model_name,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        **planner_capture.token_fields(),
         "_budget_summary": budget.summary(),
-        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-        **({"_prompt_messages": _summarize_messages(plan_messages)} if _DEBUG_PROMPTS else {}),
-        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+        **planner_capture.debug_fields(),
     }
 
 
-MAX_TOOL_CALLS_PER_STEP = int(_os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP", "20"))
+MAX_THINK_ACT_CYCLES = int(_os.environ.get("SANDBOX_MAX_THINK_ACT_CYCLES",
+                                             _os.environ.get("SANDBOX_MAX_TOOL_CALLS_PER_STEP", "10")))
+THINKING_ITERATION_BUDGET = int(_os.environ.get("SANDBOX_THINKING_ITERATION_BUDGET", "5"))
+MAX_PARALLEL_TOOL_CALLS = int(_os.environ.get("SANDBOX_MAX_PARALLEL_TOOL_CALLS", "5"))
 
 
 async def executor_node(
@@ -789,10 +696,10 @@ async def executor_node(
 ) -> dict[str, Any]:
     """Execute the current plan step using the LLM with bound tools.
 
-    When ``llm_reason`` is provided (two-phase mode, force tool choice on):
-    1. Phase 1: call ``llm_reason`` (implicit auto) to get text reasoning
-    2. Phase 2: call ``llm_with_tools`` (tool_choice=any) with the reasoning
-       as context to get the structured tool call.
+    When ``llm_reason`` is provided (thinking mode):
+    1. Thinking loop: up to THINKING_ITERATION_BUDGET bare LLM iterations
+    2. Micro-reasoning: LLM with tools (tool_choice=any) makes up to
+       MAX_PARALLEL_TOOL_CALLS parallel tool calls.
     """
     if budget is None:
         budget = DEFAULT_BUDGET
@@ -808,22 +715,22 @@ async def executor_node(
             "done": True,
         }
 
-    # Guard: too many tool calls for this step — force completion
-    if tool_call_count >= MAX_TOOL_CALLS_PER_STEP:
+    # Guard: too many think-act cycles for this step — force completion
+    if tool_call_count >= MAX_THINK_ACT_CYCLES:
         logger.warning(
-            "Step %d hit tool call limit (%d/%d) — forcing step completion",
-            current_step, tool_call_count, MAX_TOOL_CALLS_PER_STEP,
+            "Step %d hit think-act cycle limit (%d/%d) — forcing step completion",
+            current_step, tool_call_count, MAX_THINK_ACT_CYCLES,
             extra={"session_id": state.get("context_id", ""), "node": "executor",
                    "current_step": current_step, "tool_call_count": tool_call_count},
         )
         result: dict[str, Any] = {
-            "messages": [AIMessage(content=f"Step {current_step + 1} reached tool call limit ({MAX_TOOL_CALLS_PER_STEP}). Moving to reflection.")],
+            "messages": [AIMessage(content=f"Step {current_step + 1} reached think-act cycle limit ({MAX_THINK_ACT_CYCLES}). Moving to reflection.")],
             "current_step": current_step,
             "_tool_call_count": 0,
             "_budget_summary": budget.summary(),
         }
         if _DEBUG_PROMPTS:
-            result["_system_prompt"] = f"[Tool call limit reached — no LLM call]\nStep {current_step + 1}: {tool_call_count}/{MAX_TOOL_CALLS_PER_STEP} tool calls"
+            result["_system_prompt"] = f"[Think-act cycle limit reached — no LLM call]\nStep {current_step + 1}: {tool_call_count}/{MAX_THINK_ACT_CYCLES} cycles"
         return result
 
     step_text = plan[current_step]
@@ -832,7 +739,7 @@ async def executor_node(
         current_step=current_step + 1,
         step_text=step_text,
         tool_call_count=tool_call_count,
-        max_tool_calls=MAX_TOOL_CALLS_PER_STEP,
+        max_tool_calls=MAX_THINK_ACT_CYCLES,
         workspace_path=state.get("workspace_path", "/workspace"),
     )
 
@@ -867,76 +774,30 @@ async def executor_node(
     #   from current messages, stopping when we hit a non-tool/non-AI message
     #   (which marks the boundary of this step's context).
 
-    from sandbox_agent.context_builders import build_executor_context, invoke_llm
-    from langchain_core.messages import HumanMessage as HM
+    from sandbox_agent.context_builders import build_executor_context, invoke_with_tool_loop
 
     messages = build_executor_context(state, system_content)
 
-    # Two-phase executor when llm_reason is provided (force tool choice on):
-    # Phase 1: reasoning LLM (implicit auto) → text about what to do
-    # Phase 2: tool LLM (tool_choice="any") → structured tool call
-    reasoning_text = ""
-    if llm_reason is not None:
-        try:
-            reason_response, reason_capture = await invoke_llm(
-                llm_reason, messages,
-                node="executor-reason", session_id=state.get("context_id", ""),
-                workspace_path=state.get("workspace_path", "/workspace"),
-            )
-            reasoning_text = str(reason_response.content or "").strip()
-            budget.add_tokens(reason_capture.prompt_tokens + reason_capture.completion_tokens)
-
-            # Phase 2: append reasoning as context, call with forced tool choice
-            phase2_messages = messages + [
-                AIMessage(content=reasoning_text or "I need to call a tool for this step."),
-                HM(content="Now execute the action you described above. Call exactly ONE tool."),
-            ]
-            response, capture = await invoke_llm(
-                llm_with_tools, phase2_messages,
-                node="executor-tool", session_id=state.get("context_id", ""),
-                workspace_path=state.get("workspace_path", "/workspace"),
-            )
-            # Merge token usage from both phases
-            capture.prompt_tokens += reason_capture.prompt_tokens
-            capture.completion_tokens += reason_capture.completion_tokens
-            logger.info(
-                "Two-phase executor: reasoning=%d chars, tool_calls=%d",
-                len(reasoning_text), len(response.tool_calls),
-                extra={"session_id": state.get("context_id", ""), "node": "executor",
-                       "current_step": current_step},
-            )
-        except Exception as exc:
-            if _is_budget_exceeded_error(exc):
-                logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
-                               extra={"session_id": state.get("context_id", ""), "node": "executor",
-                                      "current_step": current_step})
-                return {
-                    "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
-                    "current_step": current_step,
-                    "done": True,
-                    "_budget_summary": budget.summary(),
-                }
-            raise
-    else:
-        # Single-phase: one LLM call with implicit auto
-        try:
-            response, capture = await invoke_llm(
-                llm_with_tools, messages,
-                node="executor", session_id=state.get("context_id", ""),
-                workspace_path=state.get("workspace_path", "/workspace"),
-            )
-        except Exception as exc:
-            if _is_budget_exceeded_error(exc):
-                logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
-                               extra={"session_id": state.get("context_id", ""), "node": "executor",
-                                      "current_step": current_step})
-                return {
-                    "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
-                    "current_step": current_step,
-                    "done": True,
-                    "_budget_summary": budget.summary(),
-                }
-            raise
+    try:
+        response, capture, sub_events = await invoke_with_tool_loop(
+            llm_with_tools, llm_reason, messages,
+            node="executor", session_id=state.get("context_id", ""),
+            workspace_path=state.get("workspace_path", "/workspace"),
+            thinking_budget=THINKING_ITERATION_BUDGET,
+            max_parallel_tool_calls=MAX_PARALLEL_TOOL_CALLS,
+        )
+    except Exception as exc:
+        if _is_budget_exceeded_error(exc):
+            logger.warning("Budget exceeded in executor (402 from proxy): %s", exc,
+                           extra={"session_id": state.get("context_id", ""), "node": "executor",
+                                  "current_step": current_step})
+            return {
+                "messages": [AIMessage(content=f"Budget exceeded: {exc}")],
+                "current_step": current_step,
+                "done": True,
+                "_budget_summary": budget.summary(),
+            }
+        raise
 
     # Track no-tool executions — if the LLM produces text instead of
     # tool calls, increment counter. After 2 consecutive no-tool runs
@@ -949,14 +810,6 @@ async def executor_node(
     model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
 
-    # If two-phase reasoning produced text, merge it into the response content
-    # so the serializer includes it in the micro_reasoning event.
-    if reasoning_text and response.tool_calls and not response.content:
-        response = AIMessage(
-            content=reasoning_text,
-            tool_calls=response.tool_calls,
-        )
-
     # If the model returned text-based tool calls instead of structured
     # tool_calls (common with vLLM without --enable-auto-tool-choice),
     # parse them so tools_condition routes to the ToolNode.
@@ -965,19 +818,20 @@ async def executor_node(
     had_structured_tools = bool(response.tool_calls)
     response = maybe_patch_tool_calls(response)
 
-    # -- Enforce single tool call (micro-reflection pattern) -------------------
-    # Keep only the first tool call so the LLM sees each result before
-    # deciding the next action. This prevents blind batching of N commands.
-    if len(response.tool_calls) > 1:
+    # -- Enforce parallel tool call limit -----------------------------------------
+    # Allow up to MAX_PARALLEL_TOOL_CALLS per think-act cycle.
+    # invoke_with_tool_loop already enforces this in thinking mode,
+    # but single-phase mode needs the safety check here.
+    if len(response.tool_calls) > MAX_PARALLEL_TOOL_CALLS:
         logger.info(
-            "Executor returned %d tool calls — keeping only the first (micro-reflection)",
-            len(response.tool_calls),
+            "Executor returned %d tool calls — keeping first %d (parallel limit)",
+            len(response.tool_calls), MAX_PARALLEL_TOOL_CALLS,
             extra={"session_id": state.get("context_id", ""), "node": "executor",
                    "current_step": current_step, "tool_call_count": tool_call_count},
         )
         response = AIMessage(
             content=response.content,
-            tool_calls=[response.tool_calls[0]],
+            tool_calls=response.tool_calls[:MAX_PARALLEL_TOOL_CALLS],
         )
 
     # -- Detect unparsed text tool call attempts (stall signal) ----------------
@@ -1088,8 +942,8 @@ async def executor_node(
     else:
         no_tool_count = 0  # reset on successful tool call
 
-    # Increment tool call count for micro-reflection tracking
-    new_tool_call_count = tool_call_count + len(response.tool_calls)
+    # Increment think-act cycle count (each cycle = 1, regardless of parallel tool count)
+    new_tool_call_count = tool_call_count + 1 if response.tool_calls else tool_call_count
 
     # Extract last tool result for micro_reasoning context (shows WHY the
     # agent made this decision in the UI event stream).
@@ -1116,15 +970,15 @@ async def executor_node(
     result: dict[str, Any] = {
         "messages": step_msgs + [response],
         "current_step": current_step,
-        "model": model_name,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        **capture.token_fields(),
         "_budget_summary": budget.summary(),
         **capture.debug_fields(),
         "_no_tool_count": no_tool_count,
         "_tool_call_count": new_tool_call_count,
         **({"_last_tool_result": _last_tool_result} if _last_tool_result else {}),
     }
+    if sub_events:
+        result["_sub_events"] = sub_events
     if parsed_tools:
         result["parsed_tools"] = parsed_tools
     return result
@@ -1281,11 +1135,15 @@ async def reflector_node(
         recent_decisions=recent_str,
         replan_history=replan_history_text,
     )
-    from sandbox_agent.context_builders import build_reflector_context
+    from sandbox_agent.context_builders import build_reflector_context, invoke_llm
 
     reflect_messages = build_reflector_context(state, system_content)
     try:
-        response = await llm.ainvoke(reflect_messages)
+        response, capture = await invoke_llm(
+            llm, reflect_messages,
+            node="reflector", session_id=state.get("context_id", ""),
+            workspace_path=state.get("workspace_path", "/workspace"),
+        )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
             logger.warning("Budget exceeded in reflector (402 from proxy): %s", exc,
@@ -1294,11 +1152,9 @@ async def reflector_node(
             return _force_done(f"Budget exceeded: {exc}")
         raise
 
-    # Extract token usage from the LLM response
-    usage = getattr(response, 'usage_metadata', None) or {}
-    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    prompt_tokens = capture.prompt_tokens
+    completion_tokens = capture.completion_tokens
+    model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
 
     # Check for respond_to_user escape tool (needed for Llama 4 Scout).
@@ -1309,13 +1165,9 @@ async def reflector_node(
         # Non-escape tools — pass through for graph tool execution
         return {
             "messages": [response],
-            "model": model_name,
-            "prompt_tokens": prompt_tokens,
-            "completion_tokens": completion_tokens,
+            **capture.token_fields(),
             "_budget_summary": budget.summary(),
-            **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-            **({"_prompt_messages": _summarize_messages(reflect_messages)} if _DEBUG_PROMPTS else {}),
-            **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+            **capture.debug_fields(),
         }
 
     decision = _parse_decision(response.content)
@@ -1368,13 +1220,9 @@ async def reflector_node(
         "step_results": step_results,
         "recent_decisions": recent_decisions,
         "plan_steps": plan_steps,
-        "model": model_name,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        **capture.token_fields(),
         "_budget_summary": budget.summary(),
-        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-        **({"_prompt_messages": _summarize_messages(reflect_messages)} if _DEBUG_PROMPTS else {}),
-        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+        **capture.debug_fields(),
     }
 
     if decision == "done":
@@ -1546,10 +1394,16 @@ async def reporter_node(
         m for m in state["messages"]
         if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
     ]
-    messages = [SystemMessage(content=system_content)] + filtered_msgs
+    from sandbox_agent.context_builders import invoke_llm
+
+    reporter_messages = [SystemMessage(content=system_content)] + filtered_msgs
 
     try:
-        response = await llm.ainvoke(messages)
+        response, capture = await invoke_llm(
+            llm, reporter_messages,
+            node="reporter", session_id=state.get("context_id", ""),
+            workspace_path=state.get("workspace_path", "/workspace"),
+        )
     except Exception as exc:
         if _is_budget_exceeded_error(exc):
             logger.warning("Budget exceeded in reporter (402 from proxy): %s", exc,
@@ -1563,11 +1417,9 @@ async def reporter_node(
             }
         raise
 
-    # Extract token usage from the LLM response
-    usage = getattr(response, 'usage_metadata', None) or {}
-    prompt_tokens = usage.get('input_tokens', 0) or usage.get('prompt_tokens', 0)
-    completion_tokens = usage.get('output_tokens', 0) or usage.get('completion_tokens', 0)
-    model_name = (getattr(response, 'response_metadata', None) or {}).get("model", "")
+    prompt_tokens = capture.prompt_tokens
+    completion_tokens = capture.completion_tokens
+    model_name = capture.model
     budget.add_tokens(prompt_tokens + completion_tokens)
 
     content = response.content
@@ -1590,13 +1442,9 @@ async def reporter_node(
         "messages": [response],
         "final_answer": text,
         "plan_status": terminal_status,
-        "model": model_name,
-        "prompt_tokens": prompt_tokens,
-        "completion_tokens": completion_tokens,
+        **capture.token_fields(),
         "_budget_summary": budget.summary(),
-        **({"_system_prompt": system_content[:10000]} if _DEBUG_PROMPTS else {}),
-        **({"_prompt_messages": _summarize_messages(messages)} if _DEBUG_PROMPTS else {}),
-        **({"_llm_response": _format_llm_response(response)} if _DEBUG_PROMPTS else {}),
+        **capture.debug_fields(),
     }
 
 

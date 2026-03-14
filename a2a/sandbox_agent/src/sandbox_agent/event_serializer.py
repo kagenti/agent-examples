@@ -276,10 +276,34 @@ class LangGraphSerializer(FrameworkEventSerializer):
         parts = []
         _v = value or {}
 
+        # Emit thinking sub_events BEFORE the micro_reasoning
+        sub_events = _v.get("_sub_events", [])
+        for se in sub_events:
+            thinking_event = {
+                "type": "thinking",
+                "loop_id": self._loop_id,
+                "iteration": se.get("iteration", 1),
+                "total_iterations": se.get("total_iterations", 1),
+                "reasoning": se.get("reasoning", "")[:50000],
+                "node": se.get("node", "executor"),
+                "model": se.get("model", ""),
+                "prompt_tokens": se.get("prompt_tokens", 0),
+                "completion_tokens": se.get("completion_tokens", 0),
+            }
+            # Include prompt debug data for the PromptInspector
+            for field in ("_system_prompt", "_prompt_messages", "_bound_tools", "_llm_response"):
+                if field in se:
+                    # Strip leading underscore for the event field name
+                    thinking_event[field.lstrip("_")] = se[field]
+            parts.append(json.dumps(thinking_event))
+
         self._micro_step += 1
 
         # Skip micro_reasoning for dedup responses (no LLM call happened)
         if not _v.get("_dedup"):
+            # Annotate micro_reasoning with thinking count
+            if sub_events:
+                _v = {**_v, "_thinking_count": len(sub_events)}
             parts.append(self._serialize_micro_reasoning(msg, _v))
 
         plan = _v.get("plan", [])
@@ -379,6 +403,10 @@ class LangGraphSerializer(FrameworkEventSerializer):
         prev = value.get("_last_tool_result")
         if prev:
             event["previous_tool"] = prev
+        # Annotate with thinking iteration count for UI badge
+        tc = value.get("_thinking_count", 0)
+        if tc:
+            event["thinking_count"] = tc
         return json.dumps(event)
 
     def _serialize_tool_result(self, msg: Any) -> str:

@@ -502,16 +502,16 @@ class TestExecutorFailureBehavior:
     @pytest.mark.asyncio
     async def test_tool_limit_forces_completion(self) -> None:
         """When tool_call_count >= MAX, executor returns without LLM call."""
-        from sandbox_agent.reasoning import MAX_TOOL_CALLS_PER_STEP
+        from sandbox_agent.reasoning import MAX_THINK_ACT_CYCLES
 
         llm = CaptureLLM([])
         state = _base_state(
             plan=_make_rca_plan(),
             current_step=0,
-            _tool_call_count=MAX_TOOL_CALLS_PER_STEP,
+            _tool_call_count=MAX_THINK_ACT_CYCLES,
         )
         result = await executor_node(state, llm)
-        assert "tool call limit" in str(result["messages"][0].content).lower()
+        assert "cycle limit" in str(result["messages"][0].content).lower()
         assert len(llm.calls) == 0  # No LLM call
 
     @pytest.mark.asyncio
@@ -580,18 +580,18 @@ class TestExecutorLogging:
     @pytest.mark.asyncio
     async def test_executor_logs_tool_limit_warning(self, caplog: pytest.LogCaptureFixture) -> None:
         """Executor should warn when hitting tool call limit."""
-        from sandbox_agent.reasoning import MAX_TOOL_CALLS_PER_STEP
+        from sandbox_agent.reasoning import MAX_THINK_ACT_CYCLES
 
         llm = CaptureLLM([])
         state = _base_state(
             plan=_make_rca_plan(),
             current_step=0,
-            _tool_call_count=MAX_TOOL_CALLS_PER_STEP,
+            _tool_call_count=MAX_THINK_ACT_CYCLES,
         )
         with caplog.at_level(logging.WARNING, logger="sandbox_agent.reasoning"):
             await executor_node(state, llm)
 
-        limit_logs = [r for r in caplog.records if "tool call limit" in r.getMessage()]
+        limit_logs = [r for r in caplog.records if "cycle limit" in r.getMessage()]
         assert len(limit_logs) >= 1
 
     @pytest.mark.asyncio

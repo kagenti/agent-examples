@@ -483,3 +483,175 @@ async def invoke_llm(
     )
 
     return response, capture
+
+
+def _build_tool_descriptions(llm_with_tools: Any) -> str:
+    """Build a textual description of bound tools for the thinking prompt."""
+    tools = _extract_bound_tools(llm_with_tools)
+    if not tools:
+        return ""
+    lines = ["Available tools:"]
+    for t in tools:
+        name = t.get("name", "?")
+        desc = t.get("description", "")
+        lines.append(f"  - {name}: {desc}" if desc else f"  - {name}")
+    return "\n".join(lines)
+
+
+async def invoke_with_tool_loop(
+    llm_with_tools: Any,
+    llm_reason: Any | None,
+    messages: list[BaseMessage],
+    *,
+    node: str,
+    session_id: str,
+    workspace_path: str,
+    thinking_budget: int = 5,
+    max_parallel_tool_calls: int = 5,
+) -> tuple[AIMessage, LLMCallCapture, list[dict[str, Any]]]:
+    """Invoke LLM with optional thinking iterations + micro-reasoning.
+
+    Returns ``(response, capture, sub_events)`` where sub_events is a list
+    of thinking event dicts — one per thinking iteration.
+
+    When ``llm_reason`` is provided (thinking mode):
+      1. Thinking loop (up to ``thinking_budget`` iterations):
+         Bare LLM reasons about what to do. Each iteration sees previous
+         thinking texts and tool descriptions (no actual tool bindings).
+      2. Micro-reasoning: LLM with tools (tool_choice=any) makes tool calls.
+         Allows up to ``max_parallel_tool_calls`` parallel calls.
+
+    Each thinking sub_event has full debug data (system_prompt, prompt_messages,
+    bound_tools, llm_response) so the UI can inspect every call.
+
+    When ``llm_reason`` is None (single-phase mode):
+      One call to llm_with_tools with implicit auto. No sub_events.
+    """
+    sub_events: list[dict[str, Any]] = []
+
+    if llm_reason is not None:
+        # Build textual tool descriptions for the thinking prompt
+        tool_desc_text = _build_tool_descriptions(llm_with_tools)
+
+        # Thinking loop: up to thinking_budget bare LLM iterations
+        thinking_history: list[BaseMessage] = []
+        total_thinking_tokens = 0
+        last_reasoning = ""
+
+        for i in range(thinking_budget):
+            # Build thinking messages: original messages + tool descriptions + thinking history
+            thinking_messages = list(messages)
+
+            # Inject tool descriptions into the system message
+            if tool_desc_text and thinking_messages and isinstance(thinking_messages[0], SystemMessage):
+                thinking_messages[0] = SystemMessage(
+                    content=thinking_messages[0].content + "\n\n" + tool_desc_text
+                )
+
+            # Add thinking history from previous iterations
+            thinking_messages.extend(thinking_history)
+
+            # Add thinking prompt
+            if i == 0:
+                thinking_messages.append(
+                    HumanMessage(content="Think step by step about what to do. "
+                                 "Reason about the best approach before acting. "
+                                 "Do NOT call any tools — just think.")
+                )
+            else:
+                thinking_messages.append(
+                    HumanMessage(content="Continue thinking. Refine your approach "
+                                 "based on your previous reasoning. "
+                                 "When ready to act, start with 'READY:' followed by your action plan.")
+                )
+
+            reason_response, reason_capture = await invoke_llm(
+                llm_reason, thinking_messages,
+                node=f"{node}-think-{i+1}", session_id=session_id,
+                workspace_path=workspace_path,
+            )
+            last_reasoning = str(reason_response.content or "").strip()
+            total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
+
+            # Emit thinking iteration as a sub_event with full debug data
+            sub_events.append({
+                "type": "thinking",
+                "node": node,
+                "iteration": i + 1,
+                "total_iterations": 0,  # updated after loop
+                "reasoning": last_reasoning,
+                **reason_capture.debug_fields(),
+                **reason_capture.token_fields(),
+            })
+
+            # Add to thinking history for next iteration
+            thinking_history.extend([
+                AIMessage(content=last_reasoning),
+                HumanMessage(content=f"(Thinking {i+1} recorded. Continue or signal READY:)"),
+            ])
+
+            # Early break if LLM signals readiness
+            if last_reasoning.upper().startswith("READY:"):
+                break
+
+        # Update total_iterations on all sub_events
+        total_iters = len(sub_events)
+        for evt in sub_events:
+            evt["total_iterations"] = total_iters
+
+        logger.info(
+            "Thinking %s: %d iterations, %d tokens",
+            node, total_iters, total_thinking_tokens,
+            extra={"session_id": session_id, "node": node,
+                   "thinking_iterations": total_iters},
+        )
+
+        # Micro-reasoning: LLM with tools makes the actual tool call(s)
+        # Include last thinking text as context
+        tool_messages = messages + [
+            AIMessage(content=last_reasoning or "I need to call a tool for this step."),
+            HumanMessage(content="Now execute the action you described above. "
+                         f"Call up to {max_parallel_tool_calls} tools."),
+        ]
+        response, capture = await invoke_llm(
+            llm_with_tools, tool_messages,
+            node=f"{node}-tool", session_id=session_id,
+            workspace_path=workspace_path,
+        )
+        # Merge all thinking tokens into the capture
+        capture.prompt_tokens += total_thinking_tokens
+        capture.completion_tokens += 0  # thinking completion tokens already counted
+
+        # If micro-reasoning produced tool calls but no text, merge last thinking
+        if last_reasoning and response.tool_calls and not response.content:
+            response = AIMessage(
+                content=last_reasoning,
+                tool_calls=response.tool_calls,
+            )
+
+        # Enforce max parallel tool calls
+        if len(response.tool_calls) > max_parallel_tool_calls:
+            logger.info(
+                "Micro-reasoning returned %d tool calls — keeping first %d",
+                len(response.tool_calls), max_parallel_tool_calls,
+                extra={"session_id": session_id, "node": node},
+            )
+            response = AIMessage(
+                content=response.content,
+                tool_calls=response.tool_calls[:max_parallel_tool_calls],
+            )
+
+        logger.info(
+            "Think-act %s: %d thinking + micro-reasoning → %d tool calls",
+            node, total_iters, len(response.tool_calls),
+            extra={"session_id": session_id, "node": node},
+        )
+    else:
+        # Single-phase: one LLM call with implicit auto
+        response, capture = await invoke_llm(
+            llm_with_tools, messages,
+            node=node, session_id=session_id,
+            workspace_path=workspace_path,
+        )
+
+    return response, capture, sub_events
