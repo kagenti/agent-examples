@@ -957,7 +957,17 @@ def run() -> None:
         from starlette.responses import JSONResponse
 
         if not _graph_card_cache:
-            compiled = build_graph(checkpointer=None)
+            # Build a graph for introspection only (no checkpointer, dummy config)
+            from sandbox_agent.permissions import PermissionChecker
+            from sandbox_agent.sources import SourcesConfig
+            pc = PermissionChecker()
+            sc = SourcesConfig()
+            compiled = build_graph(
+                workspace_path="/workspace",
+                permission_checker=pc,
+                sources_config=sc,
+                checkpointer=None,
+            )
             _graph_card_cache.update(
                 build_graph_card(compiled, agent_id="sandbox-legion-v1")
             )
