@@ -726,7 +726,8 @@ class TestToolCallIdPairing:
         result_msg = _make_msg(content="/workspace/abc123", name="shell")
         result_msg.tool_call_id = "call_xyz"
         result_output = s.serialize("tools", {"messages": [result_msg]})
-        result_data = json.loads(result_output)
+        result_events = [e for e in _parse_lines(result_output) if e["type"] == "tool_result"]
+        result_data = result_events[0]
 
         assert tc_event["call_id"] == result_data["call_id"] == "call_xyz"
 
@@ -758,7 +759,8 @@ class TestToolCallIdPairing:
         result_msg.name = "shell"
         # No tool_call_id attribute
         result_output = s.serialize("tools", {"messages": [result_msg]})
-        result_data = json.loads(result_output)
+        result_events = [e for e in _parse_lines(result_output) if e["type"] == "tool_result"]
+        result_data = result_events[0]
         assert result_data["call_id"] == "prev_call"
 
 
@@ -996,7 +998,7 @@ class TestStepFieldAccuracy:
         # Now serialize a tools event (no current_step in value)
         msg = _make_msg(content="output", name="shell")
         result = s.serialize("tools", {"messages": [msg]})
-        data = json.loads(result)
+        data = [e for e in _parse_lines(result) if e["type"] == "tool_result"][0]
         assert data["step"] == 4  # uses cached _step_index
 
     def test_step_updates_when_current_step_changes(self) -> None:
@@ -1017,4 +1019,238 @@ class TestStepFieldAccuracy:
 
         assert steps_seen == [1, 2, 5], (
             f"Expected steps [1, 2, 5] from current_step [0, 1, 4], got {steps_seen}"
+        )
+
+
+# ---------------------------------------------------------------------------
+# langgraph_node field on all events
+# ---------------------------------------------------------------------------
+
+
+class TestLanggraphNodeField:
+    """Every emitted event must include 'langgraph_node' identifying the
+    LangGraph node that produced it."""
+
+    def test_planner_events_have_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        result = s.serialize("planner", {
+            "plan": ["Step 1"],
+            "iteration": 1,
+            "messages": [],
+        })
+        events = _parse_lines(result)
+        for event in events:
+            assert event.get("langgraph_node") == "planner", (
+                f"Event type={event['type']} missing langgraph_node=planner"
+            )
+
+    def test_executor_events_have_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="working",
+            tool_calls=[{"name": "shell", "args": {"cmd": "ls"}}],
+        )
+        result = s.serialize("executor", {"messages": [msg]})
+        events = _parse_lines(result)
+        for event in events:
+            assert event.get("langgraph_node") == "executor", (
+                f"Event type={event['type']} missing langgraph_node=executor"
+            )
+
+    def test_reflector_events_have_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        msg = _make_msg(content="continue")
+        result = s.serialize("reflector", {
+            "done": False,
+            "current_step": 0,
+            "messages": [msg],
+        })
+        events = _parse_lines(result)
+        for event in events:
+            assert event.get("langgraph_node") == "reflector", (
+                f"Event type={event['type']} missing langgraph_node=reflector"
+            )
+
+    def test_reporter_events_have_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        result = s.serialize("reporter", {
+            "final_answer": "done",
+            "messages": [],
+        })
+        events = _parse_lines(result)
+        for event in events:
+            assert event.get("langgraph_node") == "reporter", (
+                f"Event type={event['type']} missing langgraph_node=reporter"
+            )
+
+    def test_tool_result_has_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        msg = _make_msg(content="output", name="shell")
+        result = s.serialize("tools", {"messages": [msg]})
+        data = json.loads(result)
+        assert data["langgraph_node"] == "tools"
+
+    def test_unknown_node_has_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        msg = _make_msg(content="hello")
+        result = s.serialize("my_custom_node", {"messages": [msg]})
+        data = json.loads(result)
+        assert data["langgraph_node"] == "my_custom_node"
+
+    def test_router_has_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        result = s.serialize("router", {"_route": "new"})
+        data = json.loads(result)
+        assert data["langgraph_node"] == "router"
+
+    def test_step_selector_has_langgraph_node(self) -> None:
+        s = LangGraphSerializer()
+        result = s.serialize("step_selector", {
+            "current_step": 0,
+            "plan_steps": [{"description": "A"}],
+        })
+        data = json.loads(result)
+        assert data["langgraph_node"] == "step_selector"
+
+    def test_all_nodes_in_full_flow_have_langgraph_node(self) -> None:
+        """Simulate a full flow and verify every event has langgraph_node."""
+        s = LangGraphSerializer()
+        all_events: list[dict] = []
+
+        # Planner
+        result = s.serialize("planner", {"plan": ["A"], "iteration": 1, "messages": []})
+        all_events.extend(_parse_lines(result))
+
+        # Executor
+        msg = _make_msg(content="working")
+        result = s.serialize("executor", {"messages": [msg]})
+        all_events.extend(_parse_lines(result))
+
+        # Tool result
+        tmsg = _make_msg(content="output", name="shell")
+        result = s.serialize("tools", {"messages": [tmsg]})
+        all_events.extend(_parse_lines(result))
+
+        # Reflector
+        rmsg = _make_msg(content="continue")
+        result = s.serialize("reflector", {"done": False, "current_step": 0, "messages": [rmsg]})
+        all_events.extend(_parse_lines(result))
+
+        # Reporter
+        result = s.serialize("reporter", {"final_answer": "done", "messages": []})
+        all_events.extend(_parse_lines(result))
+
+        for event in all_events:
+            assert "langgraph_node" in event, (
+                f"Event type={event.get('type')} missing langgraph_node field"
+            )
+
+
+# ---------------------------------------------------------------------------
+# node_transition events
+# ---------------------------------------------------------------------------
+
+
+class TestNodeTransitionEvents:
+    """node_transition events should be emitted when the LangGraph node changes."""
+
+    def test_no_transition_on_first_call(self) -> None:
+        """First serialize() call should NOT emit a node_transition."""
+        s = LangGraphSerializer()
+        result = s.serialize("planner", {"plan": ["A"], "iteration": 1, "messages": []})
+        events = _parse_lines(result)
+        transition_events = [e for e in events if e["type"] == "node_transition"]
+        assert len(transition_events) == 0
+
+    def test_no_transition_on_same_node(self) -> None:
+        """Consecutive calls to the same node should NOT emit node_transition."""
+        s = LangGraphSerializer()
+        msg1 = _make_msg(content="step 1")
+        s.serialize("executor", {"messages": [msg1]})
+        msg2 = _make_msg(content="step 2")
+        result = s.serialize("executor", {"messages": [msg2]})
+        events = _parse_lines(result)
+        transition_events = [e for e in events if e["type"] == "node_transition"]
+        assert len(transition_events) == 0
+
+    def test_transition_emitted_on_node_change(self) -> None:
+        """Switching from planner to executor should emit a node_transition."""
+        s = LangGraphSerializer(loop_id="trans-1")
+        s.serialize("planner", {"plan": ["A"], "iteration": 1, "messages": []})
+        msg = _make_msg(content="working")
+        result = s.serialize("executor", {"messages": [msg]})
+        events = _parse_lines(result)
+        transition_events = [e for e in events if e["type"] == "node_transition"]
+        assert len(transition_events) == 1
+        t = transition_events[0]
+        assert t["from_node"] == "planner"
+        assert t["to_node"] == "executor"
+        assert t["loop_id"] == "trans-1"
+        assert "event_index" in t
+
+    def test_transition_has_langgraph_node(self) -> None:
+        """node_transition events should also have langgraph_node field."""
+        s = LangGraphSerializer()
+        s.serialize("planner", {"plan": [], "messages": []})
+        msg = _make_msg(content="working")
+        result = s.serialize("executor", {"messages": [msg]})
+        events = _parse_lines(result)
+        transition_events = [e for e in events if e["type"] == "node_transition"]
+        assert len(transition_events) == 1
+        assert transition_events[0]["langgraph_node"] == "executor"
+
+    def test_multiple_transitions_in_flow(self) -> None:
+        """A full flow should produce the expected number of node_transition events."""
+        s = LangGraphSerializer()
+        all_events: list[dict] = []
+
+        # planner (no transition - first call)
+        result = s.serialize("planner", {"plan": ["A"], "iteration": 1, "messages": []})
+        all_events.extend(_parse_lines(result))
+
+        # executor (transition: planner -> executor)
+        msg = _make_msg(content="working")
+        result = s.serialize("executor", {"messages": [msg]})
+        all_events.extend(_parse_lines(result))
+
+        # tools (transition: executor -> tools)
+        tmsg = _make_msg(content="output", name="shell")
+        result = s.serialize("tools", {"messages": [tmsg]})
+        all_events.extend(_parse_lines(result))
+
+        # reflector (transition: tools -> reflector)
+        rmsg = _make_msg(content="continue")
+        result = s.serialize("reflector", {"done": False, "current_step": 0, "messages": [rmsg]})
+        all_events.extend(_parse_lines(result))
+
+        # reporter (transition: reflector -> reporter)
+        result = s.serialize("reporter", {"final_answer": "done", "messages": []})
+        all_events.extend(_parse_lines(result))
+
+        transitions = [e for e in all_events if e["type"] == "node_transition"]
+        assert len(transitions) == 4
+        assert transitions[0]["from_node"] == "planner"
+        assert transitions[0]["to_node"] == "executor"
+        assert transitions[1]["from_node"] == "executor"
+        assert transitions[1]["to_node"] == "tools"
+        assert transitions[2]["from_node"] == "tools"
+        assert transitions[2]["to_node"] == "reflector"
+        assert transitions[3]["from_node"] == "reflector"
+        assert transitions[3]["to_node"] == "reporter"
+
+    def test_transition_event_index_is_unique(self) -> None:
+        """node_transition event_index should not conflict with other events."""
+        s = LangGraphSerializer()
+        all_events: list[dict] = []
+
+        result = s.serialize("planner", {"plan": ["A"], "iteration": 1, "messages": []})
+        all_events.extend(_parse_lines(result))
+
+        msg = _make_msg(content="working")
+        result = s.serialize("executor", {"messages": [msg]})
+        all_events.extend(_parse_lines(result))
+
+        indexes = [e["event_index"] for e in all_events]
+        assert len(indexes) == len(set(indexes)), (
+            f"Duplicate event_index values found: {indexes}"
         )

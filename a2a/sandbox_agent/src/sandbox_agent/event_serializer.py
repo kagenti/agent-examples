@@ -110,8 +110,28 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
         self._last_call_id: str = ""
+        self._prev_node: str | None = None  # previous node for node_transition events
+        self._current_node: str = ""  # current LangGraph node name
 
     def serialize(self, key: str, value: dict) -> str:
+        # Track current LangGraph node name for enrichment
+        self._current_node = key
+
+        # Emit node_transition meta-event when the node changes
+        transition_line: str | None = None
+        if self._prev_node is not None and key != self._prev_node:
+            self._event_counter += 1
+            transition_event = {
+                "type": "node_transition",
+                "loop_id": self._loop_id,
+                "from_node": self._prev_node,
+                "to_node": key,
+                "event_index": self._event_counter,
+                "langgraph_node": key,
+            }
+            transition_line = json.dumps(transition_event)
+        self._prev_node = key
+
         # Node visit tracking:
         # - Tool nodes (tools, planner_tools, reflector_tools) inherit parent visit
         # - Same node type re-entering (executor→tools→executor) stays on same visit
@@ -203,6 +223,11 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Legacy event types (plan, plan_step, reflection) are skipped from
         # indexing to avoid inflating the counter.
         enriched_lines = []
+
+        # Prepend node_transition event if one was emitted
+        if transition_line is not None:
+            enriched_lines.append(transition_line)
+
         for line in result.split("\n"):
             line = line.strip()
             if not line:
@@ -217,6 +242,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 evt["event_index"] = self._event_counter
                 evt["node_visit"] = self._node_visit
                 evt["sub_index"] = self._sub_index
+                evt["langgraph_node"] = self._current_node
                 self._sub_index += 1
                 enriched_lines.append(json.dumps(evt))
             except json.JSONDecodeError:

@@ -50,6 +50,12 @@ def _parse_lines(result: str) -> list[dict]:
     return [json.loads(line) for line in result.strip().split("\n") if line.strip()]
 
 
+def _content_events(result: str) -> list[dict]:
+    """Parse lines and filter out meta events (node_transition)."""
+    skip = {"node_transition"}
+    return [e for e in _parse_lines(result) if e.get("type") not in skip]
+
+
 # ---------------------------------------------------------------------------
 # 1. No dedup — structured tool calls should not be deduped
 # ---------------------------------------------------------------------------
@@ -174,7 +180,7 @@ class TestSubIndexContinuity:
         exec_msg.tool_call_id = None
 
         exec_result = s.serialize("executor", {"messages": [exec_msg]})
-        exec_events = _parse_lines(exec_result)
+        exec_events = _content_events(exec_result)
         # Get max sub_index from executor events
         exec_max_si = max(e.get("sub_index", 0) for e in exec_events)
 
@@ -186,7 +192,7 @@ class TestSubIndexContinuity:
         tool_msg.tool_call_id = "tc1"
 
         tool_result = s.serialize("tools", {"messages": [tool_msg]})
-        tool_events = _parse_lines(tool_result)
+        tool_events = _content_events(tool_result)
 
         tool_si = tool_events[0].get("sub_index")
         assert tool_si == exec_max_si + 1, (
@@ -207,7 +213,7 @@ class TestSubIndexContinuity:
             exec_msg.tool_call_id = None
 
             exec_r = s.serialize("executor", {"messages": [exec_msg]})
-            exec_events = _parse_lines(exec_r)
+            exec_events = _content_events(exec_r)
             exec_nv = exec_events[0]["node_visit"]
             visits.append(exec_nv)
 
@@ -218,7 +224,7 @@ class TestSubIndexContinuity:
             tool_msg.tool_call_id = f"tc{i}"
 
             tool_r = s.serialize("tools", {"messages": [tool_msg]})
-            tool_events = _parse_lines(tool_r)
+            tool_events = _content_events(tool_r)
             tool_nv = tool_events[0]["node_visit"]
             # Tools should share executor's node_visit
             assert tool_nv == exec_nv, (

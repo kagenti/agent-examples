@@ -39,9 +39,9 @@ def _parse_lines(result: str) -> list[dict]:
 
 
 def _get_non_legacy(events: list[dict]) -> list[dict]:
-    """Filter out legacy event types that share indexes."""
-    legacy = {"plan", "plan_step", "reflection"}
-    return [e for e in events if e.get("type") not in legacy]
+    """Filter out legacy event types and meta events that share indexes."""
+    skip = {"plan", "plan_step", "reflection", "node_transition"}
+    return [e for e in events if e.get("type") not in skip]
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +90,7 @@ class TestNodeVisitField:
         # Visit (same): tools node — should inherit executor's visit
         tool_msg = _make_msg(content="file1.txt", name="shell", tool_call_id="tc1")
         tool_result = s.serialize("tools", {"messages": [tool_msg]})
-        tool_events = _parse_lines(tool_result)
+        tool_events = _get_non_legacy(_parse_lines(tool_result))
         for e in tool_events:
             assert e["node_visit"] == exec_visit, (
                 f"Tool result should inherit executor visit {exec_visit}, got {e.get('node_visit')}"
@@ -111,7 +111,7 @@ class TestNodeVisitField:
 
         # step_selector
         r = s.serialize("step_selector", {"current_step": 0, "plan_steps": [{"description": "A"}]})
-        visits.append(_parse_lines(r)[0]["node_visit"])
+        visits.append(_get_non_legacy(_parse_lines(r))[0]["node_visit"])
 
         # executor
         msg = _make_msg(content="", tool_calls=[{"name": "shell", "args": {}, "id": "t1"}])
@@ -121,7 +121,7 @@ class TestNodeVisitField:
         # tools (should NOT increment — inherits executor's visit)
         tool_msg = _make_msg(content="ok", name="shell", tool_call_id="t1")
         r = s.serialize("tools", {"messages": [tool_msg]})
-        tool_visit = _parse_lines(r)[0]["node_visit"]
+        tool_visit = _get_non_legacy(_parse_lines(r))[0]["node_visit"]
 
         # executor again (same node type re-entering — stays on SAME visit)
         msg2 = _make_msg(content="", tool_calls=[{"name": "shell", "args": {}, "id": "t2"}])
@@ -199,7 +199,7 @@ class TestSubIndex:
 
         tool_msg = _make_msg(content="output", name="shell", tool_call_id="tc1")
         tool_result = s.serialize("tools", {"messages": [tool_msg]})
-        tool_events = _parse_lines(tool_result)
+        tool_events = _get_non_legacy(_parse_lines(tool_result))
         assert tool_events[0].get("sub_index") == last_sub + 1
 
 
@@ -301,7 +301,7 @@ class TestPlanStepField:
 
         # Step selector sets current_step=0
         r1 = s.serialize("step_selector", {"current_step": 0, "plan_steps": [{"description": "A"}]})
-        e1 = _parse_lines(r1)[0]
+        e1 = _get_non_legacy(_parse_lines(r1))[0]
         assert e1["step"] == 1, f"Step should be 1 (0-based + 1), got {e1['step']}"
 
         # Executor for step 0
@@ -313,5 +313,5 @@ class TestPlanStepField:
 
         # Step selector advances to step 1
         r3 = s.serialize("step_selector", {"current_step": 1, "plan_steps": [{"description": "A"}, {"description": "B"}]})
-        e3 = _parse_lines(r3)[0]
+        e3 = _get_non_legacy(_parse_lines(r3))[0]
         assert e3["step"] == 2, f"Step should be 2 after advancing, got {e3['step']}"

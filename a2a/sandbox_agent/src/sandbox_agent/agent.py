@@ -28,7 +28,14 @@ try:
     _HAS_SQL_STORE = True
 except ImportError:
     _HAS_SQL_STORE = False
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentExtension,
+    AgentSkill,
+    TaskState,
+    TextPart,
+)
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 from starlette.routing import Route
@@ -39,6 +46,8 @@ from sandbox_agent.budget import AgentBudget
 from sandbox_agent.configuration import Configuration
 from sandbox_agent.event_serializer import LangGraphSerializer
 from sandbox_agent.graph import _load_skill, build_graph
+from sandbox_agent.graph_card import build_graph_card
+from sandbox_agent.observability import setup_observability, create_tracing_middleware
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.workspace import WorkspaceManager
@@ -177,7 +186,17 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     port:
         Port number the agent is listening on.
     """
-    capabilities = AgentCapabilities(streaming=True)
+    capabilities = AgentCapabilities(
+        streaming=True,
+        extensions=[
+            AgentExtension(
+                uri="urn:kagenti:agent-graph-card:v1",
+                description="Processing graph topology and event schemas",
+                required=False,
+                params={"endpoint": "/.well-known/agent-graph-card.json"},
+            ),
+        ],
+    )
     # Scan workspace for loaded skill files (.claude/skills/**/*.md)
     # Skills found on disk are advertised in the agent card so the UI
     # can show them in the / autocomplete (SkillWhisperer).
@@ -892,6 +911,9 @@ def _load_skill_packs_at_startup() -> None:
 
 def run() -> None:
     """Create the A2A server application and run it with uvicorn."""
+    # Initialize OTel GenAI auto-instrumentation (if OTEL_EXPORTER_OTLP_ENDPOINT is set)
+    tracing_enabled = setup_observability()
+
     # Load skills from git repos before building the agent card
     _load_skill_packs_at_startup()
 
@@ -910,6 +932,12 @@ def run() -> None:
     # Build the Starlette app
     app = server.build()
 
+    # Add OTel tracing middleware (root span for every agent invocation)
+    if tracing_enabled:
+        from starlette.middleware.base import BaseHTTPMiddleware
+        app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
+        logger.info("OTel GenAI tracing middleware enabled")
+
     # Add the /.well-known/agent-card.json route
     app.routes.insert(
         0,
@@ -918,6 +946,30 @@ def run() -> None:
             server._handle_get_agent_card,
             methods=["GET"],
             name="agent_card_well_known",
+        ),
+    )
+
+    # Build the graph card from the compiled LangGraph.
+    # We compile a temporary graph just for introspection (no checkpointer needed).
+    _graph_card_cache: dict[str, Any] = {}
+
+    async def _handle_graph_card(request: Any) -> Any:  # noqa: ARG001
+        from starlette.responses import JSONResponse
+
+        if not _graph_card_cache:
+            compiled = build_graph(checkpointer=None)
+            _graph_card_cache.update(
+                build_graph_card(compiled, agent_id="sandbox-legion-v1")
+            )
+        return JSONResponse(_graph_card_cache)
+
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-graph-card.json",
+            _handle_graph_card,
+            methods=["GET"],
+            name="agent_graph_card",
         ),
     )
 
