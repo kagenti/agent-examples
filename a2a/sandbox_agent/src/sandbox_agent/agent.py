@@ -47,7 +47,7 @@ from sandbox_agent.configuration import Configuration
 from sandbox_agent.event_serializer import LangGraphSerializer
 from sandbox_agent.graph import _load_skill, build_graph
 from sandbox_agent.graph_card import build_graph_card
-from sandbox_agent.observability import setup_observability, create_tracing_middleware
+from sandbox_agent.observability import setup_observability
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
 from sandbox_agent.workspace import WorkspaceManager
@@ -911,8 +911,12 @@ def _load_skill_packs_at_startup() -> None:
 
 def run() -> None:
     """Create the A2A server application and run it with uvicorn."""
-    # Initialize OTel GenAI auto-instrumentation (if OTEL_EXPORTER_OTLP_ENDPOINT is set)
-    tracing_enabled = setup_observability()
+    # Initialize OTel GenAI auto-instrumentation (if OTEL_EXPORTER_OTLP_ENDPOINT is set).
+    # NOTE: Only LangChain/OpenAI auto-instrumentation is enabled here.
+    # The HTTP middleware is disabled because it interferes with SSE streaming
+    # (BaseHTTPMiddleware captures response body, breaking streaming connections).
+    # TODO: Replace with per-node span emission from AgentGraphCard processing.
+    setup_observability()
 
     # Load skills from git repos before building the agent card
     _load_skill_packs_at_startup()
@@ -932,11 +936,11 @@ def run() -> None:
     # Build the Starlette app
     app = server.build()
 
-    # Add OTel tracing middleware (root span for every agent invocation)
-    if tracing_enabled:
-        from starlette.middleware.base import BaseHTTPMiddleware
-        app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-        logger.info("OTel GenAI tracing middleware enabled")
+    # NOTE: OTel HTTP middleware REMOVED — it breaks SSE streaming.
+    # BaseHTTPMiddleware wraps the response body iterator, which causes
+    # CancelledError propagation when SSE clients disconnect. This kills
+    # the event queue and prevents event delivery.
+    # Future: emit spans from AgentGraphCard event processing instead.
 
     # Add the /.well-known/agent-card.json route
     app.routes.insert(
