@@ -640,6 +640,36 @@ def build_graph(
         },
     )
 
+    # -- Per-node model overrides -------------------------------------------
+    def _make_llm(node_type: str) -> ChatOpenAI:
+        """Create an LLM instance for a specific node type, using model override if set."""
+        node_model = config.model_for_node(node_type)
+        return ChatOpenAI(
+            model=node_model,
+            base_url=config.llm_api_base,
+            api_key=config.llm_api_key,
+            timeout=budget.llm_timeout,
+            max_retries=budget.llm_max_retries,
+            model_kwargs={
+                "extra_body": {
+                    "metadata": {
+                        "session_id": context_id,
+                        "agent_name": os.environ.get("AGENT_NAME", "sandbox-legion"),
+                        "namespace": namespace,
+                        "max_session_tokens": budget.max_tokens,
+                    }
+                }
+            },
+        )
+
+    # Only create separate instances when overrides differ from default
+    llm_for_planner = _make_llm("planner") if config.llm_model_planner else llm
+    llm_for_executor = _make_llm("executor") if config.llm_model_executor else llm
+    llm_for_reflector = _make_llm("reflector") if config.llm_model_reflector else llm
+    llm_for_reporter = _make_llm("reporter") if config.llm_model_reporter else llm
+    llm_for_thinking = _make_llm("thinking") if config.llm_model_thinking else llm
+    llm_for_micro = _make_llm("micro_reasoning") if config.llm_model_micro_reasoning else llm
+
     # -- Tools --------------------------------------------------------------
     # Create tool instances once — shared across node subsets.
     shell_tool = _make_shell_tool(executor)
@@ -674,16 +704,16 @@ def build_graph(
     # When not forced: single-phase (implicit auto, model chooses text or tools)
     force_tools = os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "0") == "1"
     if force_tools:
-        llm_executor = llm.bind_tools(tools, tool_choice="any")
-        llm_executor_reason = llm  # bare LLM, NO tools — forces text output
+        llm_executor = llm_for_executor.bind_tools(tools, tool_choice="any")
+        llm_executor_reason = llm_for_thinking  # bare LLM for thinking, NO tools
     else:
-        llm_executor = llm.bind_tools(tools)  # implicit auto
+        llm_executor = llm_for_executor.bind_tools(tools)  # implicit auto
         llm_executor_reason = None  # no two-phase needed
-    llm_planner = llm.bind_tools(planner_tools)  # always auto
+    llm_planner = llm_for_planner.bind_tools(planner_tools)  # always auto
 
     # All nodes with tools use tool_choice="auto"
-    llm_reflector = llm.bind_tools(read_only_tools)  # read-only for verification
-    llm_reporter = llm.bind_tools(read_only_tools)  # read-only for file verification
+    llm_reflector = llm_for_reflector.bind_tools(read_only_tools)  # read-only for verification
+    llm_reporter = llm_for_reporter.bind_tools(read_only_tools)  # read-only for file verification
 
     # ToolNodes for each node's tool subset
     _executor_tool_node = ToolNode(tools)

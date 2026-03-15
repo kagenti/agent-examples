@@ -8,3 +8,23 @@ class Configuration(BaseSettings):
     workspace_root: str = "/workspace"
     checkpoint_db_url: str = "memory"
     context_ttl_days: int = 7
+
+    # Per-node model overrides (empty = use llm_model default)
+    llm_model_planner: str = ""
+    llm_model_executor: str = ""
+    llm_model_reflector: str = ""
+    llm_model_reporter: str = ""
+    llm_model_thinking: str = ""  # bare LLM for thinking iterations
+    llm_model_micro_reasoning: str = ""  # LLM+tools for micro-reasoning
+
+    def model_for_node(self, node: str) -> str:
+        """Return the model to use for a specific node type."""
+        overrides = {
+            "planner": self.llm_model_planner,
+            "executor": self.llm_model_executor,
+            "reflector": self.llm_model_reflector,
+            "reporter": self.llm_model_reporter,
+            "thinking": self.llm_model_thinking,
+            "micro_reasoning": self.llm_model_micro_reasoning,
+        }
+        return overrides.get(node, "") or self.llm_model
