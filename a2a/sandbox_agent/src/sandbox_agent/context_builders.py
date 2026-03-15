@@ -571,7 +571,7 @@ async def invoke_with_tool_loop(
                 reason_response, reason_capture = await invoke_llm(
                     llm_reason, thinking_messages,
                     node=f"{node}-think-{cycle+1}.{i+1}", session_id=session_id,
-                    workspace_path="",
+                    workspace_path=workspace_path,
                 )
                 last_reasoning = str(reason_response.content or "").strip()
                 total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
@@ -608,7 +608,7 @@ async def invoke_with_tool_loop(
             response, capture = await invoke_llm(
                 llm_with_tools, tool_messages,
                 node=f"{node}-tool-{cycle+1}", session_id=session_id,
-                workspace_path="",
+                workspace_path=workspace_path,
             )
             capture.prompt_tokens += total_thinking_tokens
             all_captures.append(capture)
@@ -619,7 +619,7 @@ async def invoke_with_tool_loop(
                 llm_with_tools, cycle_messages,
                 node=f"{node}-{cycle+1}" if max_cycles > 1 else node,
                 session_id=session_id,
-                workspace_path=workspace_path if cycle == 0 else "",
+                workspace_path=workspace_path,
             )
             all_captures.append(capture)
 
