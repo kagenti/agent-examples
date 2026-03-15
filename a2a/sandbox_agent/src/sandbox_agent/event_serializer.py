@@ -111,11 +111,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._context_id = context_id or "unknown"
         self._last_call_id: str = ""
         self._prev_node: str | None = None  # previous node for node_transition events
-        self._current_node: str = ""  # current LangGraph node name
 
     def serialize(self, key: str, value: dict) -> str:
-        # Track current LangGraph node name for enrichment
-        self._current_node = key
 
         # Emit node_transition meta-event when the node changes
         transition_line: str | None = None
@@ -242,7 +239,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
                 evt["event_index"] = self._event_counter
                 evt["node_visit"] = self._node_visit
                 evt["sub_index"] = self._sub_index
-                evt["langgraph_node"] = self._current_node
+                evt["langgraph_node"] = key
                 self._sub_index += 1
                 enriched_lines.append(json.dumps(evt))
             except json.JSONDecodeError:

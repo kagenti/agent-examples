@@ -304,9 +304,10 @@ def create_tracing_middleware():
                         response, StreamingResponse
                     ):
                         # Read response body — we MUST recreate response after
-                        response_body = b""
+                        _chunks: list[bytes] = []
                         async for chunk in response.body_iterator:
-                            response_body += chunk
+                            _chunks.append(chunk)
+                        response_body = b"".join(_chunks)
 
                         # Try to parse and extract output for MLflow
                         try:
