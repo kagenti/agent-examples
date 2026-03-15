@@ -64,19 +64,12 @@ def setup_observability() -> bool:
     Set up OpenTelemetry tracing with OpenInference instrumentation.
 
     Call this ONCE at agent startup, before importing agent code.
+    NEVER raises — all exceptions are caught and logged. OTel issues
+    must never break the agent's main processing loop.
 
     Returns:
         True if tracing was set up successfully, False otherwise.
     """
-    from opentelemetry import trace
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-    from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
-    from opentelemetry.propagate import set_global_textmap
-    from opentelemetry.propagators.composite import CompositePropagator
-    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-    from opentelemetry.baggage.propagation import W3CBaggagePropagator
-
     service_name = os.getenv("OTEL_SERVICE_NAME", "sandbox-agent")
     namespace = os.getenv("K8S_NAMESPACE_NAME", "team1")
     otlp_endpoint = os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT", "")
@@ -87,6 +80,24 @@ def setup_observability() -> bool:
             "Set this env var to enable OpenTelemetry tracing."
         )
         return False
+
+    try:
+        return _setup_observability_inner(service_name, namespace, otlp_endpoint)
+    except Exception:
+        logger.exception("OTel setup failed — tracing disabled (agent continues without tracing)")
+        return False
+
+
+def _setup_observability_inner(service_name: str, namespace: str, otlp_endpoint: str) -> bool:
+    """Internal setup — may raise. Called by setup_observability() which catches all errors."""
+    from opentelemetry import trace
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+    from opentelemetry.sdk.resources import Resource, SERVICE_NAME, SERVICE_VERSION
+    from opentelemetry.propagate import set_global_textmap
+    from opentelemetry.propagators.composite import CompositePropagator
+    from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
+    from opentelemetry.baggage.propagation import W3CBaggagePropagator
 
     logger.info("=" * 60)
     logger.info("Setting up OpenTelemetry observability")
