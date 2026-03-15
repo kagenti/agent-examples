@@ -960,7 +960,7 @@ def run() -> None:
             # Build a graph for introspection only (no checkpointer, dummy config)
             from sandbox_agent.permissions import PermissionChecker
             from sandbox_agent.sources import SourcesConfig
-            pc = PermissionChecker()
+            pc = PermissionChecker(settings={"workspace": "/workspace", "permissions": {}})
             sc = SourcesConfig()
             compiled = build_graph(
                 workspace_path="/workspace",
