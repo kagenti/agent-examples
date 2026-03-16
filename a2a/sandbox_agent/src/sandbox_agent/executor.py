@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import os
 import shlex
 from dataclasses import dataclass
 
@@ -89,6 +90,9 @@ class SandboxExecutor:
         self._workspace_path = workspace_path
         self._permission_checker = permission_checker
         self._sources_config = sources_config
+        self._use_landlock = os.environ.get("SANDBOX_LANDLOCK") == "true"
+        if self._use_landlock:
+            logger.info("Landlock isolation ENABLED for workspace %s", workspace_path)
 
     # ------------------------------------------------------------------
     # Public API
@@ -285,8 +289,17 @@ class SandboxExecutor:
         return None
 
     async def _execute(self, command: str) -> ExecutionResult:
-        """Execute *command* in the workspace directory with a timeout."""
+        """Execute *command* in the workspace directory with a timeout.
+
+        When ``SANDBOX_LANDLOCK=true``, each command is executed inside a
+        Landlock-restricted subprocess that can only write to the workspace
+        and a session-specific /tmp directory.  There is no fallback --
+        if Landlock fails, the command fails.
+        """
         timeout = self._sources_config.max_execution_time_seconds
+
+        if self._use_landlock:
+            return await self._execute_landlock(command, timeout)
 
         try:
             process = await asyncio.create_subprocess_shell(
@@ -330,3 +343,22 @@ class SandboxExecutor:
                 stderr=f"Failed to start command: {exc}",
                 exit_code=-1,
             )
+
+    async def _execute_landlock(self, command: str, timeout: float) -> ExecutionResult:
+        """Execute *command* inside a Landlock-sandboxed subprocess.
+
+        No fallback -- if Landlock application fails in the child, the
+        error propagates as a non-zero exit code.
+        """
+        from sandbox_agent.sandbox_subprocess import sandboxed_subprocess
+
+        returncode, stdout, stderr = await sandboxed_subprocess(
+            command=command,
+            workspace_path=self._workspace_path,
+            timeout=timeout,
+        )
+        return ExecutionResult(
+            stdout=stdout,
+            stderr=stderr,
+            exit_code=returncode,
+        )

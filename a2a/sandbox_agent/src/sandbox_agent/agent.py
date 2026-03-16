@@ -911,6 +911,15 @@ def _load_skill_packs_at_startup() -> None:
 
 def run() -> None:
     """Create the A2A server application and run it with uvicorn."""
+    # Landlock probe: verify filesystem isolation works before accepting requests.
+    # Runs in a forked child (Landlock is irreversible). Exits the process if
+    # the kernel does not support Landlock or the probe fails.
+    if os.environ.get("SANDBOX_LANDLOCK") == "true":
+        from sandbox_agent.landlock_probe import probe_landlock
+
+        abi = probe_landlock()  # exits process if Landlock unavailable
+        logger.info("Landlock probe passed -- ABI version %d", abi)
+
     # Initialize OTel GenAI auto-instrumentation (if OTEL_EXPORTER_OTLP_ENDPOINT is set).
     # NOTE: Only LangChain/OpenAI auto-instrumentation is enabled here.
     # The HTTP middleware is disabled because it interferes with SSE streaming

@@ -464,6 +464,10 @@ def _make_glob_tool(workspace_path: str) -> Any:
         matches = []
         for p in sorted(ws_root.rglob("*")):
             if p.is_file():
+                # Resolve symlinks and verify the real path stays inside workspace
+                resolved = p.resolve()
+                if not resolved.is_relative_to(ws_root):
+                    continue
                 rel = str(p.relative_to(ws_root))
                 if fnmatch.fnmatch(rel, pattern) or fnmatch.fnmatch(p.name, pattern):
                     matches.append(rel)
