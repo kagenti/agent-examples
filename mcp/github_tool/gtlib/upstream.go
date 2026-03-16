@@ -225,12 +225,28 @@ func (m *mcpAuthImpl) CallTool(
 		m.serverSessions[downstreamSession] = upstreamSession
 	}
 
+	if args, ok := request.Params.Arguments.(map[string]interface{}); ok {
+		stripNilArguments(args)
+	}
+
 	res, err := upstreamSession.client.CallTool(ctx, request)
 	if err != nil {
 		upstreamSession.lastContact = time.Now()
 	}
 
 	return res, err
+}
+
+// stripNilArguments removes nil-valued entries from tool call arguments.
+// OpenAI's function calling API sends explicit JSON null for optional
+// parameters, but the upstream GitHub MCP server rejects nil where it
+// expects a typed value.
+func stripNilArguments(args map[string]interface{}) {
+	for k, v := range args {
+		if v == nil {
+			delete(args, k)
+		}
+	}
 }
 
 func (m *mcpAuthImpl) createUpstreamSession(ctx context.Context, authorization string, options ...transport.StreamableHTTPCOption) (*upstreamSessionState, error) {
