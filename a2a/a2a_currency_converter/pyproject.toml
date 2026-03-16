@@ -16,7 +16,14 @@ dependencies = [
     "langchain-openai>=0.2.14",
     "pydantic-settings>=2.9.1",
     "openinference-instrumentation-langchain>=0.1.36",
-    "opentelemetry-exporter-otlp>=1.33.1"
+    "opentelemetry-exporter-otlp>=1.33.1",
+    # The following are to avoid CVEs reported by Trivy and checked by our CI
+    "urllib3>=2.6.0",
+    "starlette>=0.49.1",
+    "pyasn1>=0.6.2",
+    "protobuf>=5.29.6",
+    "langgraph-checkpoint>=3.0.0",
+    "langchain-core>=0.3.81"
 ]
 
 [tool.hatch.build.targets.wheel]
