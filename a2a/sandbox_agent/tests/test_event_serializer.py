@@ -477,6 +477,78 @@ class TestReporterEvents:
         data = json.loads(result)
         assert data["type"] == "reporter_output"
 
+    def test_reporter_extracts_respond_to_user_tool_call(self) -> None:
+        """Reporter extracts response text from respond_to_user tool call."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{
+                "name": "respond_to_user",
+                "args": {"response": "Here is the final answer from tool call."},
+            }],
+        )
+        result = s.serialize("reporter", {
+            "final_answer": "",
+            "messages": [msg],
+        })
+        data = json.loads(result)
+        assert data["type"] == "reporter_output"
+        assert data["content"] == "Here is the final answer from tool call."
+
+    def test_reporter_respond_to_user_does_not_emit_tool_call(self) -> None:
+        """respond_to_user should produce reporter_output, not tool_call."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{
+                "name": "respond_to_user",
+                "args": {"response": "Clean output"},
+            }],
+        )
+        result = s.serialize("reporter", {
+            "final_answer": "",
+            "messages": [msg],
+        })
+        events = _parse_lines(result)
+        for event in events:
+            assert event["type"] != "tool_call", (
+                "respond_to_user should not emit raw tool_call events"
+            )
+
+    def test_reporter_respond_to_user_preferred_over_empty_content(self) -> None:
+        """respond_to_user tool call is preferred over empty text content."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{
+                "name": "respond_to_user",
+                "args": {"response": "Tool response wins"},
+            }],
+        )
+        result = s.serialize("reporter", {
+            "final_answer": "",
+            "messages": [msg],
+        })
+        data = json.loads(result)
+        assert data["content"] == "Tool response wins"
+
+    def test_reporter_final_answer_preferred_over_respond_to_user(self) -> None:
+        """final_answer field takes priority over respond_to_user tool call."""
+        s = LangGraphSerializer()
+        msg = _make_msg(
+            content="",
+            tool_calls=[{
+                "name": "respond_to_user",
+                "args": {"response": "from tool call"},
+            }],
+        )
+        result = s.serialize("reporter", {
+            "final_answer": "from final_answer",
+            "messages": [msg],
+        })
+        data = json.loads(result)
+        assert data["content"] == "from final_answer"
+
 
 # ---------------------------------------------------------------------------
 # Unknown node fallback

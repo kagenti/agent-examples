@@ -614,18 +614,44 @@ class LangGraphSerializer(FrameworkEventSerializer):
         return json.dumps(payload)
 
     def _serialize_reporter(self, value: dict) -> str:
-        """Serialize a reporter node output — emits reporter_output."""
+        """Serialize a reporter node output — emits reporter_output.
+
+        When the reporter LLM calls the ``respond_to_user`` escape tool
+        instead of producing text content, we extract the ``response``
+        argument and emit it as a clean ``reporter_output`` event rather
+        than a raw ``tool_call`` event.
+        """
         final_answer = value.get("final_answer", "")
 
-        # Also check messages for the reporter's LLM response
+        # Check messages for respond_to_user tool call or text content
         if not final_answer:
             msgs = value.get("messages", [])
-            if msgs:
-                content = getattr(msgs[-1], "content", "")
-                if isinstance(content, list):
-                    final_answer = self._extract_text_blocks(content)
-                else:
-                    final_answer = str(content)[:2000] if content else ""
+            for msg in msgs:
+                # Check for respond_to_user tool call first
+                tool_calls = getattr(msg, "tool_calls", None)
+                if tool_calls:
+                    for tc in tool_calls:
+                        tc_info = _safe_tc(tc)
+                        if tc_info["name"] == "respond_to_user":
+                            args = tc_info["args"]
+                            final_answer = (
+                                args.get("response", "")
+                                if isinstance(args, dict)
+                                else str(args)
+                            )
+                            break
+                    if final_answer:
+                        break
+
+                # Fall back to text content
+                content = getattr(msg, "content", "")
+                if content:
+                    if isinstance(content, list):
+                        final_answer = self._extract_text_blocks(content)
+                    else:
+                        final_answer = str(content)[:2000]
+                    if final_answer:
+                        break
 
         model = value.get("model", "")
         prompt_tokens = value.get("prompt_tokens", 0)
