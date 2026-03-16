@@ -14,16 +14,16 @@ dependencies = [
     "langchain-community>=0.3.9",
     "langchain-ollama>=0.2.1",
     "langchain-openai>=0.3.7",
+    "openinference-instrumentation-langchain>=0.1.27",
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
     "python-keycloak>=5.5.1",
     "opentelemetry-exporter-otlp",
-    # OpenTelemetry GenAI semantic convention instrumentation
-    # Emits spans with gen_ai.* attributes for MLflow compatibility
+    # GenAI semantic convention instrumentation for token metrics
     "opentelemetry-instrumentation-openai>=0.34b0",
-    # OpenInference for LangChain instrumentation and AGENT span semantics
-    "openinference-semantic-conventions>=0.1.12",
-    "openinference-instrumentation-langchain>=0.1.27",
+    # Starlette instrumentation - extracts traceparent from incoming HTTP headers
+    # Required for AuthBridge trace context propagation (Approach A)
+    "opentelemetry-instrumentation-starlette",
 ]
 
 [project.scripts]
