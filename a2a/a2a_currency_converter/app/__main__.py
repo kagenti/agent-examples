@@ -52,7 +52,7 @@ def main(host, port):
             name="Currency Agent",
             description="Helps with exchange rates for currencies",
             # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-            url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}/"),
+            url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
             version="1.0.0",
             default_input_modes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
             default_output_modes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,

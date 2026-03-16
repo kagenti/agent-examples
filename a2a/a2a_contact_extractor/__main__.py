@@ -4,6 +4,7 @@ It is integrated with the Agent2Agent (A2A) protocol.
 """
 
 import logging
+import os
 
 import click
 import httpx
@@ -95,7 +96,8 @@ def get_agent_card(host: str, port: int):
     return AgentCard(
         name="Marvin Contact Extractor",
         description="Extracts structured contact information from text using Marvin's extraction capabilities",
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         defaultInputModes=ExtractorAgent.SUPPORTED_CONTENT_TYPES,
         defaultOutputModes=ExtractorAgent.SUPPORTED_CONTENT_TYPES,

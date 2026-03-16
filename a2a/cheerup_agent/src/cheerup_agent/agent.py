@@ -1,4 +1,5 @@
 import logging
+import os
 from textwrap import dedent
 
 import uvicorn
@@ -48,7 +49,8 @@ def get_agent_card(host: str, port: int):
             - Be a positive, supportive friend to chat with
             """,
         ),
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
