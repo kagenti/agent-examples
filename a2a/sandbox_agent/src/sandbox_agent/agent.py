@@ -338,6 +338,45 @@ class SandboxAgentExecutor(AgentExecutor):
         # Logs warnings on mismatch but does not block the agent from starting.
         _tofu_verify(_PACKAGE_ROOT)
 
+    async def _ensure_checkpointer(self) -> None:
+        """Initialize or re-initialize the PostgreSQL checkpointer.
+
+        Creates a new connection pool if not initialized yet, or if the
+        existing connection is stale (e.g., after a PostgreSQL restart).
+        """
+        if not self._checkpoint_db_url:
+            return
+
+        needs_init = not self._checkpointer_initialized
+
+        # Check if existing connection is stale
+        if self._checkpointer_initialized and self._checkpointer:
+            try:
+                # Lightweight health check — attempt a simple query
+                pool = getattr(self._checkpointer, 'conn', None) or getattr(self._checkpointer, '_conn', None)
+                if pool and hasattr(pool, 'execute'):
+                    await pool.execute("SELECT 1")
+            except Exception:
+                logger.warning("PostgreSQL checkpointer connection stale — re-initializing")
+                # Close old connection
+                if hasattr(self, '_checkpointer_cm') and self._checkpointer_cm:
+                    try:
+                        await self._checkpointer_cm.__aexit__(None, None, None)
+                    except Exception:
+                        pass
+                needs_init = True
+                self._checkpointer_initialized = False
+
+        if needs_init:
+            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+
+            cm = AsyncPostgresSaver.from_conn_string(self._checkpoint_db_url)
+            self._checkpointer = await cm.__aenter__()
+            self._checkpointer_cm = cm
+            await self._checkpointer.setup()
+            self._checkpointer_initialized = True
+            logger.info("PostgreSQL checkpointer initialized")
+
     # ------------------------------------------------------------------
 
     async def execute(
@@ -370,17 +409,7 @@ class SandboxAgentExecutor(AgentExecutor):
             logger.info("No context_id; using stateless workspace: %s", workspace_path)
 
         # Lazy-init PostgreSQL checkpointer on first execute()
-        if not self._checkpointer_initialized and self._checkpoint_db_url:
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
-
-            # from_conn_string returns a context manager; enter it and keep
-            # the saver alive for the process lifetime.
-            cm = AsyncPostgresSaver.from_conn_string(self._checkpoint_db_url)
-            self._checkpointer = await cm.__aenter__()
-            self._checkpointer_cm = cm  # prevent GC
-            await self._checkpointer.setup()
-            self._checkpointer_initialized = True
-            logger.info("PostgreSQL checkpointer initialized")
+        await self._ensure_checkpointer()
 
         # 3. Build graph with shared checkpointer for multi-turn memory
         namespace = os.environ.get("NAMESPACE", "team1")
@@ -468,12 +497,29 @@ class SandboxAgentExecutor(AgentExecutor):
                             err_str = str(retry_err).lower()
                             is_quota = "insufficient_quota" in err_str
                             is_rate = "rate_limit" in err_str or "429" in err_str
+                            is_db_stale = "connection is closed" in err_str or "operationalerror" in err_str
                             if is_quota:
                                 logger.error("LLM quota exceeded: %s", retry_err)
                                 await event_queue.put(
                                     {"_error": "LLM API quota exceeded. Check billing."}
                                 )
                                 break
+                            elif is_db_stale and attempt < max_retries:
+                                logger.warning(
+                                    "DB connection stale (%d/%d), re-initializing checkpointer: %s",
+                                    attempt + 1, max_retries, retry_err,
+                                )
+                                await self._ensure_checkpointer()
+                                # Rebuild graph with fresh checkpointer
+                                graph = build_graph(
+                                    workspace_path=workspace_path,
+                                    permission_checker=self._permission_checker,
+                                    sources_config=self._sources_config,
+                                    checkpointer=self._checkpointer,
+                                    context_id=context_id or "stateless",
+                                    namespace=namespace,
+                                )
+                                continue
                             elif is_rate and attempt < max_retries:
                                 delay = 2 ** (attempt + 1)
                                 logger.warning(
