@@ -4,8 +4,6 @@ Wires together the workspace manager, permission checker, sources config,
 and LangGraph graph to serve the A2A protocol over HTTP.
 """
 
-from __future__ import annotations
-
 import asyncio
 import hashlib
 import json
