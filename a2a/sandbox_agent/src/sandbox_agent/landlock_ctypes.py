@@ -39,16 +39,16 @@ LANDLOCK_RULE_PATH_BENEATH = 1
 
 # ABI v1 access flags (13 flags)
 _ACCESS_FS_V1 = (
-    (1 << 0)   # EXECUTE
-    | (1 << 1)   # WRITE_FILE
-    | (1 << 2)   # READ_FILE
-    | (1 << 3)   # READ_DIR
-    | (1 << 4)   # REMOVE_DIR
-    | (1 << 5)   # REMOVE_FILE
-    | (1 << 6)   # MAKE_CHAR
-    | (1 << 7)   # MAKE_DIR
-    | (1 << 8)   # MAKE_REG
-    | (1 << 9)   # MAKE_SOCK
+    (1 << 0)  # EXECUTE
+    | (1 << 1)  # WRITE_FILE
+    | (1 << 2)  # READ_FILE
+    | (1 << 3)  # READ_DIR
+    | (1 << 4)  # REMOVE_DIR
+    | (1 << 5)  # REMOVE_FILE
+    | (1 << 6)  # MAKE_CHAR
+    | (1 << 7)  # MAKE_DIR
+    | (1 << 8)  # MAKE_REG
+    | (1 << 9)  # MAKE_SOCK
     | (1 << 10)  # MAKE_FIFO
     | (1 << 11)  # MAKE_BLOCK
     | (1 << 12)  # MAKE_SYM
@@ -62,9 +62,9 @@ _ACCESS_FS_TRUNCATE = 1 << 14
 
 # Read-only subset (for ro_paths)
 ACCESS_FS_READ_ONLY = (
-    (1 << 0)   # EXECUTE
-    | (1 << 2)   # READ_FILE
-    | (1 << 3)   # READ_DIR
+    (1 << 0)  # EXECUTE
+    | (1 << 2)  # READ_FILE
+    | (1 << 3)  # READ_DIR
 )
 
 _libc = ctypes.CDLL("libc.so.6", use_errno=True)

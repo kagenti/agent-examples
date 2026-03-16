@@ -56,7 +56,7 @@ from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.graph import MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode, tools_condition
-from langgraph.types import Send, interrupt
+from langgraph.types import interrupt
 
 try:
     from langgraph.errors import GraphInterrupt
@@ -64,12 +64,13 @@ except ImportError:
     # Fallback for older langgraph versions
     GraphInterrupt = type("GraphInterrupt", (Exception,), {})
 
+from sandbox_agent import plan_store as ps
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.executor import HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.reasoning import (
-    PlanStep,
     _DEBUG_PROMPTS,
+    PlanStep,
     executor_node,
     planner_node,
     reflector_node,
@@ -78,9 +79,8 @@ from sandbox_agent.reasoning import (
     route_reflector,
     router_node,
 )
-from sandbox_agent import plan_store as ps
 from sandbox_agent.sources import SourcesConfig
-from sandbox_agent.subagents import make_delegate_tool, make_explore_tool
+from sandbox_agent.subagents import make_explore_tool
 
 logger = logging.getLogger(__name__)
 
@@ -263,11 +263,13 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
             # The interrupt() call suspends the graph state. The A2A task
             # transitions to input_required. Only an explicit human
             # approval (via the HITLManager channel) resumes execution.
-            approval = interrupt({
-                "type": "approval_required",
-                "command": exc.command,
-                "message": f"Command '{exc.command}' requires human approval.",
-            })
+            approval = interrupt(
+                {
+                    "type": "approval_required",
+                    "command": exc.command,
+                    "message": f"Command '{exc.command}' requires human approval.",
+                }
+            )
             # If we reach here, the human approved — execute the command.
             if isinstance(approval, dict) and approval.get("approved"):
                 result = await executor._execute(command)
@@ -278,8 +280,9 @@ def _make_shell_tool(executor: SandboxExecutor) -> Any:
         output = _format_result(result)
         if result.exit_code != 0 and _is_rate_limited(output):
             import asyncio
+
             for attempt in range(1, 4):  # up to 3 retries
-                delay = 2 ** attempt  # 2s, 4s, 8s
+                delay = 2**attempt  # 2s, 4s, 8s
                 logger.info("Rate limit detected, retry %d/3 after %ds", attempt, delay)
                 await asyncio.sleep(delay)
                 try:
@@ -322,14 +325,17 @@ def _format_result(result: Any) -> str:
 def _is_rate_limited(output: str) -> bool:
     """Detect rate-limit errors in command output."""
     lower = output.lower()
-    return any(pattern in lower for pattern in (
-        "rate limit exceeded",
-        "rate limit",
-        "too many requests",
-        "429",
-        "api rate limit",
-        "secondary rate limit",
-    ))
+    return any(
+        pattern in lower
+        for pattern in (
+            "rate limit exceeded",
+            "rate limit",
+            "too many requests",
+            "429",
+            "api rate limit",
+            "secondary rate limit",
+        )
+    )
 
 
 def _make_file_read_tool(workspace_path: str) -> Any:
@@ -430,7 +436,9 @@ def _make_grep_tool(workspace_path: str) -> Any:
 
         try:
             proc = await _aio.create_subprocess_exec(
-                *cmd, stdout=_aio.subprocess.PIPE, stderr=_aio.subprocess.PIPE,
+                *cmd,
+                stdout=_aio.subprocess.PIPE,
+                stderr=_aio.subprocess.PIPE,
             )
             stdout, stderr = await _aio.wait_for(proc.communicate(), timeout=30)
             out = stdout.decode(errors="replace")[:10000]
@@ -461,6 +469,7 @@ def _make_glob_tool(workspace_path: str) -> Any:
             Newline-separated list of matching file paths relative to workspace.
         """
         import fnmatch
+
         matches = []
         for p in sorted(ws_root.rglob("*")):
             if p.is_file():
@@ -499,8 +508,9 @@ def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
         Returns:
             The page content as text, or an error message.
         """
-        import httpx
         from urllib.parse import urlparse
+
+        import httpx
 
         parsed = urlparse(url)
         domain = parsed.hostname or ""
@@ -524,10 +534,11 @@ def _make_web_fetch_tool(sources_config: SourcesConfig) -> Any:
                 if "text/html" in content_type:
                     # Simple HTML tag stripping for readability
                     import re
-                    text = re.sub(r'<script[^>]*>.*?</script>', '', text, flags=re.DOTALL)
-                    text = re.sub(r'<style[^>]*>.*?</style>', '', text, flags=re.DOTALL)
-                    text = re.sub(r'<[^>]+>', ' ', text)
-                    text = re.sub(r'\s+', ' ', text).strip()
+
+                    text = re.sub(r"<script[^>]*>.*?</script>", "", text, flags=re.DOTALL)
+                    text = re.sub(r"<style[^>]*>.*?</style>", "", text, flags=re.DOTALL)
+                    text = re.sub(r"<[^>]+>", " ", text)
+                    text = re.sub(r"\s+", " ", text).strip()
 
                 # Truncate very long responses
                 if len(text) > 50000:
@@ -672,7 +683,7 @@ def build_graph(
     llm_for_reflector = _make_llm("reflector") if config.llm_model_reflector else llm
     llm_for_reporter = _make_llm("reporter") if config.llm_model_reporter else llm
     llm_for_thinking = _make_llm("thinking") if config.llm_model_thinking else llm
-    llm_for_micro = _make_llm("micro_reasoning") if config.llm_model_micro_reasoning else llm
+    _llm_for_micro = _make_llm("micro_reasoning") if config.llm_model_micro_reasoning else llm
 
     # -- Tools --------------------------------------------------------------
     # Create tool instances once — shared across node subsets.
@@ -742,7 +753,9 @@ def build_graph(
 
     async def _reporter(state: SandboxState) -> dict[str, Any]:
         return await reporter_node(
-            state, llm_reporter, budget=budget,
+            state,
+            llm_reporter,
+            budget=budget,
             llm_reason=llm_executor_reason,
             tools=read_only_tools,
         )
@@ -754,7 +767,8 @@ def build_graph(
         a targeted brief for the executor — what to do, what worked/failed
         before, and what to avoid.
         """
-        from langchain_core.messages import SystemMessage as SM, HumanMessage as HM
+        from langchain_core.messages import HumanMessage as HM
+        from langchain_core.messages import SystemMessage as SM
 
         plan = state.get("plan", [])
         plan_steps = list(state.get("plan_steps", []))
@@ -796,13 +810,13 @@ def build_graph(
             result_hint = ""
             if isinstance(_ps, dict) and _ps.get("result_summary"):
                 result_hint = f" — {_ps['result_summary'][:100]}"
-            plan_summary.append(f"  {marker} {i+1}. [{status}] {step[:80]}{result_hint}")
+            plan_summary.append(f"  {marker} {i + 1}. [{status}] {step[:80]}{result_hint}")
 
         # Gather recent tool results (last 3 ToolMessages)
         recent_results = []
         for m in reversed(messages[-10:]):
-            if hasattr(m, 'name') and getattr(m, 'type', '') == 'tool':
-                content = str(getattr(m, 'content', ''))[:300]
+            if hasattr(m, "name") and getattr(m, "type", "") == "tool":
+                content = str(getattr(m, "content", ""))[:300]
                 recent_results.insert(0, f"  [{m.name}] {content}")
                 if len(recent_results) >= 3:
                     break
@@ -830,7 +844,7 @@ Plan progress:
 Next step to execute: {next_step + 1}. {step_text}
 
 Recent tool results:
-{chr(10).join(recent_results) if recent_results else '(none yet)'}
+{chr(10).join(recent_results) if recent_results else "(none yet)"}
 
 WORKSPACE RULE: Each shell command starts fresh in /workspace. Bare `cd` has no effect.
 If the step involves a cloned repo, always write `cd repos/<repo> && <command>` in the brief.
@@ -843,10 +857,8 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
         try:
             response = await llm.ainvoke([sys_msg, user_msg])
             brief = response.content.strip()
-            usage = getattr(response, 'usage_metadata', None) or {}
-            budget.add_tokens(
-                usage.get('input_tokens', 0) + usage.get('output_tokens', 0)
-            )
+            usage = getattr(response, "usage_metadata", None) or {}
+            budget.add_tokens(usage.get("input_tokens", 0) + usage.get("output_tokens", 0))
         except Exception as e:
             logger.warning("StepSelector LLM call failed: %s — using default brief", e)
             brief = f"Execute step {next_step + 1}: {step_text}"
@@ -863,6 +875,7 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
             result["_plan_store"] = store
         if _DEBUG_PROMPTS:
             from sandbox_agent.context_builders import LLMCallCapture
+
             result["_system_prompt"] = prompt[:10000]
             result["_prompt_messages"] = [
                 {"role": "system", "preview": "Step coordinator brief prompt"},
@@ -877,8 +890,10 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
 
     def _make_safe_tool_wrapper(tool_node: ToolNode, label: str):
         """Create a safe tool execution wrapper for a ToolNode."""
+
         async def _safe(state: SandboxState) -> dict[str, Any]:
             from langchain_core.messages import ToolMessage
+
             try:
                 return await tool_node.ainvoke(state)
             except (GraphInterrupt, KeyboardInterrupt, SystemExit):
@@ -892,18 +907,23 @@ Write a brief: what EXACTLY to do for step {next_step + 1}, what context from pr
                     for tc in getattr(last, "tool_calls", []):
                         tc_id = tc.get("id", "unknown") if isinstance(tc, dict) else getattr(tc, "id", "unknown")
                         tc_name = tc.get("name", "unknown") if isinstance(tc, dict) else getattr(tc, "name", "unknown")
-                        error_msgs.append(ToolMessage(
-                            content=f"Tool error: {exc}",
-                            tool_call_id=tc_id,
-                            name=tc_name,
-                        ))
+                        error_msgs.append(
+                            ToolMessage(
+                                content=f"Tool error: {exc}",
+                                tool_call_id=tc_id,
+                                name=tc_name,
+                            )
+                        )
                 if not error_msgs:
-                    error_msgs.append(ToolMessage(
-                        content=f"Tool execution failed: {exc}",
-                        tool_call_id="error",
-                        name="unknown",
-                    ))
+                    error_msgs.append(
+                        ToolMessage(
+                            content=f"Tool execution failed: {exc}",
+                            tool_call_id="error",
+                            name="unknown",
+                        )
+                    )
                 return {"messages": error_msgs}
+
         return _safe
 
     _reporter_tool_node = ToolNode(read_only_tools)

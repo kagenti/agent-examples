@@ -23,7 +23,7 @@ import os
 import subprocess
 import uuid
 from pathlib import Path
-from typing import Any, Optional
+from typing import Any
 
 import asyncpg
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -37,9 +37,7 @@ logger = logging.getLogger(__name__)
 _MAX_SUB_AGENT_ITERATIONS = 15
 
 # Delegation mode configuration
-_DELEGATION_MODES = os.environ.get(
-    "DELEGATION_MODES", "in-process,shared-pvc,isolated,sidecar"
-).split(",")
+_DELEGATION_MODES = os.environ.get("DELEGATION_MODES", "in-process,shared-pvc,isolated,sidecar").split(",")
 _DEFAULT_MODE = os.environ.get("DEFAULT_DELEGATION_MODE", "in-process")
 
 # Maximum iterations for in-process sub-agents to prevent runaway loops.
@@ -72,11 +70,23 @@ def _make_explore_tools(workspace: str) -> list[Any]:
 
         try:
             result = subprocess.run(
-                ["grep", "-rn", "--include=*.py", "--include=*.md",
-                 "--include=*.yaml", "--include=*.yml", "--include=*.json",
-                 "--include=*.txt", "--include=*.sh", "--include=*.go",
-                 pattern, str(target)],
-                capture_output=True, text=True, timeout=30,
+                [
+                    "grep",
+                    "-rn",
+                    "--include=*.py",
+                    "--include=*.md",
+                    "--include=*.yaml",
+                    "--include=*.yml",
+                    "--include=*.json",
+                    "--include=*.txt",
+                    "--include=*.sh",
+                    "--include=*.go",
+                    pattern,
+                    str(target),
+                ],
+                capture_output=True,
+                text=True,
+                timeout=30,
                 cwd=str(ws_root),
             )
             output = result.stdout[:10000]
@@ -131,7 +141,7 @@ def _make_explore_tools(workspace: str) -> list[Any]:
         matches = sorted(str(p.relative_to(ws_root)) for p in target.rglob(pattern) if p.is_file())
         if len(matches) > 200:
             matches = matches[:200]
-            matches.append(f"... and more (truncated at 200)")
+            matches.append("... and more (truncated at 200)")
         return "\n".join(matches) if matches else "No files found."
 
     return [grep, read_file, list_files]
@@ -148,6 +158,7 @@ def create_explore_graph(workspace: str, llm: Any) -> Any:
 
     async def assistant(state: MessagesState) -> dict[str, Any]:
         from sandbox_agent.reasoning import maybe_patch_tool_calls
+
         system = SystemMessage(
             content=(
                 "You are a codebase research assistant. Your job is to find "
@@ -229,15 +240,15 @@ async def _register_child_session(
     try:
         conn = await asyncpg.connect(pg_url)
         # Check if context already exists
-        existing = await conn.fetchval(
-            "SELECT COUNT(*) FROM tasks WHERE context_id = $1", child_context_id
-        )
+        existing = await conn.fetchval("SELECT COUNT(*) FROM tasks WHERE context_id = $1", child_context_id)
         if existing == 0:
-            metadata = json.dumps({
-                "agent_name": agent_name,
-                "parent_context_id": parent_context_id,
-                "title": task[:80],
-            })
+            metadata = json.dumps(
+                {
+                    "agent_name": agent_name,
+                    "parent_context_id": parent_context_id,
+                    "title": task[:80],
+                }
+            )
             status = json.dumps({"state": "working"})
             await conn.execute(
                 "INSERT INTO tasks (id, context_id, status, metadata, history, artifacts) "
@@ -307,6 +318,7 @@ async def _run_in_process(
 
     async def assistant(state: MessagesState) -> dict[str, Any]:
         from sandbox_agent.reasoning import maybe_patch_tool_calls
+
         system = SystemMessage(
             content=(
                 "You are a sub-agent working on a delegated task. Complete the task "
@@ -350,8 +362,11 @@ async def _run_in_process(
 
 
 async def _run_shared_pvc(
-    task: str, child_context_id: str, namespace: str = "team1",
-    variant: str = "sandbox-legion", timeout_minutes: int = 30,
+    task: str,
+    child_context_id: str,
+    namespace: str = "team1",
+    variant: str = "sandbox-legion",
+    timeout_minutes: int = 30,
 ) -> str:
     """Spawn a pod that mounts the parent's PVC (placeholder)."""
     logger.info("shared-pvc delegation: child=%s task=%s", child_context_id, task)
@@ -363,8 +378,11 @@ async def _run_shared_pvc(
 
 
 async def _run_isolated(
-    task: str, child_context_id: str, namespace: str = "team1",
-    variant: str = "sandbox-legion", timeout_minutes: int = 30,
+    task: str,
+    child_context_id: str,
+    namespace: str = "team1",
+    variant: str = "sandbox-legion",
+    timeout_minutes: int = 30,
 ) -> str:
     """Spawn an isolated pod via SandboxClaim CRD (placeholder)."""
     logger.info("isolated delegation: child=%s task=%s", child_context_id, task)
@@ -376,14 +394,13 @@ async def _run_isolated(
 
 
 async def _run_sidecar(
-    task: str, child_context_id: str, variant: str = "sandbox-legion",
+    task: str,
+    child_context_id: str,
+    variant: str = "sandbox-legion",
 ) -> str:
     """Inject a sidecar container (placeholder)."""
     logger.info("sidecar delegation: child=%s task=%s", child_context_id, task)
-    return (
-        f"Sidecar delegation requested for '{task}' "
-        f"(child={child_context_id}). Not yet implemented."
-    )
+    return f"Sidecar delegation requested for '{task}' (child={child_context_id}). Not yet implemented."
 
 
 def make_delegate_tool(

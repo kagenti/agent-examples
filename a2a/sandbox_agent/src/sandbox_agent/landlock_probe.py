@@ -84,9 +84,7 @@ def probe_landlock() -> int:
     """)
 
     # Find the package root so the child can import sandbox_agent
-    package_src = str(
-        __import__("pathlib").Path(__file__).resolve().parent.parent
-    )
+    package_src = str(__import__("pathlib").Path(__file__).resolve().parent.parent)
 
     result = subprocess.run(
         [sys.executable, "-c", child_script],

@@ -159,11 +159,7 @@ class AgentBudget:
     @property
     def needs_hitl_checkin(self) -> bool:
         """Return True when it's time for a human-in-the-loop check-in."""
-        return (
-            self.hitl_interval > 0
-            and self.iterations_used > 0
-            and self.iterations_used % self.hitl_interval == 0
-        )
+        return self.hitl_interval > 0 and self.iterations_used > 0 and self.iterations_used % self.hitl_interval == 0
 
     def summary(self) -> dict:
         """Return budget state as a dict for event serialization."""

@@ -82,7 +82,9 @@ def build_planner_context(
     result = [SystemMessage(content=system_content)] + first_user + recent_tools
     logger.info(
         "Planner context: %d messages (iteration=%d, %d tool results)",
-        len(result), iteration, len(recent_tools),
+        len(result),
+        iteration,
+        len(recent_tools),
         extra={"session_id": state.get("context_id", ""), "node": "planner"},
     )
     return result
@@ -134,9 +136,7 @@ def build_executor_context(
         used_chars = 0
         for m in reversed(all_msgs):
             content = str(getattr(m, "content", ""))
-            if isinstance(m, SystemMessage) and content.startswith(
-                f"[STEP_BOUNDARY {current_step}]"
-            ):
+            if isinstance(m, SystemMessage) and content.startswith(f"[STEP_BOUNDARY {current_step}]"):
                 break
             msg_chars = len(content)
             if used_chars + msg_chars > _MAX_CONTEXT_CHARS:
@@ -156,6 +156,7 @@ def build_executor_context(
                 # Determine status from exit code
                 if "EXIT_CODE:" in content:
                     import re as _re
+
                     ec_match = _re.search(r"EXIT_CODE:\s*(\d+)", content)
                     status = "FAILED" if ec_match and ec_match.group(1) != "0" else "OK"
                     error_hint = content[:150] if status == "FAILED" else ""
@@ -172,11 +173,9 @@ def build_executor_context(
                 if error_hint:
                     reflection_parts.append(f"Error: {error_hint}")
                 if "unknown flag" in content.lower() or "invalid option" in content.lower():
-                    reflection_parts.append(
-                        "The flag is INVALID. Run the command with --help to see valid flags."
-                    )
+                    reflection_parts.append("The flag is INVALID. Run the command with --help to see valid flags.")
                 reflection_parts.append(
-                    f"Goal: \"{step_text[:100]}\"\n"
+                    f'Goal: "{step_text[:100]}"\n'
                     f"If goal ACHIEVED → stop, summarize result. "
                     f"If FAILED → try DIFFERENT approach. "
                     f"NEVER repeat same command."
@@ -186,7 +185,8 @@ def build_executor_context(
     result = [SystemMessage(content=system_content)] + first_msg + windowed
     logger.info(
         "Executor context: %d messages, ~%dk chars (from %d total)",
-        len(result), sum(len(str(getattr(m, "content", ""))) for m in result) // 1000,
+        len(result),
+        sum(len(str(getattr(m, "content", ""))) for m in result) // 1000,
         len(all_msgs),
         extra={
             "session_id": state.get("context_id", ""),
@@ -240,7 +240,9 @@ def build_reflector_context(
     result = [SystemMessage(content=system_content)] + recent_msgs
     logger.info(
         "Reflector context: %d messages (%d tool pairs from %d total)",
-        len(result), pair_count, len(messages),
+        len(result),
+        pair_count,
+        len(messages),
         extra={"session_id": state.get("context_id", ""), "node": "reflector"},
     )
     return result
@@ -322,9 +324,7 @@ class LLMCallCapture:
             content = getattr(msg, "content", "")
             if isinstance(content, list):
                 content = " ".join(
-                    b.get("text", "")
-                    for b in content
-                    if isinstance(b, dict) and b.get("type") == "text"
+                    b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text"
                 )
             text = str(content)
             tool_calls = getattr(msg, "tool_calls", None)
@@ -353,11 +353,10 @@ class LLMCallCapture:
             meta = getattr(resp, "response_metadata", {}) or {}
             content = resp.content
             if isinstance(content, list):
-                content = " ".join(
-                    b.get("text", "")
-                    for b in content
-                    if isinstance(b, dict) and b.get("type") == "text"
-                ) or None
+                content = (
+                    " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")
+                    or None
+                )
             tool_calls_out = None
             if resp.tool_calls:
                 tool_calls_out = [
@@ -374,14 +373,16 @@ class LLMCallCapture:
                     for tc in resp.tool_calls
                 ]
             return {
-                "choices": [{
-                    "message": {
-                        "role": "assistant",
-                        "content": content if content else None,
-                        "tool_calls": tool_calls_out,
-                    },
-                    "finish_reason": meta.get("finish_reason", "unknown"),
-                }],
+                "choices": [
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": content if content else None,
+                            "tool_calls": tool_calls_out,
+                        },
+                        "finish_reason": meta.get("finish_reason", "unknown"),
+                    }
+                ],
                 "model": meta.get("model", ""),
                 "usage": {
                     "prompt_tokens": self.prompt_tokens,
@@ -477,9 +478,17 @@ async def invoke_llm(
 
     logger.info(
         "LLM call [%s]: %d messages, %d prompt tokens, %d completion tokens, model=%s",
-        node, len(messages), prompt_tokens, completion_tokens, model_name,
-        extra={"session_id": session_id, "node": node,
-               "prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens},
+        node,
+        len(messages),
+        prompt_tokens,
+        completion_tokens,
+        model_name,
+        extra={
+            "session_id": session_id,
+            "node": node,
+            "prompt_tokens": prompt_tokens,
+            "completion_tokens": completion_tokens,
+        },
     )
 
     return response, capture
@@ -558,40 +567,47 @@ async def invoke_with_tool_loop(
 
                 if i == 0:
                     thinking_messages.append(
-                        HumanMessage(content="Brief analysis (2-3 sentences max): "
-                                     "What is the best tool call for this step? "
-                                     "If step is already done, say READY: step complete.")
+                        HumanMessage(
+                            content="Brief analysis (2-3 sentences max): "
+                            "What is the best tool call for this step? "
+                            "If step is already done, say READY: step complete."
+                        )
                     )
                 else:
                     thinking_messages.append(
-                        HumanMessage(content="Refine in 1-2 sentences. "
-                                     "When ready: READY: <one-line action plan>")
+                        HumanMessage(content="Refine in 1-2 sentences. When ready: READY: <one-line action plan>")
                     )
 
                 reason_response, reason_capture = await invoke_llm(
-                    llm_reason, thinking_messages,
-                    node=f"{node}-think-{cycle+1}.{i+1}", session_id=session_id,
+                    llm_reason,
+                    thinking_messages,
+                    node=f"{node}-think-{cycle + 1}.{i + 1}",
+                    session_id=session_id,
                     workspace_path=workspace_path,
                 )
                 last_reasoning = str(reason_response.content or "").strip()
                 total_thinking_tokens += reason_capture.prompt_tokens + reason_capture.completion_tokens
 
-                sub_events.append({
-                    "type": "thinking",
-                    "node": node,
-                    "cycle": cycle + 1,
-                    "iteration": i + 1,
-                    "total_iterations": 0,
-                    "reasoning": last_reasoning,
-                    **reason_capture.debug_fields(),
-                    **reason_capture.token_fields(),
-                })
+                sub_events.append(
+                    {
+                        "type": "thinking",
+                        "node": node,
+                        "cycle": cycle + 1,
+                        "iteration": i + 1,
+                        "total_iterations": 0,
+                        "reasoning": last_reasoning,
+                        **reason_capture.debug_fields(),
+                        **reason_capture.token_fields(),
+                    }
+                )
 
                 thinking_summary = last_reasoning[:200] + ("..." if len(last_reasoning) > 200 else "")
-                thinking_history.extend([
-                    AIMessage(content=thinking_summary),
-                    HumanMessage(content=f"(Thinking {i+1} recorded. Continue or signal READY:)"),
-                ])
+                thinking_history.extend(
+                    [
+                        AIMessage(content=thinking_summary),
+                        HumanMessage(content=f"(Thinking {i + 1} recorded. Continue or signal READY:)"),
+                    ]
+                )
 
                 if last_reasoning.upper().startswith("READY:"):
                     break
@@ -599,15 +615,19 @@ async def invoke_with_tool_loop(
             # --- Micro-reasoning: LLM with tools ---
             tool_messages = cycle_messages + [
                 AIMessage(content=last_reasoning or "I need to call a tool for this step."),
-                HumanMessage(content="Now execute your planned action. Rules:\n"
-                             "- Call step_done(summary='...') if the step is ALREADY COMPLETE.\n"
-                             "- Call ONE tool if there's a single action to take.\n"
-                             "- Call multiple tools ONLY if they are independent (can run in parallel).\n"
-                             "- NEVER call the same tool twice with similar args."),
+                HumanMessage(
+                    content="Now execute your planned action. Rules:\n"
+                    "- Call step_done(summary='...') if the step is ALREADY COMPLETE.\n"
+                    "- Call ONE tool if there's a single action to take.\n"
+                    "- Call multiple tools ONLY if they are independent (can run in parallel).\n"
+                    "- NEVER call the same tool twice with similar args."
+                ),
             ]
             response, capture = await invoke_llm(
-                llm_with_tools, tool_messages,
-                node=f"{node}-tool-{cycle+1}", session_id=session_id,
+                llm_with_tools,
+                tool_messages,
+                node=f"{node}-tool-{cycle + 1}",
+                session_id=session_id,
                 workspace_path=workspace_path,
             )
             capture.prompt_tokens += total_thinking_tokens
@@ -616,8 +636,9 @@ async def invoke_with_tool_loop(
         else:
             # Single-phase: one LLM call with implicit auto
             response, capture = await invoke_llm(
-                llm_with_tools, cycle_messages,
-                node=f"{node}-{cycle+1}" if max_cycles > 1 else node,
+                llm_with_tools,
+                cycle_messages,
+                node=f"{node}-{cycle + 1}" if max_cycles > 1 else node,
                 session_id=session_id,
                 workspace_path=workspace_path,
             )
@@ -628,8 +649,12 @@ async def invoke_with_tool_loop(
             done_calls = [tc for tc in response.tool_calls if tc.get("name") == "step_done"]
             if done_calls:
                 summary = done_calls[0].get("args", {}).get("summary", last_reasoning or "")
-                logger.info("step_done called in cycle %d: %s", cycle + 1, summary[:100],
-                            extra={"session_id": session_id, "node": node})
+                logger.info(
+                    "step_done called in cycle %d: %s",
+                    cycle + 1,
+                    summary[:100],
+                    extra={"session_id": session_id, "node": node},
+                )
                 response = AIMessage(content=summary)
                 break
 
@@ -648,17 +673,17 @@ async def invoke_with_tool_loop(
         if response.tool_calls and tool_map and max_cycles > 1:
             # Emit tool_call sub_event BEFORE execution (so UI shows the call)
             import uuid as _uuid
+
             call_id = str(_uuid.uuid4())[:8]
-            sub_events.append({
-                "type": "tool_call",
-                "node": node,
-                "cycle": cycle + 1,
-                "call_id": call_id,
-                "tools": [
-                    {"name": tc.get("name", "?"), "args": tc.get("args", {})}
-                    for tc in response.tool_calls
-                ],
-            })
+            sub_events.append(
+                {
+                    "type": "tool_call",
+                    "node": node,
+                    "cycle": cycle + 1,
+                    "call_id": call_id,
+                    "tools": [{"name": tc.get("name", "?"), "args": tc.get("args", {})} for tc in response.tool_calls],
+                }
+            )
 
             # Execute all tool calls in parallel via asyncio.gather
             async def _run_tool(tc: dict) -> ToolMessage:
@@ -684,24 +709,27 @@ async def invoke_with_tool_loop(
             for tm in tool_results:
                 content_str = str(getattr(tm, "content", ""))
                 import re as _re
+
                 exit_match = _re.search(r"EXIT_CODE:\s*(\d+)", content_str)
-                is_error = (
-                    (exit_match is not None and exit_match.group(1) != "0")
-                    or content_str.startswith("Error:")
+                is_error = (exit_match is not None and exit_match.group(1) != "0") or content_str.startswith("Error:")
+                sub_events.append(
+                    {
+                        "type": "tool_result",
+                        "node": node,
+                        "cycle": cycle + 1,
+                        "call_id": call_id,
+                        "name": getattr(tm, "name", "unknown"),
+                        "output": content_str[:2000],
+                        "status": "error" if is_error else "success",
+                    }
                 )
-                sub_events.append({
-                    "type": "tool_result",
-                    "node": node,
-                    "cycle": cycle + 1,
-                    "call_id": call_id,
-                    "name": getattr(tm, "name", "unknown"),
-                    "output": content_str[:2000],
-                    "status": "error" if is_error else "success",
-                })
 
             logger.info(
                 "Cycle %d/%d [%s]: %d tool calls executed, continuing",
-                cycle + 1, max_cycles, node, len(response.tool_calls),
+                cycle + 1,
+                max_cycles,
+                node,
+                len(response.tool_calls),
                 extra={"session_id": session_id, "node": node},
             )
             continue  # Next cycle
@@ -731,7 +759,9 @@ async def invoke_with_tool_loop(
 
     logger.info(
         "Tool loop %s: %d cycles, %d thinking iterations, %d total tokens",
-        node, cycle + 1, total_iters,
+        node,
+        cycle + 1,
+        total_iters,
         final_capture.prompt_tokens + final_capture.completion_tokens,
         extra={"session_id": session_id, "node": node},
     )

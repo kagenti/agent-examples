@@ -169,9 +169,7 @@ class PermissionChecker:
         return re.sub(r"/\$\{[^}]+\}$", "", raw)
 
     @staticmethod
-    def _parse_rules(
-        raw_rules: list[str], workspace: str
-    ) -> list[tuple[str, str]]:
+    def _parse_rules(raw_rules: list[str], workspace: str) -> list[tuple[str, str]]:
         """Parse rule strings into ``(operation_type, glob_pattern)`` pairs.
 
         ``${WORKSPACE}`` inside a rule body is expanded to *workspace*.
@@ -243,7 +241,7 @@ class PermissionChecker:
         if colon_idx == -1:
             return False
         prefix = pattern[:colon_idx]
-        glob_part = pattern[colon_idx + 1:]
+        glob_part = pattern[colon_idx + 1 :]
 
         if not operation:
             return False
@@ -257,7 +255,7 @@ class PermissionChecker:
             return False
 
         # What comes after the prefix (may be empty).
-        remainder = operation[len(prefix):]
+        remainder = operation[len(prefix) :]
 
         # If there is a remainder, it must be separated by a space or be
         # empty (exact match).  This prevents "grep" matching "grepping".
@@ -296,7 +294,7 @@ class PermissionChecker:
         while i < len(parts):
             if parts[i] in cls._EXEC_FLAGS and i + 1 < len(parts):
                 # Everything after the flag is the inline command.
-                inline = " ".join(parts[i + 1:])
+                inline = " ".join(parts[i + 1 :])
                 # Strip surrounding quotes if present.
                 if len(inline) >= 2 and inline[0] in ('"', "'") and inline[-1] == inline[0]:
                     inline = inline[1:-1]
@@ -331,10 +329,10 @@ class PermissionChecker:
             return False
 
         p_action = pattern[:p_colon]
-        p_path_glob = pattern[p_colon + 1:]
+        p_path_glob = pattern[p_colon + 1 :]
 
         o_action = operation[:o_colon]
-        o_path = operation[o_colon + 1:]
+        o_path = operation[o_colon + 1 :]
 
         if p_action != o_action:
             return False

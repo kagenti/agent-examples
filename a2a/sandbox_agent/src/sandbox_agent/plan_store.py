@@ -108,14 +108,9 @@ def add_steps(
         raise ValueError(f"Only replanner can add steps, got creator={creator}")
 
     steps = plan.get("steps", {})
-    non_terminal = [
-        k for k, s in steps.items()
-        if s.get("status") not in _TERMINAL
-    ]
+    non_terminal = [k for k, s in steps.items() if s.get("status") not in _TERMINAL]
     if non_terminal:
-        raise ValueError(
-            f"Cannot add steps: steps {non_terminal} are still active"
-        )
+        raise ValueError(f"Cannot add steps: steps {non_terminal} are still active")
 
     new_plan = _deep_copy(plan)
     next_idx = max((int(k) for k in steps), default=0) + 1
@@ -143,7 +138,10 @@ def add_steps(
         new_plan["steps"][first_new]["subplans"]["a"]["status"] = "running"
 
     logger.info(
-        "Added %d steps (start=%s) by %s", len(new_steps), first_new, creator,
+        "Added %d steps (start=%s) by %s",
+        len(new_steps),
+        first_new,
+        creator,
     )
     return new_plan
 
@@ -167,10 +165,7 @@ def add_alternative_subplan(
     next_key = chr(ord("a") + len(existing_keys))
 
     step["subplans"][next_key] = {
-        "substeps": {
-            str(i + 1): {"description": desc, "status": "pending"}
-            for i, desc in enumerate(substeps)
-        },
+        "substeps": {str(i + 1): {"description": desc, "status": "pending"} for i, desc in enumerate(substeps)},
         "status": "running",
         "created_by": "replanner",
     }
@@ -179,7 +174,9 @@ def add_alternative_subplan(
 
     logger.info(
         "Created alternative subplan '%s' for step %s (%d substeps)",
-        next_key, step_key, len(substeps),
+        next_key,
+        step_key,
+        len(substeps),
     )
     return new_plan, next_key
 
@@ -293,10 +290,7 @@ def all_terminal(plan: dict[str, Any]) -> bool:
 
 def to_flat_plan(plan: dict[str, Any]) -> list[str]:
     """Convert to flat list of step descriptions (backward compat)."""
-    return [
-        plan["steps"][k]["description"]
-        for k in sorted(plan.get("steps", {}), key=int)
-    ]
+    return [plan["steps"][k]["description"] for k in sorted(plan.get("steps", {}), key=int)]
 
 
 def to_flat_plan_steps(plan: dict[str, Any]) -> list[dict[str, Any]]:
@@ -307,15 +301,17 @@ def to_flat_plan_steps(plan: dict[str, Any]) -> list[dict[str, Any]]:
         active = step.get("active_subplan", "a")
         subplan = step.get("subplans", {}).get(active, {})
         alt_count = len(step.get("subplans", {})) - 1  # alternatives (excl. original)
-        result.append({
-            "index": int(key) - 1,  # 0-based for compat
-            "description": step["description"],
-            "status": step["status"],
-            "active_subplan": active,
-            "alternative_count": alt_count,
-            "substeps": list(subplan.get("substeps", {}).values()),
-            "created_by": subplan.get("created_by", "planner"),
-        })
+        result.append(
+            {
+                "index": int(key) - 1,  # 0-based for compat
+                "description": step["description"],
+                "status": step["status"],
+                "active_subplan": active,
+                "alternative_count": alt_count,
+                "substeps": list(subplan.get("substeps", {}).values()),
+                "created_by": subplan.get("created_by", "planner"),
+            }
+        )
     return result
 
 
@@ -327,4 +323,5 @@ def to_flat_plan_steps(plan: dict[str, Any]) -> list[dict[str, Any]]:
 def _deep_copy(d: dict) -> dict:
     """Fast deep copy for JSON-compatible dicts."""
     import json
+
     return json.loads(json.dumps(d))

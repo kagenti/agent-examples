@@ -129,7 +129,9 @@ async def sandboxed_subprocess(
 
     try:
         process = await asyncio.create_subprocess_exec(
-            sys.executable, "-c", child_script,
+            sys.executable,
+            "-c",
+            child_script,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             env=child_env,

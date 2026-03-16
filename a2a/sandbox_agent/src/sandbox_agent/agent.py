@@ -38,9 +38,8 @@ from a2a.types import (
 )
 from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
-from starlette.routing import Route
-
 from langgraph.checkpoint.memory import MemorySaver
+from starlette.routing import Route
 
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.configuration import Configuration
@@ -157,7 +156,9 @@ def _tofu_verify(root: Path) -> None:
                 "TOFU: workspace file integrity mismatch! "
                 "changed=%s, added=%s, removed=%s. "
                 "This may indicate tampering. Updating stored hashes.",
-                changed, added, removed,
+                changed,
+                added,
+                removed,
             )
             # Update stored hashes (trust the new state).
             with open(hash_file, "w", encoding="utf-8") as fh:
@@ -353,13 +354,13 @@ class SandboxAgentExecutor(AgentExecutor):
         if self._checkpointer_initialized and self._checkpointer:
             try:
                 # Lightweight health check — attempt a simple query
-                pool = getattr(self._checkpointer, 'conn', None) or getattr(self._checkpointer, '_conn', None)
-                if pool and hasattr(pool, 'execute'):
+                pool = getattr(self._checkpointer, "conn", None) or getattr(self._checkpointer, "_conn", None)
+                if pool and hasattr(pool, "execute"):
                     await pool.execute("SELECT 1")
             except Exception:
                 logger.warning("PostgreSQL checkpointer connection stale — re-initializing")
                 # Close old connection
-                if hasattr(self, '_checkpointer_cm') and self._checkpointer_cm:
+                if hasattr(self, "_checkpointer_cm") and self._checkpointer_cm:
                     try:
                         await self._checkpointer_cm.__aexit__(None, None, None)
                     except Exception:
@@ -379,9 +380,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
     # ------------------------------------------------------------------
 
-    async def execute(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Execute a user request through the LangGraph sandbox graph.
 
         Steps:
@@ -489,9 +488,7 @@ class SandboxAgentExecutor(AgentExecutor):
                     max_retries = 3
                     for attempt in range(max_retries + 1):
                         try:
-                            async for ev in graph.astream(
-                                input_state, config=graph_config, stream_mode="updates"
-                            ):
+                            async for ev in graph.astream(input_state, config=graph_config, stream_mode="updates"):
                                 await event_queue.put(ev)
                             break  # success
                         except Exception as retry_err:
@@ -501,14 +498,14 @@ class SandboxAgentExecutor(AgentExecutor):
                             is_db_stale = "connection is closed" in err_str or "operationalerror" in err_str
                             if is_quota:
                                 logger.error("LLM quota exceeded: %s", retry_err)
-                                await event_queue.put(
-                                    {"_error": "LLM API quota exceeded. Check billing."}
-                                )
+                                await event_queue.put({"_error": "LLM API quota exceeded. Check billing."})
                                 break
                             elif is_db_stale and attempt < max_retries:
                                 logger.warning(
                                     "DB connection stale (%d/%d), re-initializing checkpointer: %s",
-                                    attempt + 1, max_retries, retry_err,
+                                    attempt + 1,
+                                    max_retries,
+                                    retry_err,
                                 )
                                 await self._ensure_checkpointer()
                                 # Rebuild graph with fresh checkpointer
@@ -525,7 +522,10 @@ class SandboxAgentExecutor(AgentExecutor):
                                 delay = 2 ** (attempt + 1)
                                 logger.warning(
                                     "Rate limited (%d/%d), retrying in %ds: %s",
-                                    attempt + 1, max_retries, delay, retry_err,
+                                    attempt + 1,
+                                    max_retries,
+                                    delay,
+                                    retry_err,
                                 )
                                 await asyncio.sleep(delay)
                                 continue
@@ -572,7 +572,9 @@ class SandboxAgentExecutor(AgentExecutor):
                     node_names = list(event.keys())
                     logger.info(
                         "Graph event %d: nodes=%s (context=%s)",
-                        event_count, node_names, context_id,
+                        event_count,
+                        node_names,
+                        context_id,
                     )
 
                     # Skip __interrupt__ events (HITL pause) — these contain
@@ -580,16 +582,19 @@ class SandboxAgentExecutor(AgentExecutor):
                     if "__interrupt__" in event:
                         logger.info(
                             "Graph interrupted (HITL) at event %d: %s",
-                            event_count, event.get("__interrupt__"),
+                            event_count,
+                            event.get("__interrupt__"),
                         )
                         # Emit a structured HITL event for the frontend
                         hitl_data = event.get("__interrupt__", ())
                         hitl_msg = str(hitl_data[0]) if hitl_data else "Approval required"
-                        hitl_json = json.dumps({
-                            "type": "hitl_request",
-                            "loop_id": serializer._loop_id,
-                            "message": hitl_msg[:500],
-                        })
+                        hitl_json = json.dumps(
+                            {
+                                "type": "hitl_request",
+                                "loop_id": serializer._loop_id,
+                                "message": hitl_msg[:500],
+                            }
+                        )
                         await task_updater.update_status(
                             TaskState.working,
                             new_agent_text_message(
@@ -602,11 +607,14 @@ class SandboxAgentExecutor(AgentExecutor):
 
                     # Send intermediate status updates as structured JSON
                     try:
-                        serialized_lines = "\n".join(
-                            serializer.serialize(key, value)
-                            for key, value in event.items()
-                            if isinstance(value, dict)
-                        ) + "\n"
+                        serialized_lines = (
+                            "\n".join(
+                                serializer.serialize(key, value)
+                                for key, value in event.items()
+                                if isinstance(value, dict)
+                            )
+                            + "\n"
+                        )
                         await task_updater.update_status(
                             TaskState.working,
                             new_agent_text_message(
@@ -624,19 +632,20 @@ class SandboxAgentExecutor(AgentExecutor):
                                     line_types.append(lt)
                                 except json.JSONDecodeError:
                                     line_types.append("parse_error")
-                        logger.info("A2A_EMIT session=%s lines=%d types=%s",
-                            context_id, len(line_types), line_types)
+                        logger.info("A2A_EMIT session=%s lines=%d types=%s", context_id, len(line_types), line_types)
                     except asyncio.CancelledError:
                         logger.warning(
                             "SSE update cancelled at event %d (context=%s) — client disconnected",
-                            event_count, context_id,
+                            event_count,
+                            context_id,
                         )
                         client_disconnected = True
                         break
                     except Exception as update_err:
                         logger.error(
                             "Failed to send SSE update for event %d: %s",
-                            event_count, update_err,
+                            event_count,
+                            update_err,
                         )
                     output = event
 
@@ -676,7 +685,9 @@ class SandboxAgentExecutor(AgentExecutor):
                     if bg_event_count > 0:
                         logger.info(
                             "Drained %d background events for context=%s, serialized %d lines",
-                            bg_event_count, context_id, len(bg_serialized_lines),
+                            bg_event_count,
+                            context_id,
+                            len(bg_serialized_lines),
                         )
                         # Persist via task_updater so the events appear in history
                         for line_block in bg_serialized_lines:
@@ -711,11 +722,14 @@ class SandboxAgentExecutor(AgentExecutor):
                                 if msgs:
                                     content = getattr(msgs[-1], "content", None)
                                     if isinstance(content, list):
-                                        final_answer = "\n".join(
-                                            block.get("text", "") if isinstance(block, dict) else str(block)
-                                            for block in content
-                                            if isinstance(block, dict) and block.get("type") == "text"
-                                        ) or None
+                                        final_answer = (
+                                            "\n".join(
+                                                block.get("text", "") if isinstance(block, dict) else str(block)
+                                                for block in content
+                                                if isinstance(block, dict) and block.get("type") == "text"
+                                            )
+                                            or None
+                                        )
                                     elif content:
                                         final_answer = str(content)
                                     if final_answer:
@@ -729,12 +743,15 @@ class SandboxAgentExecutor(AgentExecutor):
                     try:
                         existing_meta = {}
                         if task.metadata:
-                            existing_meta = dict(task.metadata) if not isinstance(task.metadata, dict) else task.metadata
+                            existing_meta = (
+                                dict(task.metadata) if not isinstance(task.metadata, dict) else task.metadata
+                            )
                         existing_meta["llm_request_ids"] = llm_request_ids
                         task.metadata = existing_meta
                         logger.info(
                             "Stored %d LLM request_ids in task metadata for context_id=%s",
-                            len(llm_request_ids), context_id,
+                            len(llm_request_ids),
+                            context_id,
                         )
                     except Exception as meta_err:
                         logger.warning("Failed to store llm_request_ids: %s", meta_err)
@@ -781,9 +798,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
     # ------------------------------------------------------------------
 
-    async def cancel(
-        self, context: RequestContext, event_queue: EventQueue
-    ) -> None:
+    async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """Cancel is not supported."""
         raise Exception("cancel not supported")
 
@@ -804,9 +819,15 @@ class _MergingDatabaseTaskStore(DatabaseTaskStore):
     backend-managed keys so they survive A2A SDK updates.
     """
 
-    _BACKEND_KEYS = frozenset({
-        "owner", "visibility", "title", "agent_name", "loop_events",
-    })
+    _BACKEND_KEYS = frozenset(
+        {
+            "owner",
+            "visibility",
+            "title",
+            "agent_name",
+            "loop_events",
+        }
+    )
 
     async def save(self, task, context=None):
         """Save task while preserving backend-managed metadata fields."""
@@ -816,6 +837,7 @@ class _MergingDatabaseTaskStore(DatabaseTaskStore):
         existing_meta = {}
         async with self.async_session_maker() as session:
             from sqlalchemy import select
+
             stmt = select(self.task_model).where(self.task_model.id == task.id)
             result = await session.execute(stmt)
             existing = result.scalar_one_or_none()
@@ -825,6 +847,7 @@ class _MergingDatabaseTaskStore(DatabaseTaskStore):
                     existing_meta = raw
                 elif isinstance(raw, str):
                     import json
+
                     try:
                         existing_meta = json.loads(raw)
                     except (json.JSONDecodeError, TypeError):
@@ -843,8 +866,7 @@ class _MergingDatabaseTaskStore(DatabaseTaskStore):
         db_task = self._to_orm(task)
         async with self.async_session_maker.begin() as session:
             await session.merge(db_task)
-            logger.debug("Task %s saved with merged metadata (keys=%s)",
-                         task.id, list(merged.keys()) if merged else [])
+            logger.debug("Task %s saved with merged metadata (keys=%s)", task.id, list(merged.keys()) if merged else [])
 
 
 def _create_task_store():
@@ -1020,6 +1042,7 @@ def run() -> None:
             # Build a graph for introspection only (no checkpointer, dummy config)
             from sandbox_agent.permissions import PermissionChecker
             from sandbox_agent.sources import SourcesConfig
+
             pc = PermissionChecker(settings={"workspace": "/workspace", "permissions": {}})
             sc = SourcesConfig()
             compiled = build_graph(
@@ -1028,9 +1051,7 @@ def run() -> None:
                 sources_config=sc,
                 checkpointer=None,
             )
-            _graph_card_cache.update(
-                build_graph_card(compiled, agent_id="sandbox-legion-v1")
-            )
+            _graph_card_cache.update(build_graph_card(compiled, agent_id="sandbox-legion-v1"))
         return JSONResponse(_graph_card_cache)
 
     app.routes.insert(

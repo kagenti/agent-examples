@@ -144,10 +144,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
     },
     "thinking": {
         "category": "reasoning",
-        "description": (
-            "Intermediate thinking iteration from a reasoning LLM "
-            "(bare model, no tools)."
-        ),
+        "description": ("Intermediate thinking iteration from a reasoning LLM (bare model, no tools)."),
         "langgraph_nodes": ["planner", "executor", "reflector"],
         "has_llm_call": True,
         "fields": {
@@ -185,10 +182,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
     },
     "micro_reasoning": {
         "category": "reasoning",
-        "description": (
-            "Executor's intermediate LLM reasoning within a single plan step "
-            "(tool-loop iteration)."
-        ),
+        "description": ("Executor's intermediate LLM reasoning within a single plan step (tool-loop iteration)."),
         "langgraph_nodes": ["executor"],
         "has_llm_call": True,
         "fields": {
@@ -275,9 +269,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
     # ── Decision ──────────────────────────────────────────────────────
     "reflector_decision": {
         "category": "decision",
-        "description": (
-            "Reflector reviewed execution and decided: continue, replan, or done."
-        ),
+        "description": ("Reflector reviewed execution and decided: continue, replan, or done."),
         "langgraph_nodes": ["reflector"],
         "has_llm_call": True,
         "fields": {
@@ -333,9 +325,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
         "debug_fields": {
             "logic": {
                 "type": "str",
-                "description": (
-                    "Routing logic: checks plan_status to decide resume vs plan."
-                ),
+                "description": ("Routing logic: checks plan_status to decide resume vs plan."),
             },
         },
     },
@@ -399,9 +389,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
     },
     "node_transition": {
         "category": "meta",
-        "description": (
-            "Internal marker indicating a graph-level transition between nodes."
-        ),
+        "description": ("Internal marker indicating a graph-level transition between nodes."),
         "langgraph_nodes": [],
         "has_llm_call": False,
         "fields": {
@@ -420,8 +408,7 @@ EVENT_CATALOG: Dict[str, Dict[str, Any]] = {
     "hitl_request": {
         "category": "interaction",
         "description": (
-            "Human-in-the-loop approval request — the executor is pausing "
-            "to ask the user before proceeding."
+            "Human-in-the-loop approval request — the executor is pausing to ask the user before proceeding."
         ),
         "langgraph_nodes": ["executor"],
         "has_llm_call": False,
@@ -462,38 +449,24 @@ VALID_CATEGORIES = frozenset(
 
 #: Human-readable description for each node in the compiled graph.
 TOPOLOGY_NODE_DESCRIPTIONS: Dict[str, str] = {
-    "router": (
-        "Entry node — decides whether to create a new plan or resume execution "
-        "of an existing plan."
-    ),
+    "router": ("Entry node — decides whether to create a new plan or resume execution of an existing plan."),
     "planner": (
-        "Creates or revises a multi-step plan using an LLM with planning tools "
-        "(glob, grep, file_read, file_write)."
+        "Creates or revises a multi-step plan using an LLM with planning tools (glob, grep, file_read, file_write)."
     ),
-    "planner_tools": (
-        "Executes tool calls issued by the planner (workspace inspection, "
-        "plan persistence)."
-    ),
-    "step_selector": (
-        "Picks the next plan step to execute and prepares the executor context."
-    ),
+    "planner_tools": ("Executes tool calls issued by the planner (workspace inspection, plan persistence)."),
+    "step_selector": ("Picks the next plan step to execute and prepares the executor context."),
     "executor": (
         "Executes the current plan step using an LLM with the full tool suite "
         "(shell, files, grep, glob, web_fetch, explore, delegate)."
     ),
-    "tools": (
-        "Executes tool calls issued by the executor."
-    ),
+    "tools": ("Executes tool calls issued by the executor."),
     "reflector": (
         "Reviews execution results and decides whether to continue, replan, "
         "or declare done. Uses read-only tools (glob, grep, file_read)."
     ),
-    "reflector_tools": (
-        "Executes read-only tool calls issued by the reflector for verification."
-    ),
+    "reflector_tools": ("Executes read-only tool calls issued by the reflector for verification."),
     "reflector_route": (
-        "Pass-through node that routes the reflector's decision to the next node "
-        "(reporter, step_selector, or planner)."
+        "Pass-through node that routes the reflector's decision to the next node (reporter, step_selector, or planner)."
     ),
     "reporter": (
         "Generates the final user-facing answer by synthesizing all execution "
@@ -535,11 +508,7 @@ def build_graph_card(
     graph = compiled.get_graph()
 
     # ── Nodes ─────────────────────────────────────────────────────────
-    raw_nodes: List[str] = [
-        node_id
-        for node_id in graph.nodes
-        if node_id not in ("__start__", "__end__")
-    ]
+    raw_nodes: List[str] = [node_id for node_id in graph.nodes if node_id not in ("__start__", "__end__")]
     nodes: Dict[str, Dict[str, str]] = {}
     for node_id in raw_nodes:
         nodes[node_id] = {

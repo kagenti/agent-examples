@@ -15,7 +15,6 @@ from fnmatch import fnmatch
 from pathlib import Path
 from typing import Any
 
-
 _DEFAULT_MAX_EXECUTION_TIME_SECONDS = 300
 _DEFAULT_MAX_MEMORY_MB = 2048
 
@@ -116,11 +115,7 @@ class SourcesConfig:
     def max_execution_time_seconds(self) -> int:
         """Maximum execution time for a single run, in seconds."""
         runtime: dict[str, Any] = self._data.get("runtime", {})
-        return int(
-            runtime.get(
-                "max_execution_time_seconds", _DEFAULT_MAX_EXECUTION_TIME_SECONDS
-            )
-        )
+        return int(runtime.get("max_execution_time_seconds", _DEFAULT_MAX_EXECUTION_TIME_SECONDS))
 
     @property
     def max_memory_mb(self) -> int:

@@ -207,8 +207,7 @@ class SandboxExecutor:
         inner_permission = self._check_permission(inner_command)
         if inner_permission is PermissionResult.DENY:
             return (
-                f"Permission denied: interpreter bypass detected. "
-                f"Inner command '{inner_command}' is denied by policy."
+                f"Permission denied: interpreter bypass detected. Inner command '{inner_command}' is denied by policy."
             )
 
         # Also check the inner command against sources.json policy
@@ -216,8 +215,7 @@ class SandboxExecutor:
         inner_sources_denial = self._check_sources(inner_command)
         if inner_sources_denial:
             return (
-                f"Blocked: interpreter bypass detected. "
-                f"Inner command violates sources policy: {inner_sources_denial}"
+                f"Blocked: interpreter bypass detected. Inner command violates sources policy: {inner_sources_denial}"
             )
 
         return None
@@ -324,10 +322,7 @@ class SandboxExecutor:
                 await process.wait()
                 return ExecutionResult(
                     stdout="",
-                    stderr=(
-                        f"Command timed out after {timeout} seconds "
-                        f"and was killed: '{command}'"
-                    ),
+                    stderr=(f"Command timed out after {timeout} seconds and was killed: '{command}'"),
                     exit_code=-1,
                 )
 

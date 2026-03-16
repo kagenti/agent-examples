@@ -104,8 +104,8 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._loop_id = loop_id or str(uuid.uuid4())[:8]
         self._step_index = 0
         self._event_counter = 0  # global sequence number for ordering
-        self._node_visit = 0     # graph node visit counter (main sections)
-        self._sub_index = 0      # position within current node visit
+        self._node_visit = 0  # graph node visit counter (main sections)
+        self._sub_index = 0  # position within current node visit
         self._last_node_key: str = ""  # track previous node for visit grouping
         self._micro_step: int = 0
         self._context_id = context_id or "unknown"
@@ -152,12 +152,14 @@ class LangGraphSerializer(FrameworkEventSerializer):
         if key == "router":
             # Router is an internal node — emit minimal event for logging
             route = value.get("_route", "new")
-            result = json.dumps({
-                "type": "router",
-                "loop_id": self._loop_id,
-                "route": route,
-                "plan_status": value.get("plan_status", ""),
-            })
+            result = json.dumps(
+                {
+                    "type": "router",
+                    "loop_id": self._loop_id,
+                    "route": route,
+                    "plan_status": value.get("plan_status", ""),
+                }
+            )
         elif key == "planner":
             result = self._serialize_planner(value)
         elif key == "reflector":
@@ -175,14 +177,16 @@ class LangGraphSerializer(FrameworkEventSerializer):
             # Strip the "STEP BRIEF FROM COORDINATOR:" prefix
             if "STEP BRIEF" in brief:
                 brief = brief.split("---")[0].replace("STEP BRIEF FROM COORDINATOR:", "").strip()
-            result = json.dumps({
-                "type": "step_selector",
-                "loop_id": self._loop_id,
-                "current_step": current_step,
-                "description": f"Advancing to step {current_step + 1}: {step_desc[:80]}",
-                "brief": brief[:500],
-                "done": value.get("done", False),
-            })
+            result = json.dumps(
+                {
+                    "type": "step_selector",
+                    "loop_id": self._loop_id,
+                    "current_step": current_step,
+                    "description": f"Advancing to step {current_step + 1}: {step_desc[:80]}",
+                    "brief": brief[:500],
+                    "done": value.get("done", False),
+                }
+            )
         elif key == "reporter":
             result = self._serialize_reporter(value)
         else:
@@ -208,11 +212,13 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Append budget_update event if _budget_summary is in the value dict
         budget_summary = value.get("_budget_summary")
         if budget_summary and isinstance(budget_summary, dict):
-            budget_event = json.dumps({
-                "type": "budget_update",
-                "loop_id": self._loop_id,
-                **budget_summary,
-            })
+            budget_event = json.dumps(
+                {
+                    "type": "budget_update",
+                    "loop_id": self._loop_id,
+                    **budget_summary,
+                }
+            )
             result = result + "\n" + budget_event
 
         # Post-process: ensure ALL event lines have step + unique event_index.
@@ -245,11 +251,15 @@ class LangGraphSerializer(FrameworkEventSerializer):
             except json.JSONDecodeError:
                 enriched_lines.append(line)
                 event_type = "parse_error"
-            logger.info("SERIALIZE session=%s loop=%s type=%s step=%s ei=%s",
-                self._context_id, self._loop_id, event_type,
-                self._step_index, self._event_counter,
-                extra={"session_id": self._context_id, "node": key,
-                       "event_type": event_type, "step": self._step_index})
+            logger.info(
+                "SERIALIZE session=%s loop=%s type=%s step=%s ei=%s",
+                self._context_id,
+                self._loop_id,
+                event_type,
+                self._step_index,
+                self._event_counter,
+                extra={"session_id": self._context_id, "node": key, "event_type": event_type, "step": self._step_index},
+            )
 
         return "\n".join(enriched_lines)
 
@@ -277,13 +287,14 @@ class LangGraphSerializer(FrameworkEventSerializer):
             if text.strip():
                 parts.append(json.dumps({"type": "llm_response", "content": text}))
             # Then emit the tool call
-            parts.append(json.dumps({
-                "type": "tool_call",
-                "tools": [
-                    _safe_tc(tc)
-                    for tc in tool_calls
-                ],
-            }))
+            parts.append(
+                json.dumps(
+                    {
+                        "type": "tool_call",
+                        "tools": [_safe_tc(tc) for tc in tool_calls],
+                    }
+                )
+            )
             return "\n".join(parts)
 
         return json.dumps({"type": "llm_response", "content": text})
@@ -323,23 +334,31 @@ class LangGraphSerializer(FrameworkEventSerializer):
                         thinking_event[field.lstrip("_")] = se[field]
                 parts.append(json.dumps(thinking_event))
             elif se_type == "tool_call":
-                parts.append(json.dumps({
-                    "type": "tool_call",
-                    "loop_id": self._loop_id,
-                    "call_id": se.get("call_id", ""),
-                    "cycle": se.get("cycle", 1),
-                    "tools": se.get("tools", []),
-                }))
+                parts.append(
+                    json.dumps(
+                        {
+                            "type": "tool_call",
+                            "loop_id": self._loop_id,
+                            "call_id": se.get("call_id", ""),
+                            "cycle": se.get("cycle", 1),
+                            "tools": se.get("tools", []),
+                        }
+                    )
+                )
             elif se_type == "tool_result":
-                parts.append(json.dumps({
-                    "type": "tool_result",
-                    "loop_id": self._loop_id,
-                    "call_id": se.get("call_id", ""),
-                    "cycle": se.get("cycle", 1),
-                    "name": se.get("name", "unknown"),
-                    "output": se.get("output", "")[:2000],
-                    "status": se.get("status", "success"),
-                }))
+                parts.append(
+                    json.dumps(
+                        {
+                            "type": "tool_result",
+                            "loop_id": self._loop_id,
+                            "call_id": se.get("call_id", ""),
+                            "cycle": se.get("cycle", 1),
+                            "name": se.get("name", "unknown"),
+                            "output": se.get("output", "")[:2000],
+                            "status": se.get("status", "success"),
+                        }
+                    )
+                )
 
         self._micro_step += 1
 
@@ -376,20 +395,18 @@ class LangGraphSerializer(FrameworkEventSerializer):
         if tool_calls:
             # Use LangGraph's tool_call_id for proper pairing with tool_result
             tc0 = tool_calls[0] if tool_calls else {}
-            call_id = (
-                tc0.get("id") if isinstance(tc0, dict)
-                else getattr(tc0, "id", None)
-            ) or str(uuid.uuid4())[:8]
+            call_id = (tc0.get("id") if isinstance(tc0, dict) else getattr(tc0, "id", None)) or str(uuid.uuid4())[:8]
             self._last_call_id = call_id
-            parts.append(json.dumps({
-                "type": "tool_call",
-                "loop_id": self._loop_id,
-                "call_id": call_id,
-                "tools": [
-                    _safe_tc(tc)
-                    for tc in tool_calls
-                ],
-            }))
+            parts.append(
+                json.dumps(
+                    {
+                        "type": "tool_call",
+                        "loop_id": self._loop_id,
+                        "call_id": call_id,
+                        "tools": [_safe_tc(tc) for tc in tool_calls],
+                    }
+                )
+            )
             return "\n".join(parts)
 
         # Emit tool_call event for text-parsed tools (no structured tool_calls)
@@ -397,15 +414,16 @@ class LangGraphSerializer(FrameworkEventSerializer):
         if parsed_tools:
             call_id = str(uuid.uuid4())[:8]
             self._last_call_id = call_id
-            parts.append(json.dumps({
-                "type": "tool_call",
-                "loop_id": self._loop_id,
-                "call_id": call_id,
-                "tools": [
-                    {"name": t["name"], "args": t.get("args", {})}
-                    for t in parsed_tools
-                ],
-            }))
+            parts.append(
+                json.dumps(
+                    {
+                        "type": "tool_call",
+                        "loop_id": self._loop_id,
+                        "call_id": call_id,
+                        "tools": [{"name": t["name"], "args": t.get("args", {})} for t in parsed_tools],
+                    }
+                )
+            )
 
         return "\n".join(parts)
 
@@ -463,6 +481,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         # Keyword matching (e.g. "failure", "error") causes false positives
         # when command output contains those words in normal data.
         import re as _re
+
         exit_match = _re.search(r"EXIT_CODE:\s*(\d+)", content_str)
         is_error = (
             (exit_match is not None and exit_match.group(1) != "0")
@@ -474,14 +493,16 @@ class LangGraphSerializer(FrameworkEventSerializer):
         status = "error" if is_error else "success"
         # Use LangGraph's tool_call_id for proper pairing with tool_call
         call_id = getattr(msg, "tool_call_id", None) or self._last_call_id
-        return json.dumps({
-            "type": "tool_result",
-            "loop_id": self._loop_id,
-            "call_id": call_id,
-            "name": str(name),
-            "output": content_str[:2000],
-            "status": status,
-        })
+        return json.dumps(
+            {
+                "type": "tool_result",
+                "loop_id": self._loop_id,
+                "call_id": call_id,
+                "name": str(name),
+                "output": content_str[:2000],
+                "status": status,
+            }
+        )
 
     @staticmethod
     def _enrich_with_plan_store(payload: dict, value: dict) -> None:
@@ -553,7 +574,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
         """Serialize a reflector node output — emits reflector_decision + legacy reflection."""
         done = value.get("done", False)
         current_step = value.get("current_step", 0)
-        step_results = value.get("step_results", [])
+        _step_results = value.get("step_results", [])
 
         # Extract decision text from message if present
         msgs = value.get("messages", [])
@@ -634,11 +655,7 @@ class LangGraphSerializer(FrameworkEventSerializer):
                         tc_info = _safe_tc(tc)
                         if tc_info["name"] == "respond_to_user":
                             args = tc_info["args"]
-                            final_answer = (
-                                args.get("response", "")
-                                if isinstance(args, dict)
-                                else str(args)
-                            )
+                            final_answer = args.get("response", "") if isinstance(args, dict) else str(args)
                             break
                     if final_answer:
                         break
@@ -690,8 +707,4 @@ class LangGraphSerializer(FrameworkEventSerializer):
     @staticmethod
     def _extract_text_blocks(content: list) -> str:
         """Extract text from a list of content blocks."""
-        return " ".join(
-            b.get("text", "")
-            for b in content
-            if isinstance(b, dict) and b.get("type") == "text"
-        )[:2000]
+        return " ".join(b.get("text", "") for b in content if isinstance(b, dict) and b.get("type") == "text")[:2000]
