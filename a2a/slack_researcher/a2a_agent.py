@@ -3,6 +3,7 @@ Module for A2A Agent.
 """
 
 import logging
+import os
 import sys
 import traceback
 from typing import Callable
@@ -54,7 +55,8 @@ def get_agent_card(host: str, port: int):
     return AgentCard(
         name="Web Research Agent",
         description="Answer queries by searching through a given slack server",
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],

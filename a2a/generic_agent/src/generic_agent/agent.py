@@ -1,4 +1,5 @@
 import logging
+import os
 from textwrap import dedent
 
 import uvicorn
@@ -49,7 +50,8 @@ def get_agent_card(host: str, port: int) -> AgentCard:
             This agent provides assistance for various tasks using different MCP tools.{mcp_section}
             """,
         ),
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version=config.AGENT_VERSION,
         default_input_modes=["text"],
         default_output_modes=["text"],
