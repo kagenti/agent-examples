@@ -21,13 +21,6 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-
-try:
-    from a2a.server.tasks import DatabaseTaskStore
-
-    _HAS_SQL_STORE = True
-except ImportError:
-    _HAS_SQL_STORE = False
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
@@ -40,6 +33,13 @@ from a2a.utils import new_agent_text_message, new_task
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from starlette.routing import Route
+
+try:
+    from a2a.server.tasks import DatabaseTaskStore
+
+    _HAS_SQL_STORE = True
+except ImportError:
+    _HAS_SQL_STORE = False
 
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.configuration import Configuration
