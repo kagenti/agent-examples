@@ -113,7 +113,6 @@ class LangGraphSerializer(FrameworkEventSerializer):
         self._prev_node: str | None = None  # previous node for node_transition events
 
     def serialize(self, key: str, value: dict) -> str:
-
         # Emit node_transition meta-event when the node changes
         transition_line: str | None = None
         if self._prev_node is not None and key != self._prev_node:
