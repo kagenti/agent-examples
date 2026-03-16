@@ -21,7 +21,7 @@ Budget parameters are configurable via environment variables:
 - ``SANDBOX_MAX_ITERATIONS`` (default: 100)
 - ``SANDBOX_MAX_TOOL_CALLS_PER_STEP`` (default: 10)
 - ``SANDBOX_MAX_TOKENS`` (default: 1000000) — passed to proxy via metadata
-- ``SANDBOX_MAX_WALL_CLOCK_S`` (default: 600) — max seconds per message
+- ``SANDBOX_MAX_WALL_CLOCK_S`` (default: 3600) — max seconds per message (1 hour)
 - ``SANDBOX_HITL_INTERVAL`` (default: 50)
 - ``SANDBOX_RECURSION_LIMIT`` (default: 50)
 - ``SANDBOX_LLM_TIMEOUT`` (default: 300) — seconds per LLM call
