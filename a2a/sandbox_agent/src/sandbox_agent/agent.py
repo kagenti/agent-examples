@@ -485,6 +485,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
                 async def _run_graph() -> None:
                     """Execute graph and push events to queue (shielded)."""
+                    nonlocal graph
                     max_retries = 3
                     for attempt in range(max_retries + 1):
                         try:
