@@ -17,9 +17,7 @@ import pathlib
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from langgraph.checkpoint.memory import MemorySaver
-
 from sandbox_agent.executor import ExecutionResult, HitlRequired
 from sandbox_agent.graph import (
     SandboxState,
@@ -173,9 +171,7 @@ class TestMakeShellTool:
     @pytest.mark.asyncio
     async def test_shell_tool_calls_executor(self) -> None:
         executor = AsyncMock()
-        executor.run_shell.return_value = ExecutionResult(
-            stdout="hello", stderr="", exit_code=0
-        )
+        executor.run_shell.return_value = ExecutionResult(stdout="hello", stderr="", exit_code=0)
 
         shell_tool = _make_shell_tool(executor)
         result = await shell_tool.ainvoke({"command": "echo hello"})
@@ -196,9 +192,7 @@ class TestMakeShellTool:
     @pytest.mark.asyncio
     async def test_shell_tool_includes_stderr_on_failure(self) -> None:
         executor = AsyncMock()
-        executor.run_shell.return_value = ExecutionResult(
-            stdout="", stderr="Permission denied", exit_code=1
-        )
+        executor.run_shell.return_value = ExecutionResult(stdout="", stderr="Permission denied", exit_code=1)
 
         shell_tool = _make_shell_tool(executor)
         result = await shell_tool.ainvoke({"command": "curl http://example.com"})
@@ -215,26 +209,20 @@ class TestMakeFileReadTool:
     """The file_read tool should read files and prevent path traversal."""
 
     @pytest.mark.asyncio
-    async def test_reads_file_relative_to_workspace(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_reads_file_relative_to_workspace(self, workspace: pathlib.Path) -> None:
         (workspace / "test.txt").write_text("file contents")
         tool = _make_file_read_tool(str(workspace))
         result = await tool.ainvoke({"path": "test.txt"})
         assert "file contents" in result
 
     @pytest.mark.asyncio
-    async def test_blocks_path_traversal(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_blocks_path_traversal(self, workspace: pathlib.Path) -> None:
         tool = _make_file_read_tool(str(workspace))
         result = await tool.ainvoke({"path": "../../etc/passwd"})
         assert "error" in result.lower() or "denied" in result.lower() or "outside" in result.lower()
 
     @pytest.mark.asyncio
-    async def test_missing_file_returns_error(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_missing_file_returns_error(self, workspace: pathlib.Path) -> None:
         tool = _make_file_read_tool(str(workspace))
         result = await tool.ainvoke({"path": "nonexistent.txt"})
         assert "error" in result.lower() or "not found" in result.lower()
@@ -249,9 +237,7 @@ class TestMakeFileWriteTool:
     """The file_write tool should write files and prevent path traversal."""
 
     @pytest.mark.asyncio
-    async def test_writes_file_relative_to_workspace(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_writes_file_relative_to_workspace(self, workspace: pathlib.Path) -> None:
         tool = _make_file_write_tool(str(workspace))
         result = await tool.ainvoke({"path": "out.txt", "content": "hello"})
 
@@ -260,25 +246,17 @@ class TestMakeFileWriteTool:
         assert "error" not in result.lower()
 
     @pytest.mark.asyncio
-    async def test_creates_parent_dirs(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_creates_parent_dirs(self, workspace: pathlib.Path) -> None:
         tool = _make_file_write_tool(str(workspace))
-        result = await tool.ainvoke(
-            {"path": "sub/dir/file.txt", "content": "nested"}
-        )
+        result = await tool.ainvoke({"path": "sub/dir/file.txt", "content": "nested"}) # noqa: F841
 
         written = (workspace / "sub" / "dir" / "file.txt").read_text()
         assert written == "nested"
 
     @pytest.mark.asyncio
-    async def test_blocks_path_traversal(
-        self, workspace: pathlib.Path
-    ) -> None:
+    async def test_blocks_path_traversal(self, workspace: pathlib.Path) -> None:
         tool = _make_file_write_tool(str(workspace))
-        result = await tool.ainvoke(
-            {"path": "../../etc/evil", "content": "bad"}
-        )
+        result = await tool.ainvoke({"path": "../../etc/evil", "content": "bad"})
         assert "error" in result.lower() or "denied" in result.lower() or "outside" in result.lower()
         # The file must NOT have been created outside the workspace.
         assert not os.path.exists("/etc/evil")

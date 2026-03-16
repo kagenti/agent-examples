@@ -11,12 +11,9 @@ Validates that the SandboxExecutor:
 from __future__ import annotations
 
 import json
-import os
 import pathlib
-import tempfile
 
 import pytest
-
 from sandbox_agent.executor import ExecutionResult, HitlRequired, SandboxExecutor
 from sandbox_agent.permissions import PermissionChecker
 from sandbox_agent.sources import SourcesConfig
@@ -83,9 +80,7 @@ class TestAllowedCommands:
     """Commands in the allow list should execute and return output."""
 
     @pytest.mark.asyncio
-    async def test_grep_runs_and_returns_output(
-        self, executor: SandboxExecutor, workspace: pathlib.Path
-    ) -> None:
+    async def test_grep_runs_and_returns_output(self, executor: SandboxExecutor, workspace: pathlib.Path) -> None:
         """grep is allowed -- should run and produce stdout."""
         # Create a file to grep
         test_file = workspace / "hello.txt"
@@ -98,9 +93,7 @@ class TestAllowedCommands:
         assert "hello world" in result.stdout
 
     @pytest.mark.asyncio
-    async def test_ls_shows_workspace_contents(
-        self, executor: SandboxExecutor, workspace: pathlib.Path
-    ) -> None:
+    async def test_ls_shows_workspace_contents(self, executor: SandboxExecutor, workspace: pathlib.Path) -> None:
         """ls is allowed -- should list workspace files."""
         (workspace / "file_a.txt").write_text("a")
         (workspace / "file_b.txt").write_text("b")
@@ -112,14 +105,10 @@ class TestAllowedCommands:
         assert "file_b.txt" in result.stdout
 
     @pytest.mark.asyncio
-    async def test_write_and_read_script(
-        self, executor: SandboxExecutor, workspace: pathlib.Path
-    ) -> None:
+    async def test_write_and_read_script(self, executor: SandboxExecutor, workspace: pathlib.Path) -> None:
         """echo to file then bash execute -- both are allowed."""
         # Write a script using echo (allowed)
-        write_result = await executor.run_shell(
-            'echo \'#!/bin/bash\necho "script ran"\' > myscript.sh'
-        )
+        write_result = await executor.run_shell("echo '#!/bin/bash\necho \"script ran\"' > myscript.sh")
         assert write_result.exit_code == 0
 
         # Execute the script using bash (allowed)
@@ -172,9 +161,7 @@ class TestHitlCommands:
         assert exc_info.value.command == "docker run alpine"
 
     @pytest.mark.asyncio
-    async def test_unknown_command_raises_hitl(
-        self, executor: SandboxExecutor
-    ) -> None:
+    async def test_unknown_command_raises_hitl(self, executor: SandboxExecutor) -> None:
         """A completely unknown command should raise HitlRequired."""
         with pytest.raises(HitlRequired) as exc_info:
             await executor.run_shell("some_random_binary --flag")

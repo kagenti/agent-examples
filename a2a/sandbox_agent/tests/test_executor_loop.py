@@ -20,10 +20,8 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-
-from sandbox_agent.reasoning import executor_node
 from sandbox_agent.event_serializer import LangGraphSerializer
-
+from sandbox_agent.reasoning import executor_node
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -88,14 +86,10 @@ class TestNoDedupForStructuredCalls:
         result = await executor_node(state, llm)
 
         # Should NOT be deduped — the tool call has a different ID
-        assert result.get("_dedup") is not True, (
-            "Structured tool call with unique ID should not be deduped"
-        )
+        assert result.get("_dedup") is not True, "Structured tool call with unique ID should not be deduped"
         # Should have the tool call in the response
         resp_msg = [m for m in result["messages"] if isinstance(m, AIMessage)]
-        assert any(m.tool_calls for m in resp_msg), (
-            "Response should contain tool_calls (not deduped)"
-        )
+        assert any(m.tool_calls for m in resp_msg), "Response should contain tool_calls (not deduped)"
 
 
 # ---------------------------------------------------------------------------
@@ -120,9 +114,7 @@ class TestExecutorToolLoopContinuation:
 
         # Should NOT mark as failed — text after tool calls is normal completion
         content = str(result["messages"][-1].content)
-        assert "failed" not in content.lower(), (
-            f"Text response after tool calls should not be 'failed': {content}"
-        )
+        assert "failed" not in content.lower(), f"Text response after tool calls should not be 'failed': {content}"
         # no_tool_count should remain 0 (not incremented when tool_call_count > 0)
         assert result.get("_no_tool_count", 0) == 0
 
@@ -134,7 +126,7 @@ class TestExecutorToolLoopContinuation:
 
         state = _base_state(
             _tool_call_count=0,  # No tools called yet
-            _no_tool_count=0,    # First attempt
+            _no_tool_count=0,  # First attempt
         )
         result = await executor_node(state, llm)
 
@@ -173,6 +165,7 @@ class TestSubIndexContinuity:
 
         # Executor with tool call
         from unittest.mock import MagicMock
+
         exec_msg = MagicMock(spec=["content", "tool_calls", "name", "tool_call_id"])
         exec_msg.content = ""
         exec_msg.tool_calls = [{"name": "shell", "args": {"command": "ls"}, "id": "tc1"}]
@@ -227,14 +220,10 @@ class TestSubIndexContinuity:
             tool_events = _content_events(tool_r)
             tool_nv = tool_events[0]["node_visit"]
             # Tools should share executor's node_visit
-            assert tool_nv == exec_nv, (
-                f"Cycle {i}: tools nv={tool_nv} should match executor nv={exec_nv}"
-            )
+            assert tool_nv == exec_nv, f"Cycle {i}: tools nv={tool_nv} should match executor nv={exec_nv}"
 
         # Both executor re-entries in tool loop share the SAME node_visit
-        assert visits[0] == visits[1], (
-            f"Executor re-entries in tool loop should share visit: {visits}"
-        )
+        assert visits[0] == visits[1], f"Executor re-entries in tool loop should share visit: {visits}"
 
 
 # ---------------------------------------------------------------------------
@@ -278,6 +267,7 @@ class TestEventPairing:
         """Full executor→tools flow should produce no orphans."""
         s = LangGraphSerializer()
         from unittest.mock import MagicMock
+
         all_events = []
 
         # 3 executor→tools cycles

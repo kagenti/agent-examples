@@ -19,7 +19,6 @@ import json
 from unittest.mock import MagicMock
 
 import pytest
-
 from sandbox_agent.event_serializer import LangGraphSerializer, _safe_tc
 
 
@@ -55,36 +54,44 @@ class TestPlannerEvents:
 
     def test_planner_emits_planner_output_type(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": ["List files", "Read config"],
-            "iteration": 1,
-            "messages": [],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["List files", "Read config"],
+                "iteration": 1,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         new_event = events[0]
         assert new_event["type"] == "planner_output"
         assert new_event["steps"] == ["List files", "Read config"]
         assert new_event["iteration"] == 1
 
-
     def test_planner_includes_loop_id(self) -> None:
         s = LangGraphSerializer(loop_id="test-loop")
-        result = s.serialize("planner", {
-            "plan": ["Step 1"],
-            "iteration": 1,
-            "messages": [],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["Step 1"],
+                "iteration": 1,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
             assert event["loop_id"] == "test-loop"
 
     def test_planner_includes_iteration(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": ["A", "B"],
-            "iteration": 3,
-            "messages": [],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["A", "B"],
+                "iteration": 3,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["iteration"] == 3
 
@@ -104,11 +111,14 @@ class TestPlannerEvents:
     def test_planner_includes_content_from_message(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="Here is my plan")
-        result = s.serialize("planner", {
-            "plan": ["Step 1"],
-            "iteration": 2,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["Step 1"],
+                "iteration": 2,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["content"] == "Here is my plan"
 
@@ -116,22 +126,28 @@ class TestPlannerEvents:
         s = LangGraphSerializer()
         msg = _make_msg()
         msg.content = [{"type": "text", "text": "Block one"}, {"type": "text", "text": "Block two"}]
-        result = s.serialize("planner", {
-            "plan": [],
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": [],
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         assert "Block one" in events[0]["content"]
         assert "Block two" in events[0]["content"]
 
     def test_planner_includes_model(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": [],
-            "iteration": 1,
-            "messages": [],
-            "model": "gpt-4o",
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": [],
+                "iteration": 1,
+                "messages": [],
+                "model": "gpt-4o",
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["model"] == "gpt-4o"
 
@@ -151,7 +167,6 @@ class TestExecutorEvents:
         events = _parse_lines(result)
         types = [e["type"] for e in events]
         assert "executor_step" in types
-
 
     def test_executor_tool_call_events(self) -> None:
         s = LangGraphSerializer()
@@ -222,17 +237,18 @@ class TestExecutorEvents:
         result = s.serialize("executor", {"messages": [msg]})
         events = _parse_lines(result)
         for event in events:
-            assert event.get("loop_id") == "exec-2", (
-                f"Event type={event['type']} missing loop_id"
-            )
+            assert event.get("loop_id") == "exec-2", f"Event type={event['type']} missing loop_id"
 
     def test_executor_includes_total_steps_from_plan(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="step work")
-        result = s.serialize("executor", {
-            "messages": [msg],
-            "plan": ["a", "b", "c"],
-        })
+        result = s.serialize(
+            "executor",
+            {
+                "messages": [msg],
+                "plan": ["a", "b", "c"],
+            },
+        )
         events = _parse_lines(result)
         step_event = [e for e in events if e["type"] == "executor_step"][0]
         assert step_event["total_steps"] == 3
@@ -292,24 +308,29 @@ class TestReflectorEvents:
     def test_reflector_emits_reflector_decision_type(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="continue with next step")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 1,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 1,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["type"] == "reflector_decision"
-
 
     def test_reflector_never_emits_llm_response(self) -> None:
         """The reflector must NOT emit 'llm_response' -- that is not a valid reflector type."""
         s = LangGraphSerializer()
         msg = _make_msg(content="The step looks good, continue")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 0,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 0,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
             assert event["type"] != "llm_response"
@@ -317,11 +338,14 @@ class TestReflectorEvents:
     def test_reflector_includes_decision_field(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="Step output is correct, continue to next")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 2,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 2,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         new_event = events[0]
         assert "decision" in new_event
@@ -330,22 +354,28 @@ class TestReflectorEvents:
     def test_reflector_decision_done(self) -> None:
         """When done=True, decision should be 'done'."""
         s = LangGraphSerializer()
-        result = s.serialize("reflector", {
-            "done": True,
-            "current_step": 3,
-            "messages": [],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": True,
+                "current_step": 3,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["decision"] == "done"
 
     def test_reflector_decision_replan(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="The approach failed, we need to replan")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 1,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 1,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["decision"] == "replan"
 
@@ -355,57 +385,71 @@ class TestReflectorEvents:
         for word in ("continue onwards", "we should replan", "all done now", "need hitl approval"):
             s = LangGraphSerializer()
             msg = _make_msg(content=word)
-            result = s.serialize("reflector", {
-                "done": False,
-                "current_step": 0,
-                "messages": [msg],
-            })
+            result = s.serialize(
+                "reflector",
+                {
+                    "done": False,
+                    "current_step": 0,
+                    "messages": [msg],
+                },
+            )
             events = _parse_lines(result)
             assert events[0]["decision"] in valid, f"Bad decision for text: {word}"
 
     def test_reflector_includes_assessment(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="Output looks correct, continue")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 0,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 0,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["assessment"] == "Output looks correct, continue"
-
 
     def test_reflector_advances_step_index(self) -> None:
         s = LangGraphSerializer()
         assert s._step_index == 0
-        s.serialize("reflector", {
-            "done": False,
-            "current_step": 2,
-            "messages": [],
-        })
+        s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 2,
+                "messages": [],
+            },
+        )
         # _step_index is 1-based: current_step=2 → _step_index=3
         assert s._step_index == 3
 
     def test_reflector_with_step_results(self) -> None:
         """step_results field is accepted without error."""
         s = LangGraphSerializer()
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 1,
-            "step_results": ["result A"],
-            "messages": [],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 1,
+                "step_results": ["result A"],
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["type"] == "reflector_decision"
 
     def test_reflector_includes_iteration(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 0,
-            "iteration": 2,
-            "messages": [],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 0,
+                "iteration": 2,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         assert events[0]["iteration"] == 2
 
@@ -420,10 +464,13 @@ class TestReporterEvents:
 
     def test_reporter_emits_reporter_output_type(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("reporter", {
-            "final_answer": "All done!",
-            "messages": [],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "All done!",
+                "messages": [],
+            },
+        )
         data = json.loads(result)
         assert data["type"] == "reporter_output"
         assert data["content"] == "All done!"
@@ -440,40 +487,52 @@ class TestReporterEvents:
     def test_reporter_prefers_final_answer_over_message(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="message text")
-        result = s.serialize("reporter", {
-            "final_answer": "answer text",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "answer text",
+                "messages": [msg],
+            },
+        )
         data = json.loads(result)
         assert data["content"] == "answer text"
 
     def test_reporter_truncates_long_content(self) -> None:
         s = LangGraphSerializer()
         long_text = "x" * 3000
-        result = s.serialize("reporter", {
-            "final_answer": long_text,
-            "messages": [],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": long_text,
+                "messages": [],
+            },
+        )
         data = json.loads(result)
         assert len(data["content"]) <= 2000
 
     def test_reporter_empty_final_answer_falls_back(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="from message")
-        result = s.serialize("reporter", {
-            "final_answer": "",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "",
+                "messages": [msg],
+            },
+        )
         data = json.loads(result)
         assert "from message" in data["content"]
 
     def test_reporter_does_not_emit_llm_response(self) -> None:
         """Reporter uses reporter_output, not the generic llm_response."""
         s = LangGraphSerializer()
-        result = s.serialize("reporter", {
-            "final_answer": "done",
-            "messages": [],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "done",
+                "messages": [],
+            },
+        )
         data = json.loads(result)
         assert data["type"] == "reporter_output"
 
@@ -482,15 +541,20 @@ class TestReporterEvents:
         s = LangGraphSerializer()
         msg = _make_msg(
             content="",
-            tool_calls=[{
-                "name": "respond_to_user",
-                "args": {"response": "Here is the final answer from tool call."},
-            }],
+            tool_calls=[
+                {
+                    "name": "respond_to_user",
+                    "args": {"response": "Here is the final answer from tool call."},
+                }
+            ],
         )
-        result = s.serialize("reporter", {
-            "final_answer": "",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "",
+                "messages": [msg],
+            },
+        )
         data = json.loads(result)
         assert data["type"] == "reporter_output"
         assert data["content"] == "Here is the final answer from tool call."
@@ -500,35 +564,43 @@ class TestReporterEvents:
         s = LangGraphSerializer()
         msg = _make_msg(
             content="",
-            tool_calls=[{
-                "name": "respond_to_user",
-                "args": {"response": "Clean output"},
-            }],
+            tool_calls=[
+                {
+                    "name": "respond_to_user",
+                    "args": {"response": "Clean output"},
+                }
+            ],
         )
-        result = s.serialize("reporter", {
-            "final_answer": "",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "",
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
-            assert event["type"] != "tool_call", (
-                "respond_to_user should not emit raw tool_call events"
-            )
+            assert event["type"] != "tool_call", "respond_to_user should not emit raw tool_call events"
 
     def test_reporter_respond_to_user_preferred_over_empty_content(self) -> None:
         """respond_to_user tool call is preferred over empty text content."""
         s = LangGraphSerializer()
         msg = _make_msg(
             content="",
-            tool_calls=[{
-                "name": "respond_to_user",
-                "args": {"response": "Tool response wins"},
-            }],
+            tool_calls=[
+                {
+                    "name": "respond_to_user",
+                    "args": {"response": "Tool response wins"},
+                }
+            ],
         )
-        result = s.serialize("reporter", {
-            "final_answer": "",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "",
+                "messages": [msg],
+            },
+        )
         data = json.loads(result)
         assert data["content"] == "Tool response wins"
 
@@ -537,15 +609,20 @@ class TestReporterEvents:
         s = LangGraphSerializer()
         msg = _make_msg(
             content="",
-            tool_calls=[{
-                "name": "respond_to_user",
-                "args": {"response": "from tool call"},
-            }],
+            tool_calls=[
+                {
+                    "name": "respond_to_user",
+                    "args": {"response": "from tool call"},
+                }
+            ],
         )
-        result = s.serialize("reporter", {
-            "final_answer": "from final_answer",
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "from final_answer",
+                "messages": [msg],
+            },
+        )
         data = json.loads(result)
         assert data["content"] == "from final_answer"
 
@@ -590,14 +667,20 @@ class TestUnknownNodeEvents:
 class TestTokenFields:
     """Reasoning-loop events should include prompt_tokens and completion_tokens."""
 
-    @pytest.mark.parametrize("node,value", [
-        ("planner", {"plan": ["step"], "iteration": 1, "messages": [],
-                      "prompt_tokens": 100, "completion_tokens": 50}),
-        ("reflector", {"done": False, "current_step": 0, "messages": [],
-                       "prompt_tokens": 200, "completion_tokens": 75}),
-        ("reporter", {"final_answer": "done", "messages": [],
-                      "prompt_tokens": 300, "completion_tokens": 120}),
-    ])
+    @pytest.mark.parametrize(
+        "node,value",
+        [
+            (
+                "planner",
+                {"plan": ["step"], "iteration": 1, "messages": [], "prompt_tokens": 100, "completion_tokens": 50},
+            ),
+            (
+                "reflector",
+                {"done": False, "current_step": 0, "messages": [], "prompt_tokens": 200, "completion_tokens": 75},
+            ),
+            ("reporter", {"final_answer": "done", "messages": [], "prompt_tokens": 300, "completion_tokens": 120}),
+        ],
+    )
     def test_token_counts_present(self, node: str, value: dict) -> None:
         s = LangGraphSerializer()
         result = s.serialize(node, value)
@@ -607,11 +690,14 @@ class TestTokenFields:
         assert data["prompt_tokens"] > 0
         assert data["completion_tokens"] > 0
 
-    @pytest.mark.parametrize("node,value", [
-        ("planner", {"plan": [], "messages": []}),
-        ("reflector", {"done": False, "current_step": 0, "messages": []}),
-        ("reporter", {"final_answer": "ok", "messages": []}),
-    ])
+    @pytest.mark.parametrize(
+        "node,value",
+        [
+            ("planner", {"plan": [], "messages": []}),
+            ("reflector", {"done": False, "current_step": 0, "messages": []}),
+            ("reporter", {"final_answer": "ok", "messages": []}),
+        ],
+    )
     def test_token_counts_default_to_zero(self, node: str, value: dict) -> None:
         s = LangGraphSerializer()
         result = s.serialize(node, value)
@@ -623,11 +709,14 @@ class TestTokenFields:
     def test_executor_step_includes_tokens(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="working")
-        result = s.serialize("executor", {
-            "messages": [msg],
-            "prompt_tokens": 50,
-            "completion_tokens": 25,
-        })
+        result = s.serialize(
+            "executor",
+            {
+                "messages": [msg],
+                "prompt_tokens": 50,
+                "completion_tokens": 25,
+            },
+        )
         events = _parse_lines(result)
         step_event = [e for e in events if e["type"] == "executor_step"][0]
         assert step_event["prompt_tokens"] == 50
@@ -653,9 +742,7 @@ class TestLoopId:
             result = s.serialize(node, value)
             events = _parse_lines(result)
             for event in events:
-                assert event["loop_id"] == "group-42", (
-                    f"{node} event type={event['type']} has wrong loop_id"
-                )
+                assert event["loop_id"] == "group-42", f"{node} event type={event['type']} has wrong loop_id"
 
     def test_executor_events_all_have_loop_id(self) -> None:
         s = LangGraphSerializer(loop_id="exec-1")
@@ -666,9 +753,7 @@ class TestLoopId:
         result = s.serialize("executor", {"messages": [msg]})
         events = _parse_lines(result)
         for event in events:
-            assert event.get("loop_id") == "exec-1", (
-                f"Event type={event['type']} missing loop_id"
-            )
+            assert event.get("loop_id") == "exec-1", f"Event type={event['type']} missing loop_id"
 
     def test_tool_result_has_loop_id(self) -> None:
         s = LangGraphSerializer(loop_id="tools-1")
@@ -691,14 +776,17 @@ class TestLoopId:
 class TestExtractDecision:
     """_extract_decision should return a valid decision keyword."""
 
-    @pytest.mark.parametrize("text,expected", [
-        ("we should continue", "continue"),
-        ("need to replan the approach", "replan"),
-        ("all done", "done"),
-        ("requires hitl approval", "hitl"),
-        ("", "continue"),  # default
-        ("ambiguous text with no keyword", "continue"),  # default
-    ])
+    @pytest.mark.parametrize(
+        "text,expected",
+        [
+            ("we should continue", "continue"),
+            ("need to replan the approach", "replan"),
+            ("all done", "done"),
+            ("requires hitl approval", "hitl"),
+            ("", "continue"),  # default
+            ("ambiguous text with no keyword", "continue"),  # default
+        ],
+    )
     def test_decision_extraction(self, text: str, expected: str) -> None:
         assert LangGraphSerializer._extract_decision(text) == expected
 
@@ -853,9 +941,7 @@ class TestToolResultStatus:
         )
         result = s.serialize("tools", {"messages": [msg]})
         data = json.loads(result)
-        assert data["status"] == "success", (
-            "Output containing 'failure' as data should be status=success"
-        )
+        assert data["status"] == "success", "Output containing 'failure' as data should be status=success"
 
     def test_success_output_with_error_word(self) -> None:
         """Output containing 'error' in normal text should be success."""
@@ -942,10 +1028,7 @@ class TestEventIndexUniqueness:
         # Collect non-legacy event indexes
         non_legacy = [e for e in events if e["type"] not in ("plan_step",)]
         indexes = [e["event_index"] for e in non_legacy]
-        assert len(indexes) == len(set(indexes)), (
-            f"Non-legacy events have duplicate indexes: {indexes}"
-        )
-
+        assert len(indexes) == len(set(indexes)), f"Non-legacy events have duplicate indexes: {indexes}"
 
     def test_full_flow_no_duplicate_indexes(self) -> None:
         """Simulate planner -> executor -> tool -> reflector and check uniqueness."""
@@ -982,9 +1065,7 @@ class TestEventIndexUniqueness:
         legacy_types = {"plan", "plan_step", "reflection"}
         non_legacy = [e for e in all_events if e["type"] not in legacy_types]
         indexes = [e["event_index"] for e in non_legacy]
-        assert len(indexes) == len(set(indexes)), (
-            f"Non-legacy events have duplicate event_index values: {indexes}"
-        )
+        assert len(indexes) == len(set(indexes)), f"Non-legacy events have duplicate event_index values: {indexes}"
 
     def test_consecutive_serialize_calls_monotonically_increasing(self) -> None:
         """Consecutive serialize() calls should produce monotonically increasing event_index."""
@@ -992,8 +1073,7 @@ class TestEventIndexUniqueness:
         all_indexes: list[int] = []
 
         # Call 1: executor
-        msg1 = _make_msg(content="step 1 work",
-                         tool_calls=[{"name": "shell", "args": {"cmd": "ls"}, "id": "t1"}])
+        msg1 = _make_msg(content="step 1 work", tool_calls=[{"name": "shell", "args": {"cmd": "ls"}, "id": "t1"}])
         result = s.serialize("executor", {"messages": [msg1], "current_step": 0})
         events = _parse_lines(result)
         non_legacy = [e for e in events if e["type"] not in ("plan_step",)]
@@ -1006,8 +1086,9 @@ class TestEventIndexUniqueness:
         all_indexes.extend(e["event_index"] for e in events)
 
         # Call 3: another executor
-        msg3 = _make_msg(content="step 2 work",
-                         tool_calls=[{"name": "file_read", "args": {"path": "/tmp"}, "id": "t2"}])
+        msg3 = _make_msg(
+            content="step 2 work", tool_calls=[{"name": "file_read", "args": {"path": "/tmp"}, "id": "t2"}]
+        )
         result = s.serialize("executor", {"messages": [msg3], "current_step": 1})
         events = _parse_lines(result)
         non_legacy = [e for e in events if e["type"] not in ("plan_step",)]
@@ -1035,36 +1116,43 @@ class TestStepFieldAccuracy:
         s = LangGraphSerializer()
 
         # Step selector sets current_step to 5 (which updates _step_index to 6)
-        s.serialize("step_selector", {
-            "current_step": 5,
-            "plan_steps": [{"description": f"Step {i}"} for i in range(6)],
-        })
+        s.serialize(
+            "step_selector",
+            {
+                "current_step": 5,
+                "plan_steps": [{"description": f"Step {i}"} for i in range(6)],
+            },
+        )
         assert s._step_index == 6  # cached value is now 6
 
         # Executor comes with current_step=2 in its value dict
         msg = _make_msg(content="working on step 2")
-        result = s.serialize("executor", {
-            "messages": [msg],
-            "current_step": 2,
-        })
+        result = s.serialize(
+            "executor",
+            {
+                "messages": [msg],
+                "current_step": 2,
+            },
+        )
         events = _parse_lines(result)
 
         # The executor_step event should show step=3 (current_step 2 + 1),
         # because the value dict carried current_step=2
         step_event = [e for e in events if e["type"] == "executor_step"][0]
-        assert step_event["step"] == 3, (
-            f"Expected step=3 (from current_step=2), got step={step_event['step']}"
-        )
+        assert step_event["step"] == 3, f"Expected step=3 (from current_step=2), got step={step_event['step']}"
 
     def test_step_uses_cached_when_no_current_step(self) -> None:
         """When no current_step is in the value dict, fall back to cached _step_index."""
         s = LangGraphSerializer()
 
         # Set the cached step via a call with current_step
-        s.serialize("step_selector", {
-            "current_step": 3,
-            "plan_steps": [{"description": f"S{i}"} for i in range(4)],
-        })
+        s.serialize(
+            "step_selector",
+            {
+                "current_step": 3,
+                "plan_steps": [{"description": f"S{i}"} for i in range(4)],
+            },
+        )
         assert s._step_index == 4
 
         # Now serialize a tools event (no current_step in value)
@@ -1081,17 +1169,18 @@ class TestStepFieldAccuracy:
         steps_seen = []
         for cs in [0, 1, 4]:
             msg = _make_msg(content=f"working on step {cs}")
-            result = s.serialize("executor", {
-                "messages": [msg],
-                "current_step": cs,
-            })
+            result = s.serialize(
+                "executor",
+                {
+                    "messages": [msg],
+                    "current_step": cs,
+                },
+            )
             events = _parse_lines(result)
             step_event = [e for e in events if e["type"] == "executor_step"][0]
             steps_seen.append(step_event["step"])
 
-        assert steps_seen == [1, 2, 5], (
-            f"Expected steps [1, 2, 5] from current_step [0, 1, 4], got {steps_seen}"
-        )
+        assert steps_seen == [1, 2, 5], f"Expected steps [1, 2, 5] from current_step [0, 1, 4], got {steps_seen}"
 
 
 # ---------------------------------------------------------------------------
@@ -1105,11 +1194,14 @@ class TestLanggraphNodeField:
 
     def test_planner_events_have_langgraph_node(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("planner", {
-            "plan": ["Step 1"],
-            "iteration": 1,
-            "messages": [],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["Step 1"],
+                "iteration": 1,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
             assert event.get("langgraph_node") == "planner", (
@@ -1132,11 +1224,14 @@ class TestLanggraphNodeField:
     def test_reflector_events_have_langgraph_node(self) -> None:
         s = LangGraphSerializer()
         msg = _make_msg(content="continue")
-        result = s.serialize("reflector", {
-            "done": False,
-            "current_step": 0,
-            "messages": [msg],
-        })
+        result = s.serialize(
+            "reflector",
+            {
+                "done": False,
+                "current_step": 0,
+                "messages": [msg],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
             assert event.get("langgraph_node") == "reflector", (
@@ -1145,10 +1240,13 @@ class TestLanggraphNodeField:
 
     def test_reporter_events_have_langgraph_node(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("reporter", {
-            "final_answer": "done",
-            "messages": [],
-        })
+        result = s.serialize(
+            "reporter",
+            {
+                "final_answer": "done",
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         for event in events:
             assert event.get("langgraph_node") == "reporter", (
@@ -1177,10 +1275,13 @@ class TestLanggraphNodeField:
 
     def test_step_selector_has_langgraph_node(self) -> None:
         s = LangGraphSerializer()
-        result = s.serialize("step_selector", {
-            "current_step": 0,
-            "plan_steps": [{"description": "A"}],
-        })
+        result = s.serialize(
+            "step_selector",
+            {
+                "current_step": 0,
+                "plan_steps": [{"description": "A"}],
+            },
+        )
         data = json.loads(result)
         assert data["langgraph_node"] == "step_selector"
 
@@ -1213,9 +1314,7 @@ class TestLanggraphNodeField:
         all_events.extend(_parse_lines(result))
 
         for event in all_events:
-            assert "langgraph_node" in event, (
-                f"Event type={event.get('type')} missing langgraph_node field"
-            )
+            assert "langgraph_node" in event, f"Event type={event.get('type')} missing langgraph_node field"
 
 
 # ---------------------------------------------------------------------------
@@ -1323,6 +1422,4 @@ class TestNodeTransitionEvents:
         all_events.extend(_parse_lines(result))
 
         indexes = [e["event_index"] for e in all_events]
-        assert len(indexes) == len(set(indexes)), (
-            f"Duplicate event_index values found: {indexes}"
-        )
+        assert len(indexes) == len(set(indexes)), f"Duplicate event_index values found: {indexes}"

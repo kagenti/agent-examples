@@ -53,8 +53,7 @@ class TestLandlockCtypes:
             print(f"ABI={abi}")
         """)
         assert result.returncode == 0, (
-            f"Child failed (exit={result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Child failed (exit={result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "ABI=" in result.stdout
 
@@ -86,8 +85,7 @@ class TestLandlockCtypes:
             print("WRITE_OK")
         """)
         assert result.returncode == 0, (
-            f"Child failed (exit={result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Child failed (exit={result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "WRITE_OK" in result.stdout
 
@@ -120,8 +118,7 @@ class TestLandlockCtypes:
             print("BLOCK_OK")
         """)
         assert result.returncode == 0, (
-            f"Child failed (exit={result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Child failed (exit={result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "BLOCK_OK" in result.stdout
 
@@ -145,8 +142,7 @@ class TestLandlockCtypes:
             print(f"ARCH_OK={arch}")
         """)
         assert result.returncode == 0, (
-            f"Child failed (exit={result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Child failed (exit={result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "ARCH_OK=" in result.stdout
 
@@ -166,7 +162,6 @@ class TestLandlockProbe:
             print(f"PROBE_OK abi={abi}")
         """)
         assert result.returncode == 0, (
-            f"Probe failed (exit={result.returncode}):\n"
-            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+            f"Probe failed (exit={result.returncode}):\nstdout: {result.stdout}\nstderr: {result.stderr}"
         )
         assert "PROBE_OK" in result.stdout

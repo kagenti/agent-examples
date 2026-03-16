@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import pytest
 from langgraph.graph import StateGraph
-
 from sandbox_agent.graph_card import (
     COMMON_EVENT_FIELDS,
     EVENT_CATALOG,
@@ -27,7 +26,6 @@ from sandbox_agent.graph_card import (
     VALID_CATEGORIES,
     build_graph_card,
 )
-
 
 # ---------------------------------------------------------------------------
 # Expected event types (from event_schema.py NodeEventType + extensions)
@@ -128,9 +126,7 @@ class TestTerminalEvents:
         sorted(et for et in EVENT_CATALOG if et != "reporter_output"),
     )
     def test_non_terminal_events_are_not_marked(self, event_type: str) -> None:
-        assert EVENT_CATALOG[event_type].get("terminal") is not True, (
-            f"{event_type} should not be terminal"
-        )
+        assert EVENT_CATALOG[event_type].get("terminal") is not True, f"{event_type} should not be terminal"
 
 
 # ---------------------------------------------------------------------------
@@ -149,9 +145,7 @@ class TestDebugFields:
     def test_llm_events_have_full_debug_fields(self, event_type: str) -> None:
         debug = EVENT_CATALOG[event_type]["debug_fields"]
         missing = LLM_DEBUG_FIELDS - set(debug.keys())
-        assert not missing, (
-            f"{event_type} (has_llm_call=True) missing debug_fields: {missing}"
-        )
+        assert not missing, f"{event_type} (has_llm_call=True) missing debug_fields: {missing}"
 
     @pytest.mark.parametrize(
         "event_type",
@@ -161,8 +155,7 @@ class TestDebugFields:
         debug = EVENT_CATALOG[event_type]["debug_fields"]
         if debug:
             assert set(debug.keys()) == {"logic"}, (
-                f"{event_type} (has_llm_call=False) should have only 'logic' "
-                f"in debug_fields, got: {set(debug.keys())}"
+                f"{event_type} (has_llm_call=False) should have only 'logic' in debug_fields, got: {set(debug.keys())}"
             )
 
 
@@ -175,8 +168,14 @@ class TestCommonEventFields:
     """COMMON_EVENT_FIELDS has the required baseline fields."""
 
     EXPECTED_COMMON = {
-        "type", "loop_id", "langgraph_node", "node_visit",
-        "event_index", "model", "prompt_tokens", "completion_tokens",
+        "type",
+        "loop_id",
+        "langgraph_node",
+        "node_visit",
+        "event_index",
+        "model",
+        "prompt_tokens",
+        "completion_tokens",
     }
 
     def test_all_common_fields_present(self) -> None:
@@ -198,9 +197,16 @@ class TestTopologyNodeDescriptions:
     """TOPOLOGY_NODE_DESCRIPTIONS covers known graph nodes."""
 
     EXPECTED_NODES = {
-        "router", "planner", "planner_tools", "step_selector",
-        "executor", "tools", "reflector", "reflector_tools",
-        "reflector_route", "reporter",
+        "router",
+        "planner",
+        "planner_tools",
+        "step_selector",
+        "executor",
+        "tools",
+        "reflector",
+        "reflector_tools",
+        "reflector_route",
+        "reporter",
     }
 
     def test_all_graph_nodes_described(self) -> None:

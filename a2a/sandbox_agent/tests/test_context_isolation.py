@@ -16,10 +16,8 @@ Test structure:
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from langchain_core.messages import (
@@ -28,21 +26,14 @@ from langchain_core.messages import (
     SystemMessage,
     ToolMessage,
 )
-
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.reasoning import (
     _parse_plan,
-    _safe_format,
     executor_node,
     planner_node,
     reflector_node,
     reporter_node,
 )
-from sandbox_agent.prompts import (
-    EXECUTOR_SYSTEM as _EXECUTOR_SYSTEM,
-    PLANNER_SYSTEM as _PLANNER_SYSTEM,
-)
-
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -94,17 +85,11 @@ class CaptureLLM:
 
     def human_messages(self, call_idx: int = -1) -> list[str]:
         """Extract all HumanMessage contents from a specific call."""
-        return [
-            m.content for m in self.calls[call_idx]
-            if isinstance(m, HumanMessage)
-        ]
+        return [m.content for m in self.calls[call_idx] if isinstance(m, HumanMessage)]
 
     def ai_messages(self, call_idx: int = -1) -> list[str]:
         """Extract all AIMessage contents from a specific call."""
-        return [
-            str(m.content) for m in self.calls[call_idx]
-            if isinstance(m, AIMessage)
-        ]
+        return [str(m.content) for m in self.calls[call_idx] if isinstance(m, AIMessage)]
 
     def message_types(self, call_idx: int = -1) -> list[str]:
         """Return list of message type names from a specific call."""
@@ -194,9 +179,7 @@ class TestStepBoundary:
 
         result = await executor_node(state, llm)
         boundary_msgs = [
-            m for m in result["messages"]
-            if isinstance(m, SystemMessage)
-            and "[STEP_BOUNDARY" in str(m.content)
+            m for m in result["messages"] if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
         ]
         assert len(boundary_msgs) == 1
         assert "[STEP_BOUNDARY 0]" in boundary_msgs[0].content
@@ -216,9 +199,7 @@ class TestStepBoundary:
         )
         result = await executor_node(state, llm)
         boundary_msgs = [
-            m for m in result["messages"]
-            if isinstance(m, SystemMessage)
-            and "[STEP_BOUNDARY" in str(m.content)
+            m for m in result["messages"] if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
         ]
         assert len(boundary_msgs) == 0
 
@@ -293,9 +274,11 @@ class TestPlannerContext:
     @pytest.mark.asyncio
     async def test_fresh_plan_from_user_message(self) -> None:
         """First plan: planner gets user request, produces numbered steps."""
-        llm = CaptureLLM([
-            AIMessage(content="1. Clone repo\n2. List failures\n3. Download logs"),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="1. Clone repo\n2. List failures\n3. Download logs"),
+            ]
+        )
         state = _base_state(iteration=0)
         result = await planner_node(state, llm)
 
@@ -308,15 +291,17 @@ class TestPlannerContext:
     @pytest.mark.asyncio
     async def test_replan_includes_step_status(self) -> None:
         """On replan, planner should see which steps are done/failed."""
-        llm = CaptureLLM([
-            AIMessage(content="1. Try alternative approach\n2. Write report"),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="1. Try alternative approach\n2. Write report"),
+            ]
+        )
         state = _base_state(
             iteration=1,
             plan=["Clone repo", "List failures"],
             step_results=["Cloned successfully", "gh: command not found"],
         )
-        result = await planner_node(state, llm)
+        result = await planner_node(state, llm) # noqa: F841
 
         system = llm.system_prompt(0)
         # Should mention previous step results
@@ -329,15 +314,19 @@ class TestPlannerContext:
         messages = [HumanMessage(content="Analyze CI failures")]
         messages.append(AIMessage(content="1. Clone\n2. List\n3. Download"))
         for i in range(15):
-            messages.append(AIMessage(
-                content="",
-                tool_calls=[{"name": "shell", "args": {"command": f"cmd{i}"}, "id": f"tc{i}"}],
-            ))
+            messages.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "shell", "args": {"command": f"cmd{i}"}, "id": f"tc{i}"}],
+                )
+            )
             messages.append(ToolMessage(content=f"output {i}", tool_call_id=f"tc{i}", name="shell"))
 
-        llm = CaptureLLM([
-            AIMessage(content="1. New approach"),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="1. New approach"),
+            ]
+        )
         state = _base_state(
             iteration=2,
             plan=["Clone repo"],
@@ -375,10 +364,12 @@ class TestReflectorContext:
         messages: list = [HumanMessage(content="user request")]
         messages.append(AIMessage(content="Plan: 1. A\n2. B\n3. C"))
         for i in range(10):
-            messages.append(AIMessage(
-                content="",
-                tool_calls=[{"name": "shell", "args": {"command": f"cmd{i}"}, "id": f"tc{i}"}],
-            ))
+            messages.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "shell", "args": {"command": f"cmd{i}"}, "id": f"tc{i}"}],
+                )
+            )
             messages.append(ToolMessage(content=f"output {i}", tool_call_id=f"tc{i}", name="shell"))
         # Last AI message (step summary)
         messages.append(AIMessage(content="Step 1 completed"))
@@ -390,15 +381,12 @@ class TestReflectorContext:
             iteration=1,
             messages=messages,
         )
-        result = await reflector_node(state, llm)
+        result = await reflector_node(state, llm) # noqa: F841
 
         # Reflector should NOT send all 20+ messages to the LLM
         total = len(llm.last_messages)
         # System + at most 20 messages (10 AI→Tool pairs) + maybe step summary
-        assert total <= 22, (
-            f"Reflector sent {total} messages to LLM — should be ≤22 "
-            f"(system + last 10 AI→Tool pairs)"
-        )
+        assert total <= 22, f"Reflector sent {total} messages to LLM — should be ≤22 (system + last 10 AI→Tool pairs)"
 
     @pytest.mark.asyncio
     async def test_reflector_does_not_see_planner_plan(self) -> None:
@@ -477,9 +465,11 @@ class TestReporterContext:
     @pytest.mark.asyncio
     async def test_reporter_multi_step_calls_llm(self) -> None:
         """Multi-step plan: reporter calls LLM with full context."""
-        llm = CaptureLLM([
-            AIMessage(content="## Root Cause\nThe CI pipeline failed due to..."),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="## Root Cause\nThe CI pipeline failed due to..."),
+            ]
+        )
         budget = AgentBudget()
         state = _base_state(
             plan=["Clone", "List", "Analyze"],
@@ -517,9 +507,11 @@ class TestExecutorFailureBehavior:
     @pytest.mark.asyncio
     async def test_no_tool_calls_twice_marks_failed(self) -> None:
         """Executor that produces no tool calls twice marks step as failed."""
-        llm = CaptureLLM([
-            AIMessage(content="I would run ls but..."),  # No tool_calls
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="I would run ls but..."),  # No tool_calls
+            ]
+        )
         state = _base_state(
             plan=_make_rca_plan(),
             current_step=0,
@@ -623,26 +615,32 @@ class TestFullRCAFlow:
     async def test_five_step_rca_context_isolation(self) -> None:
         """Run planner → executor (step 1) → reflector and verify isolation."""
         # Step 1: Planner produces the 5-step plan
-        planner_llm = CaptureLLM([
-            AIMessage(content=(
-                "1. Clone repo: shell(`git clone ...`).\n"
-                "2. List failures: shell(`cd repos/kagenti && gh run list ...`).\n"
-                "3. Download logs: shell(`cd repos/kagenti && gh run view ...`).\n"
-                "4. Extract errors: grep(`FAILED|ERROR`).\n"
-                "5. Write report: file_write(report.md)."
-            )),
-        ])
+        planner_llm = CaptureLLM(
+            [
+                AIMessage(
+                    content=(
+                        "1. Clone repo: shell(`git clone ...`).\n"
+                        "2. List failures: shell(`cd repos/kagenti && gh run list ...`).\n"
+                        "3. Download logs: shell(`cd repos/kagenti && gh run view ...`).\n"
+                        "4. Extract errors: grep(`FAILED|ERROR`).\n"
+                        "5. Write report: file_write(report.md)."
+                    )
+                ),
+            ]
+        )
         state = _base_state(iteration=0)
         plan_result = await planner_node(state, planner_llm)
         assert len(plan_result["plan"]) == 5
 
         # Step 2: Executor runs step 1 (clone repo)
-        executor_llm = CaptureLLM([
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "shell", "args": {"command": "git clone ..."}, "id": "tc_clone"}],
-            ),
-        ])
+        executor_llm = CaptureLLM(
+            [
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "shell", "args": {"command": "git clone ..."}, "id": "tc_clone"}],
+                ),
+            ]
+        )
         # Build state as it would be after planner: messages includes planner's AIMessage
         exec_state = _base_state(
             plan=plan_result["plan"],
@@ -654,7 +652,7 @@ class TestFullRCAFlow:
                 AIMessage(content="1. Clone repo\n2. List failures\n3. Download\n4. Extract\n5. Report"),
             ],
         )
-        exec_result = await executor_node(exec_state, executor_llm)
+        exec_result = await executor_node(exec_state, executor_llm) # noqa: F841
 
         # CRITICAL: Executor should NOT see the planner's plan in its messages
         types = executor_llm.message_types(0)
@@ -714,9 +712,11 @@ class TestReplanDuplication:
         the expected behavior after the fix.
         """
         previous_plan = "1. Clone repo\n2. List failures\n3. Download logs"
-        llm = CaptureLLM([
-            AIMessage(content="1. Try alternative API\n2. Write report"),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(content="1. Try alternative API\n2. Write report"),
+            ]
+        )
         state = _base_state(
             iteration=1,
             plan=["Clone repo", "List failures", "Download logs"],
@@ -740,21 +740,30 @@ class TestReplanDuplication:
     @pytest.mark.asyncio
     async def test_replan_can_add_steps_when_objective_not_met(self) -> None:
         """Replanner should add new steps when done steps didn't achieve the goal."""
-        llm = CaptureLLM([
-            AIMessage(content=(
-                "1. Try gh api instead of gh run view.\n"
-                "2. Parse JSON response for log URLs.\n"
-                "3. Download logs with curl.\n"
-                "4. Write findings to report.md."
-            )),
-        ])
+        llm = CaptureLLM(
+            [
+                AIMessage(
+                    content=(
+                        "1. Try gh api instead of gh run view.\n"
+                        "2. Parse JSON response for log URLs.\n"
+                        "3. Download logs with curl.\n"
+                        "4. Write findings to report.md."
+                    )
+                ),
+            ]
+        )
         state = _base_state(
             iteration=1,
             plan=["Clone repo", "List failures", "Download logs"],
             plan_steps=[
                 {"description": "Clone repo", "status": "done", "index": 0, "result_summary": "Cloned OK"},
                 {"description": "List failures", "status": "done", "index": 1, "result_summary": "Found 3 failures"},
-                {"description": "Download logs", "status": "failed", "index": 2, "result_summary": "gh run view: HTTP 410"},
+                {
+                    "description": "Download logs",
+                    "status": "failed",
+                    "index": 2,
+                    "result_summary": "gh run view: HTTP 410",
+                },
             ],
             step_results=["Cloned OK", "Found 3 failures", "HTTP 410 error"],
             messages=[
@@ -779,11 +788,7 @@ class TestReplanDuplication:
     async def test_parsed_plan_has_no_duplicates(self) -> None:
         """_parse_plan should not produce duplicate steps from repeated text."""
         # Simulate what happens when the LLM echoes steps
-        text = (
-            "1. Clone repo\n"
-            "2. List failures\n"
-            "3. Download logs\n"
-        )
+        text = "1. Clone repo\n2. List failures\n3. Download logs\n"
         steps = _parse_plan(text)
         assert len(steps) == 3
         assert len(set(steps)) == 3, "Plan steps should be unique"
@@ -855,16 +860,18 @@ class TestBuildReflectorContext:
     def test_only_tool_call_ai_messages(self) -> None:
         from sandbox_agent.context_builders import build_reflector_context
 
-        state = _base_state(messages=[
-            HumanMessage(content="user request"),
-            AIMessage(content="Plan: 1. Clone\n2. List"),  # No tool_calls — should be filtered
-            AIMessage(
-                content="",
-                tool_calls=[{"name": "shell", "args": {"command": "ls"}, "id": "tc1"}],
-            ),
-            ToolMessage(content="file1.txt", tool_call_id="tc1", name="shell"),
-            AIMessage(content="Step done, moving on"),  # No tool_calls — should be filtered
-        ])
+        state = _base_state(
+            messages=[
+                HumanMessage(content="user request"),
+                AIMessage(content="Plan: 1. Clone\n2. List"),  # No tool_calls — should be filtered
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "shell", "args": {"command": "ls"}, "id": "tc1"}],
+                ),
+                ToolMessage(content="file1.txt", tool_call_id="tc1", name="shell"),
+                AIMessage(content="Step done, moving on"),  # No tool_calls — should be filtered
+            ]
+        )
         msgs = build_reflector_context(state, "System prompt")
 
         # Should only have: SystemMessage + AIMessage(tool_calls) + ToolMessage
@@ -879,9 +886,12 @@ class TestBuildReflectorContext:
 
         messages: list = [HumanMessage(content="user")]
         for i in range(10):
-            messages.append(AIMessage(
-                content="", tool_calls=[{"name": "shell", "args": {}, "id": f"tc{i}"}],
-            ))
+            messages.append(
+                AIMessage(
+                    content="",
+                    tool_calls=[{"name": "shell", "args": {}, "id": f"tc{i}"}],
+                )
+            )
             messages.append(ToolMessage(content=f"out{i}", tool_call_id=f"tc{i}", name="shell"))
 
         state = _base_state(messages=messages)
@@ -967,7 +977,9 @@ class TestBuildExecutorContext:
             _tool_call_count=1,
             messages=[
                 SystemMessage(content="[STEP_BOUNDARY 0] List failures"),
-                AIMessage(content="", tool_calls=[{"name": "shell", "args": {"command": "gh run list --head"}, "id": "t1"}]),
+                AIMessage(
+                    content="", tool_calls=[{"name": "shell", "args": {"command": "gh run list --head"}, "id": "t1"}]
+                ),
                 ToolMessage(content="STDERR: unknown flag: --head\nEXIT_CODE: 1", tool_call_id="t1", name="shell"),
             ],
         )
@@ -1046,7 +1058,9 @@ class TestInvokeLLM:
             HumanMessage(content="Do stuff"),
         ]
         _, capture = await invoke_llm(
-            llm, messages, node="test",
+            llm,
+            messages,
+            node="test",
             workspace_path="/workspace/ctx-abc",
         )
 

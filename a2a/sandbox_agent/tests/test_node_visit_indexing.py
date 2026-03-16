@@ -65,11 +65,14 @@ class TestNodeVisitField:
         # Visit 1: router
         s.serialize("router", {"_route": "plan"})
         # Visit 2: planner
-        result = s.serialize("planner", {
-            "plan": ["Clone repo", "List failures"],
-            "iteration": 1,
-            "messages": [],
-        })
+        result = s.serialize(
+            "planner",
+            {
+                "plan": ["Clone repo", "List failures"],
+                "iteration": 1,
+                "messages": [],
+            },
+        )
         events = _parse_lines(result)
         non_legacy = _get_non_legacy(events)
         for e in non_legacy:
@@ -182,9 +185,7 @@ class TestSubIndex:
         events = _get_non_legacy(_parse_lines(result))
 
         sub_indexes = [e.get("sub_index") for e in events]
-        assert sub_indexes == list(range(len(sub_indexes))), (
-            f"Sub-indexes should be sequential: {sub_indexes}"
-        )
+        assert sub_indexes == list(range(len(sub_indexes))), f"Sub-indexes should be sequential: {sub_indexes}"
 
     def test_tool_result_sub_index_continues(self) -> None:
         """Tool result's sub_index should continue from executor's last."""
@@ -237,14 +238,10 @@ class TestGlobalEventIndex:
 
         non_legacy = _get_non_legacy(all_events)
         indexes = [e["event_index"] for e in non_legacy]
-        assert len(indexes) == len(set(indexes)), (
-            f"Duplicate event_index values: {indexes}"
-        )
+        assert len(indexes) == len(set(indexes)), f"Duplicate event_index values: {indexes}"
         # Should be monotonically increasing
         for i in range(1, len(indexes)):
-            assert indexes[i] > indexes[i - 1], (
-                f"event_index not monotonic at position {i}: {indexes}"
-            )
+            assert indexes[i] > indexes[i - 1], f"event_index not monotonic at position {i}: {indexes}"
 
 
 # ---------------------------------------------------------------------------
@@ -270,7 +267,7 @@ class TestMicroStepCounter:
         events2 = _parse_lines(r2)
         micro2 = [e for e in events2 if e["type"] == "micro_reasoning"]
         if micro2:
-            micro_before = micro2[0].get("micro_step", 0)
+            micro_before = micro2[0].get("micro_step", 0) # noqa: F841
 
         # Reflector + step_selector transition
         s.serialize("reflector", {"done": False, "current_step": 0, "messages": [_make_msg(content="continue")]})
@@ -312,6 +309,8 @@ class TestPlanStepField:
             assert e["step"] == 1, f"Executor event should show step 1, got {e['step']}"
 
         # Step selector advances to step 1
-        r3 = s.serialize("step_selector", {"current_step": 1, "plan_steps": [{"description": "A"}, {"description": "B"}]})
+        r3 = s.serialize(
+            "step_selector", {"current_step": 1, "plan_steps": [{"description": "A"}, {"description": "B"}]}
+        )
         e3 = _get_non_legacy(_parse_lines(r3))[0]
         assert e3["step"] == 2, f"Step should be 2 after advancing, got {e3['step']}"

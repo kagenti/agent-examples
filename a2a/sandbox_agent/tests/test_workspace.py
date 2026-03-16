@@ -8,9 +8,7 @@ import json
 import time
 
 import pytest
-
 from sandbox_agent.workspace import WORKSPACE_SUBDIRS, WorkspaceManager
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -47,9 +45,7 @@ class TestEnsureWorkspace:
         path = manager.ensure_workspace("ctx-abc123")
         for subdir in WORKSPACE_SUBDIRS:
             subdir_path = f"{path}/{subdir}"
-            assert (
-                __import__("pathlib").Path(subdir_path).is_dir()
-            ), f"Missing subdirectory: {subdir}"
+            assert __import__("pathlib").Path(subdir_path).is_dir(), f"Missing subdirectory: {subdir}"
 
     def test_creates_context_json(self, manager: WorkspaceManager) -> None:
         """ensure_workspace creates .context.json with correct fields."""
@@ -86,9 +82,7 @@ class TestEnsureWorkspace:
         data2 = json.loads(context_file.read_text())
         second_accessed = data2["last_accessed_at"]
 
-        assert second_accessed > first_accessed, (
-            "last_accessed_at should be updated on second call"
-        )
+        assert second_accessed > first_accessed, "last_accessed_at should be updated on second call"
         # created_at should remain the same
         assert data1["created_at"] == data2["created_at"]
 
@@ -106,9 +100,7 @@ class TestEnsureWorkspace:
 class TestGetWorkspacePath:
     """Path calculation without side effects."""
 
-    def test_returns_correct_path(
-        self, manager: WorkspaceManager, workspace_root: str
-    ) -> None:
+    def test_returns_correct_path(self, manager: WorkspaceManager, workspace_root: str) -> None:
         """get_workspace_path returns workspace_root / context_id."""
         path = manager.get_workspace_path("ctx-abc123")
         assert path == f"{workspace_root}/ctx-abc123"

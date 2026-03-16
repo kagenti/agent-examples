@@ -10,7 +10,6 @@ import json
 import pathlib
 
 import pytest
-
 from sandbox_agent.permissions import PermissionChecker, PermissionResult
 
 # ---------------------------------------------------------------------------

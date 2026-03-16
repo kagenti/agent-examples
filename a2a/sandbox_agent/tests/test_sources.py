@@ -5,7 +5,6 @@ import tempfile
 from pathlib import Path
 
 import pytest
-
 from sandbox_agent.sources import SourcesConfig
 
 # ---------------------------------------------------------------------------
@@ -18,9 +17,7 @@ SAMPLE_SOURCES: dict = {
     "package_managers": {
         "pip": {
             "enabled": True,
-            "registries": [
-                {"name": "pypi", "url": "https://pypi.org/simple/", "trusted": True}
-            ],
+            "registries": [{"name": "pypi", "url": "https://pypi.org/simple/", "trusted": True}],
             "max_install_size_mb": 500,
             "blocked_packages": ["subprocess32", "pyautogui"],
         },
@@ -107,9 +104,7 @@ class TestGitRemoteAllowed:
         assert config.is_git_remote_allowed("https://gitlab.com/org/repo") is True
 
     def test_bitbucket_blocked(self, config: SourcesConfig) -> None:
-        assert (
-            config.is_git_remote_allowed("https://bitbucket.org/org/repo") is False
-        )
+        assert config.is_git_remote_allowed("https://bitbucket.org/org/repo") is False
 
     def test_git_disabled(self) -> None:
         data = {**SAMPLE_SOURCES, "git": {"enabled": False, "allowed_remotes": []}}
@@ -152,9 +147,7 @@ class TestRuntimeDefaults:
 
 class TestFromFile:
     def test_round_trip(self) -> None:
-        with tempfile.NamedTemporaryFile(
-            mode="w", suffix=".json", delete=False
-        ) as fh:
+        with tempfile.NamedTemporaryFile(mode="w", suffix=".json", delete=False) as fh:
             json.dump(SAMPLE_SOURCES, fh)
             fh.flush()
             cfg = SourcesConfig.from_file(Path(fh.name))

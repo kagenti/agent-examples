@@ -13,13 +13,10 @@ Validates:
 
 from __future__ import annotations
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 import pytest
-from langchain_core.messages import AIMessage, HumanMessage
-
-from langchain_core.messages import SystemMessage
-
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from sandbox_agent.budget import AgentBudget
 from sandbox_agent.reasoning import (
     _parse_decision,
@@ -30,7 +27,6 @@ from sandbox_agent.reasoning import (
     reporter_node,
     route_reflector,
 )
-
 
 # ---------------------------------------------------------------------------
 # _parse_plan
@@ -236,7 +232,7 @@ class TestExecutorNode:
             "current_step": 0,
             "workspace_path": "/workspace/abc-123",
         }
-        result = await executor_node(state, mock_llm)
+        result = await executor_node(state, mock_llm) # noqa: F841
 
         # Verify the system prompt was passed to LLM with workspace_path
         call_args = mock_llm.ainvoke.call_args[0][0]
@@ -277,10 +273,7 @@ class TestExecutorNode:
 
         # The returned messages should include a SystemMessage boundary
         msgs = result["messages"]
-        boundary_msgs = [
-            m for m in msgs
-            if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
-        ]
+        boundary_msgs = [m for m in msgs if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)]
         assert len(boundary_msgs) == 1
         assert "[STEP_BOUNDARY 0]" in boundary_msgs[0].content
 
@@ -303,10 +296,7 @@ class TestExecutorNode:
         result = await executor_node(state, mock_llm)
 
         msgs = result["messages"]
-        boundary_msgs = [
-            m for m in msgs
-            if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)
-        ]
+        boundary_msgs = [m for m in msgs if isinstance(m, SystemMessage) and "[STEP_BOUNDARY" in str(m.content)]
         assert len(boundary_msgs) == 0
 
     @pytest.mark.asyncio
@@ -441,9 +431,7 @@ class TestReporterNode:
     @pytest.mark.asyncio
     async def test_summarizes_multi_step(self) -> None:
         mock_llm = AsyncMock()
-        mock_llm.ainvoke.return_value = AIMessage(
-            content="Project setup complete with all tests passing."
-        )
+        mock_llm.ainvoke.return_value = AIMessage(content="Project setup complete with all tests passing.")
 
         state = {
             "messages": [HumanMessage(content="set up project")],
