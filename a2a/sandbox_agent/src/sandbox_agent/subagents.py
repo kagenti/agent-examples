@@ -40,9 +40,6 @@ _MAX_SUB_AGENT_ITERATIONS = 15
 _DELEGATION_MODES = os.environ.get("DELEGATION_MODES", "in-process,shared-pvc,isolated,sidecar").split(",")
 _DEFAULT_MODE = os.environ.get("DEFAULT_DELEGATION_MODE", "in-process")
 
-# Maximum iterations for in-process sub-agents to prevent runaway loops.
-_MAX_SUB_AGENT_ITERATIONS = 15
-
 
 # ---------------------------------------------------------------------------
 # In-process sub-agent: explore (C20, mode 1)
@@ -109,7 +106,7 @@ def _make_explore_tools(workspace: str) -> list[Any]:
             File contents (truncated to 20000 chars).
         """
         resolved = (ws_root / path).resolve()
-        if not str(resolved).startswith(str(ws_root)):
+        if not resolved.is_relative_to(ws_root):
             return "Error: path resolves outside the workspace."
         if not resolved.is_file():
             return f"Error: file not found at '{path}'."

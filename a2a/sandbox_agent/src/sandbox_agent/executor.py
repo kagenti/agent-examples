@@ -237,7 +237,10 @@ class SandboxExecutor:
         """
         import re
 
-        parts = operation.split()
+        try:
+            parts = shlex.split(operation)
+        except ValueError:
+            parts = operation.split()
         if not parts:
             return None
 

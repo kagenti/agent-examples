@@ -44,8 +44,15 @@ class WorkspaceManager:
     # Public API
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _validate_context_id(context_id: str) -> None:
+        """Reject context IDs that could escape the workspace root."""
+        if not context_id or "/" in context_id or ".." in context_id or "\x00" in context_id:
+            raise ValueError(f"Invalid context_id: {context_id!r}")
+
     def get_workspace_path(self, context_id: str) -> str:
         """Return the workspace path for *context_id* without creating it."""
+        self._validate_context_id(context_id)
         return os.path.join(self.workspace_root, context_id)
 
     def ensure_workspace(self, context_id: str) -> str:
@@ -60,10 +67,9 @@ class WorkspaceManager:
         Raises
         ------
         ValueError
-            If *context_id* is empty.
+            If *context_id* is empty or contains path-traversal characters.
         """
-        if not context_id:
-            raise ValueError("context_id must not be empty")
+        self._validate_context_id(context_id)
 
         workspace_path = self.get_workspace_path(context_id)
         context_file = Path(workspace_path) / ".context.json"

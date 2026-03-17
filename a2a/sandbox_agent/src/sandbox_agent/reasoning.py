@@ -1813,6 +1813,3 @@ def _parse_decision(content: str | list) -> str:
             return decision
 
     return "continue"
-
-
-_BARE_DECISION_RE = re.compile(r"^(continue|retry|replan|done|hitl)\s*$", re.IGNORECASE)

@@ -23,6 +23,7 @@ from __future__ import annotations
 import enum
 import fnmatch
 import re
+import shlex
 from typing import Any
 
 # ---------------------------------------------------------------------------
@@ -280,7 +281,10 @@ class PermissionChecker:
         if not operation:
             return []
 
-        parts = operation.split()
+        try:
+            parts = shlex.split(operation)
+        except ValueError:
+            parts = operation.split()
         if not parts:
             return []
 
