@@ -53,9 +53,11 @@ ENV BENCHMARK_NAME=${BENCHMARK_NAME} \
 
 # Create non-root user and set permissions
 RUN useradd -m -u 1001 exgentic && \
-    chown -R 1001:1001 /app
-
+    chown -R 1001:0 /app && \
+    chmod -R g+rwX /app
+    
 USER 1001
+
 
 # Expose the default port
 EXPOSE 8000
