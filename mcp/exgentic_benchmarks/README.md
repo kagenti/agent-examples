@@ -99,6 +99,26 @@ docker build \
 | `PORT` | 8000 | Server port |
 | `LOG_LEVEL` | INFO | Logging level (DEBUG, INFO, WARNING, ERROR) |
 | `BENCHMARK_NAME` | (from build) | Benchmark name (set during build) |
+| `EXGENTIC_SET_*` | - | Runtime configuration parameters (see below) |
+
+### Runtime Configuration with --set Parameters
+
+You can pass runtime configuration parameters to the `exgentic mcp` command using environment variables with the `EXGENTIC_SET_` prefix. These will be converted to `--set` arguments.
+
+**Format**: `EXGENTIC_SET_<CATEGORY>_<PARAMETER>=<value>`
+- The `<CATEGORY>` will be separated from `<PARAMETER>` with a dot
+- The rest of the underscores in `<PARAMETER>` remain as underscores
+- Everything is converted to lowercase
+- Example: `EXGENTIC_SET_BENCHMARK_USER_SIMULATOR_MODEL` → `--set benchmark.user_simulator_model`
+
+**Common Parameters**:
+- `EXGENTIC_SET_BENCHMARK_USER_SIMULATOR_MODEL` - Set the user simulator model (e.g., `openai/Azure/gpt-4o`)
+- `EXGENTIC_SET_BENCHMARK_AGENT_MODEL` - Set the agent model
+- `EXGENTIC_SET_BENCHMARK_MAX_STEPS` - Set maximum steps
+- `EXGENTIC_SET_BENCHMARK_MAX_INTERACTIONS` - Set maximum interactions
+- `EXGENTIC_SET_BENCHMARK_SEED` - Set random seed
+- Any other benchmark-specific configuration parameter
+
 
 ### Custom Configuration Examples
 
@@ -123,7 +143,23 @@ docker run -p 8000:8000 \
   exgentic-mcp-tau2:latest
 ```
 
-## Architecture
+**Set user simulator model:**
+```bash
+docker run -p 8000:8000 \
+  -e EXGENTIC_SET_BENCHMARK_USER_SIMULATOR_MODEL='openai/Azure/gpt-4o' \
+  exgentic-mcp-tau2:latest
+```
+
+**Set multiple runtime parameters:**
+```bash
+docker run -p 8000:8000 \
+  -e EXGENTIC_SET_BENCHMARK_USER_SIMULATOR_MODEL='openai/Azure/gpt-4o' \
+  -e EXGENTIC_SET_BENCHMARK_AGENT_MODEL='anthropic/claude-3-5-sonnet-20241022' \
+  -e EXGENTIC_SET_BENCHMARK_MAX_STEPS='50' \
+  exgentic-mcp-tau2:latest
+```
+
+
 
 ### Build Process
 

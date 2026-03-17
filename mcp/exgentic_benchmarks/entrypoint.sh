@@ -18,10 +18,21 @@ echo "Host: $HOST"
 echo "Port: $PORT"
 echo "Log Level: $LOG_LEVEL"
 
+# Build --set arguments from EXGENTIC_SET_* environment variables
+SET_ARGS=""
+for var in $(env | grep '^EXGENTIC_SET_' | cut -d= -f1); do
+    # Extract the key by removing EXGENTIC_SET_ prefix and converting to lowercase
+    # Replace first underscore with dot, keep rest as underscores
+    key=$(echo "$var" | sed 's/^EXGENTIC_SET_//' | tr '[:upper:]' '[:lower:]' | sed 's/_/./' )
+    value="${!var}"
+    SET_ARGS="$SET_ARGS --set $key='$value'"
+    echo "Setting: $key=$value"
+done
+
 # Change to the exgentic directory
 cd /app/exgentic
 
-# Run the exgentic MCP server
-exec exgentic mcp --benchmark "$BENCHMARK_NAME" --host "$HOST" --port "$PORT"
+# Run the exgentic MCP server with --set arguments
+echo "Command: exgentic mcp --benchmark $BENCHMARK_NAME --host $HOST --port $PORT $SET_ARGS"
+eval exec exgentic mcp --benchmark "$BENCHMARK_NAME" --host "$HOST" --port "$PORT" $SET_ARGS
 
-# Made with Bob
