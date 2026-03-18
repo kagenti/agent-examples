@@ -1,6 +1,6 @@
 # Exgentic Benchmarks MCP Server
 
-A Docker-based MCP (Model Context Protocol) server that runs the Exgentic benchmark system. This server clones the Exgentic repository, installs a specific benchmark at build time, and exposes it via the MCP protocol.
+A Docker-based MCP (Model Context Protocol) server that runs the [Exgentic](https://github.com/Exgentic/exgentic) benchmark system. This server clones the Exgentic repository, installs a specific benchmark at build time, and exposes it via the MCP protocol.
 
 ## Overview
 
