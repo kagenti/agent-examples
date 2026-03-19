@@ -58,6 +58,9 @@ RUN useradd -m -u 1001 exgentic && \
     
 USER 1001
 
+# Set HOME environment variable to /app
+ENV HOME=/app
+
 
 # Expose the default port
 EXPOSE 8000
