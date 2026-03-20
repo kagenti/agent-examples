@@ -9,6 +9,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from weather_service.configuration import Configuration
 
 config = Configuration()
+config.log_warnings()
 
 
 # Extend MessagesState to include a final answer
