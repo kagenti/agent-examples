@@ -25,22 +25,45 @@ from weather_service.observability import (
 
 
 class SecretRedactionFilter(logging.Filter):
-    """Redacts Bearer tokens and API keys from log messages."""
+    """Redacts Bearer tokens and API keys from log messages.
+
+    Covers three layers:
+    1. Bearer tokens in Authorization headers (any format).
+    2. OpenAI-style ``sk-*`` API keys (pattern-based).
+    3. The literal configured ``LLM_API_KEY`` value (provider-agnostic,
+       catches non-standard key formats like RHOAI MaaS 32-char keys).
+    """
 
     _BEARER_RE = re.compile(r"(Bearer\s+)\S+", re.IGNORECASE)
     _API_KEY_RE = re.compile(r"(sk-[a-zA-Z0-9]{3})[a-zA-Z0-9]+")
 
+    def __init__(self, name: str = ""):
+        super().__init__(name)
+        # Redact the literal configured key when it's long enough to be real
+        configured_key = os.environ.get("LLM_API_KEY", "").strip()
+        if len(configured_key) > 8:
+            self._literal_key_re: re.Pattern | None = re.compile(
+                re.escape(configured_key)
+            )
+        else:
+            self._literal_key_re = None
+
+    def _redact(self, text: str) -> str:
+        text = self._BEARER_RE.sub(r"\1[REDACTED]", text)
+        text = self._API_KEY_RE.sub(r"\1...[REDACTED]", text)
+        if self._literal_key_re is not None:
+            text = self._literal_key_re.sub("[REDACTED]", text)
+        return text
+
     def filter(self, record: logging.LogRecord) -> bool:
         if isinstance(record.msg, str):
-            record.msg = self._BEARER_RE.sub(r"\1[REDACTED]", record.msg)
-            record.msg = self._API_KEY_RE.sub(r"\1...[REDACTED]", record.msg)
+            record.msg = self._redact(record.msg)
         if record.args:
             args = record.args if isinstance(record.args, tuple) else (record.args,)
             new_args = []
             for arg in args:
                 if isinstance(arg, str):
-                    arg = self._BEARER_RE.sub(r"\1[REDACTED]", arg)
-                    arg = self._API_KEY_RE.sub(r"\1...[REDACTED]", arg)
+                    arg = self._redact(arg)
                 new_args.append(arg)
             record.args = tuple(new_args)
         return True

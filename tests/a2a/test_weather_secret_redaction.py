@@ -114,6 +114,43 @@ class TestSecretRedactionFilter:
         record = self._make_record("Bearer secret123")
         assert self.filt.filter(record) is True
 
+    def test_redacts_literal_configured_key(self, monkeypatch):
+        """Non-sk-* keys (e.g. RHOAI MaaS 32-char keys) are redacted via LLM_API_KEY."""
+        rhoai_key = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+        monkeypatch.setenv("LLM_API_KEY", rhoai_key)
+        filt = SecretRedactionFilter()
+        record = self._make_record(f"Sending request with api-key={rhoai_key}")
+        filt.filter(record)
+        assert rhoai_key not in record.msg
+        assert "[REDACTED]" in record.msg
+
+    def test_literal_key_redaction_in_args(self, monkeypatch):
+        """Literal key redaction also applies to log record args."""
+        rhoai_key = "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6"
+        monkeypatch.setenv("LLM_API_KEY", rhoai_key)
+        filt = SecretRedactionFilter()
+        record = self._make_record("key=%s", (rhoai_key,))
+        filt.filter(record)
+        assert rhoai_key not in record.args[0]
+        assert "[REDACTED]" in record.args[0]
+
+    def test_short_key_not_literal_redacted(self, monkeypatch):
+        """Short keys (<=8 chars like 'dummy') should not trigger literal redaction."""
+        monkeypatch.setenv("LLM_API_KEY", "dummy")
+        filt = SecretRedactionFilter()
+        record = self._make_record("Using dummy config for testing dummy values")
+        filt.filter(record)
+        # "dummy" should NOT be redacted — it's too short/common
+        assert "dummy" in record.msg
+
+    def test_no_literal_key_when_unset(self, monkeypatch):
+        """No crash when LLM_API_KEY is not set."""
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        filt = SecretRedactionFilter()
+        record = self._make_record("Normal log message")
+        filt.filter(record)
+        assert record.msg == "Normal log message"
+
 
 class TestConfigurationApiKeyValidation:
     """Test API key validation logic."""
@@ -156,6 +193,17 @@ class TestConfigurationApiKeyValidation:
         monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_API_KEY", "sk-proj-realkey123")
         config = Configuration()
+        assert config.has_valid_api_key is True
+
+    def test_rhoai_maas_key_is_valid(self, monkeypatch):
+        """RHOAI MaaS uses non-sk-* 32-char alphanumeric keys — should be valid."""
+        monkeypatch.setenv(
+            "LLM_API_BASE",
+            "https://deepseek-r1-qwen-14b-w4a16--maas-apicast-production.apps.prod.rhoai.rh-aiservices-bu.com:443/v1",
+        )
+        monkeypatch.setenv("LLM_API_KEY", "a1b2c3d4e5f6g7h8i9j0k1l2m3n4o5p6")
+        config = Configuration()
+        assert config.is_local_llm is False
         assert config.has_valid_api_key is True
 
     def test_is_local_llm_with_127(self, monkeypatch):
