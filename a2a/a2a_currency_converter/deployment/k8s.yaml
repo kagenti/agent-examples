@@ -10,7 +10,6 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/managed-by: kagenti-e2e
     app.kubernetes.io/name: a2a-currency-converter
     # kagenti.io/type=agent is required for the Agent to be discovered by Kagenti and show up in the UI
     kagenti.io/type: agent
@@ -34,7 +33,6 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/component: agent
-    app.kubernetes.io/managed-by: kagenti-e2e
     app.kubernetes.io/name: a2a-currency-converter
     kagenti.io/framework: LangGraph
     kagenti.io/type: agent
@@ -84,9 +82,21 @@ spec:
         # This is a dummy key; if using a real LLM API use a real key
         - name: LLM_API_KEY
           value: dummy
+        # For production, use a Secret:
+        # - name: OPENAI_API_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: llm-credentials
+        #       key: openai-api-key
         # This is a dummy key; if using OpenAI use a real key
         - name: OPENAI_API_KEY
           value: dummy
+        # For production, use a Secret:
+        # - name: OPENAI_API_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: llm-credentials
+        #       key: openai-api-key
         - name: LLM_MODEL
           value: llama3.2:3b-instruct-fp16
         - name: GITHUB_SECRET_NAME
@@ -128,12 +138,13 @@ spec:
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
-      securityContext: {}
       serviceAccount: a2a-currency-converter
       serviceAccountName: a2a-currency-converter
       terminationGracePeriodSeconds: 30
+      # This is for agents that use uv and its dependency cache
       volumes:
       - emptyDir: {}
         name: cache
-      - emptyDir: {}
-        name: marvin
+      # Something like this is needed if the Agent has a Marvin dependency
+      # - emptyDir: {}
+      #   name: marvin
