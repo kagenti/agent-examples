@@ -35,7 +35,7 @@ metadata:
   labels:
     app.kubernetes.io/component: agent
     app.kubernetes.io/managed-by: kagenti-e2e
-    app.kubernetes.io/name: weather-service
+    app.kubernetes.io/name: a2a-currency-converter
     kagenti.io/framework: LangGraph
     kagenti.io/type: agent
     kagenti.io/workload-type: deployment
