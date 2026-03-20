@@ -267,7 +267,7 @@ class TestMicroStepCounter:
         events2 = _parse_lines(r2)
         micro2 = [e for e in events2 if e["type"] == "micro_reasoning"]
         if micro2:
-            micro_before = micro2[0].get("micro_step", 0) # noqa: F841
+            micro_before = micro2[0].get("micro_step", 0)  # noqa: F841
 
         # Reflector + step_selector transition
         s.serialize("reflector", {"done": False, "current_step": 0, "messages": [_make_msg(content="continue")]})

@@ -232,7 +232,7 @@ class TestExecutorNode:
             "current_step": 0,
             "workspace_path": "/workspace/abc-123",
         }
-        result = await executor_node(state, mock_llm) # noqa: F841
+        result = await executor_node(state, mock_llm)  # noqa: F841
 
         # Verify the system prompt was passed to LLM with workspace_path
         call_args = mock_llm.ainvoke.call_args[0][0]

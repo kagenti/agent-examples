@@ -301,7 +301,7 @@ class TestPlannerContext:
             plan=["Clone repo", "List failures"],
             step_results=["Cloned successfully", "gh: command not found"],
         )
-        result = await planner_node(state, llm) # noqa: F841
+        result = await planner_node(state, llm)  # noqa: F841
 
         system = llm.system_prompt(0)
         # Should mention previous step results
@@ -381,7 +381,7 @@ class TestReflectorContext:
             iteration=1,
             messages=messages,
         )
-        result = await reflector_node(state, llm) # noqa: F841
+        result = await reflector_node(state, llm)  # noqa: F841
 
         # Reflector should NOT send all 20+ messages to the LLM
         total = len(llm.last_messages)
@@ -652,7 +652,7 @@ class TestFullRCAFlow:
                 AIMessage(content="1. Clone repo\n2. List failures\n3. Download\n4. Extract\n5. Report"),
             ],
         )
-        exec_result = await executor_node(exec_state, executor_llm) # noqa: F841
+        exec_result = await executor_node(exec_state, executor_llm)  # noqa: F841
 
         # CRITICAL: Executor should NOT see the planner's plan in its messages
         types = executor_llm.message_types(0)

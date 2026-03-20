@@ -248,7 +248,7 @@ class TestMakeFileWriteTool:
     @pytest.mark.asyncio
     async def test_creates_parent_dirs(self, workspace: pathlib.Path) -> None:
         tool = _make_file_write_tool(str(workspace))
-        result = await tool.ainvoke({"path": "sub/dir/file.txt", "content": "nested"}) # noqa: F841
+        result = await tool.ainvoke({"path": "sub/dir/file.txt", "content": "nested"})  # noqa: F841
 
         written = (workspace / "sub" / "dir" / "file.txt").read_text()
         assert written == "nested"
