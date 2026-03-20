@@ -9,11 +9,16 @@ from langchain_core.messages import AIMessage, ToolMessage
 from langchain_core.tools import tool
 from langchain_openai import ChatOpenAI
 from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.serde.jsonplus import JsonPlusSerializer
 from langgraph.prebuilt import create_react_agent
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
-memory = MemorySaver()
+memory = MemorySaver(
+    serde=JsonPlusSerializer(
+        allowed_msgpack_modules=[("app.agent", "ResponseFormat")],
+    ),
+)
 
 
 class Configuration(BaseSettings):
