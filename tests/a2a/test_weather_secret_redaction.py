@@ -118,33 +118,73 @@ class TestSecretRedactionFilter:
 class TestConfigurationApiKeyValidation:
     """Test API key validation logic."""
 
-    def test_dummy_key_is_invalid(self):
+    def test_dummy_key_with_remote_api_is_invalid(self, monkeypatch):
+        """Dummy key pointing at OpenAI should be flagged."""
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_API_KEY", "dummy")
         config = Configuration()
         assert config.has_valid_api_key is False
 
-    def test_empty_key_is_invalid(self, monkeypatch):
+    def test_dummy_key_with_ollama_is_valid(self):
+        """Default config (Ollama on localhost) should work with dummy key."""
+        config = Configuration()
+        assert config.is_local_llm is True
+        assert config.has_valid_api_key is True
+
+    def test_empty_key_with_remote_api_is_invalid(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_API_KEY", "")
         config = Configuration()
         assert config.has_valid_api_key is False
 
-    def test_placeholder_keys_are_invalid(self, monkeypatch):
+    def test_placeholder_keys_with_remote_api_are_invalid(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
         for placeholder in ["changeme", "your-api-key-here"]:
             monkeypatch.setenv("LLM_API_KEY", placeholder)
             config = Configuration()
             assert config.has_valid_api_key is False, f"'{placeholder}' should be invalid"
 
+    def test_placeholder_keys_with_local_llm_are_valid(self, monkeypatch):
+        """Local LLMs (Ollama, vLLM) accept any key — don't block them."""
+        monkeypatch.setenv("LLM_API_BASE", "http://localhost:11434/v1")
+        for placeholder in ["dummy", "changeme", ""]:
+            monkeypatch.setenv("LLM_API_KEY", placeholder)
+            config = Configuration()
+            assert config.has_valid_api_key is True, f"'{placeholder}' with local LLM should be valid"
+
     def test_real_key_is_valid(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_API_KEY", "sk-proj-realkey123")
         config = Configuration()
         assert config.has_valid_api_key is True
 
-    def test_log_warnings_with_dummy_key(self, caplog):
+    def test_is_local_llm_with_127(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_BASE", "http://127.0.0.1:8080/v1")
+        config = Configuration()
+        assert config.is_local_llm is True
+
+    def test_is_not_local_llm_with_remote_host(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
+        config = Configuration()
+        assert config.is_local_llm is False
+
+    def test_log_warnings_with_dummy_key_remote(self, monkeypatch, caplog):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
+        monkeypatch.setenv("LLM_API_KEY", "dummy")
         config = Configuration()
         with caplog.at_level(logging.WARNING):
             config.log_warnings()
         assert "No LLM API key configured" in caplog.text
 
+    def test_no_warning_with_ollama_dummy_key(self, caplog):
+        """Default Ollama config should NOT warn about the dummy key."""
+        config = Configuration()
+        with caplog.at_level(logging.WARNING):
+            config.log_warnings()
+        assert "No LLM API key configured" not in caplog.text
+
     def test_log_warnings_with_real_key(self, monkeypatch, caplog):
+        monkeypatch.setenv("LLM_API_BASE", "https://api.openai.com/v1")
         monkeypatch.setenv("LLM_API_KEY", "sk-proj-realkey123")
         config = Configuration()
         with caplog.at_level(logging.WARNING):
