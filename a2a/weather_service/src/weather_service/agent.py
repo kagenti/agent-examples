@@ -42,9 +42,7 @@ class SecretRedactionFilter(logging.Filter):
         # Redact the literal configured key when it's long enough to be real
         configured_key = os.environ.get("LLM_API_KEY", "").strip()
         if len(configured_key) > 8:
-            self._literal_key_re: re.Pattern | None = re.compile(
-                re.escape(configured_key)
-            )
+            self._literal_key_re: re.Pattern | None = re.compile(re.escape(configured_key))
         else:
             self._literal_key_re = None
 
