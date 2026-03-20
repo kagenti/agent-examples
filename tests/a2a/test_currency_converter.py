@@ -15,6 +15,8 @@ for mod in [
     "langgraph",
     "langgraph.checkpoint",
     "langgraph.checkpoint.memory",
+    "langgraph.checkpoint.serde",
+    "langgraph.checkpoint.serde.jsonplus",
     "langgraph.prebuilt",
 ]:
     sys.modules.setdefault(mod, MagicMock())

@@ -60,7 +60,7 @@ class CurrencyAgentExecutor(AgentExecutor):
 
                 if not is_task_complete and not require_user_input:
                     logger.info(f"Updating status for non-input task: {task.id}")
-                    updater.update_status(
+                    await updater.update_status(
                         TaskState.working,
                         new_agent_text_message(
                             item["content"],
@@ -70,7 +70,7 @@ class CurrencyAgentExecutor(AgentExecutor):
                     )
                 elif require_user_input:
                     logger.info(f"Updating status for input task: {task.id}")
-                    updater.update_status(
+                    await updater.update_status(
                         TaskState.input_required,
                         new_agent_text_message(
                             item["content"],
@@ -82,11 +82,11 @@ class CurrencyAgentExecutor(AgentExecutor):
                     break
                 else:
                     logger.info("Adding artifact for item")
-                    updater.add_artifact(
+                    await updater.add_artifact(
                         [Part(root=TextPart(text=item["content"]))],
                         name="conversion_result",
                     )
-                    updater.complete()
+                    await updater.complete()
                     break
 
         except InternalServerError as e:
@@ -100,7 +100,7 @@ Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
 """
             logger.error(msg=msg)
             logger.error(msg=f"Raw InternalServerError: {e}")
-            updater.update_status(
+            await updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
                     msg,
@@ -123,7 +123,7 @@ Also check
 The key should match your OpenAI key."""
             logger.error(msg=msg)
             logger.error(msg=f"Raw AuthenticationError {e}")
-            updater.update_status(
+            await updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
                     msg,
@@ -136,7 +136,7 @@ The key should match your OpenAI key."""
         except Exception as e:
             logger.error(f"An error occurred while streaming the response: {e}")
             logger.info(msg=f"The error is a {type(e)}")
-            updater.update_status(
+            await updater.update_status(
                 TaskState.input_required,
                 new_agent_text_message(
                     # We don't show the error to the user, as it may have credentials
