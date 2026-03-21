@@ -1,6 +1,5 @@
 from crewai import Agent, Crew, Process, Task
 from git_issue_agent.config import Settings
-from git_issue_agent.data_types import IssueSearchInfo
 from git_issue_agent.llm import CrewLLM
 from git_issue_agent.prompts import TOOL_CALL_PROMPT, INFO_PARSER_PROMPT
 
@@ -23,8 +22,10 @@ class GitAgents:
         self.prereq_identifier_task = Task(
             description=("User query: {request}"),
             agent=self.prereq_identifier,
-            output_pydantic=IssueSearchInfo,
-            expected_output=("A pydantic object representing the extracted relevant information."),
+            expected_output=(
+                'A JSON object with keys "owner", "repo", and "issue_numbers". '
+                "Example: {\"owner\": \"kagenti\", \"repo\": \"kagenti\", \"issue_numbers\": null}"
+            ),
         )
 
         self.prereq_id_crew = Crew(
@@ -49,6 +50,8 @@ class GitAgents:
             llm=self.llm.llm,
             inject_date=True,
             max_iter=6,
+            max_retry_limit=3,
+            respect_context_window=True,
         )
 
         # --- A generic task template -------------------------------------------------
