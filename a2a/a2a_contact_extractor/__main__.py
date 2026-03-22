@@ -10,7 +10,11 @@ import click
 import httpx
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryPushNotifier, InMemoryTaskStore
+from a2a.server.tasks import (
+    BasePushNotificationSender,
+    InMemoryPushNotificationConfigStore,
+    InMemoryTaskStore,
+)
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from dotenv import load_dotenv
 from pydantic import BaseModel, EmailStr, Field
@@ -55,10 +59,16 @@ def main(host, port, result_type, instructions):
         exit(1)
     agent = ExtractorAgent(instructions=instructions, result_type=result_type)
     httpx_client = httpx.AsyncClient()
+    push_notification_config_store = InMemoryPushNotificationConfigStore()
+    push_notification_sender = BasePushNotificationSender(
+        httpx_client, config_store=push_notification_config_store
+    )
+
     request_handler = DefaultRequestHandler(
         agent_executor=ExtractorAgentExecutor(agent=agent),
         task_store=InMemoryTaskStore(),
-        push_notifier=InMemoryPushNotifier(httpx_client),
+        push_config_store=push_notification_config_store,
+        push_sender=push_notification_sender,
     )
     server = A2AStarletteApplication(
         agent_card=get_agent_card(host, port), http_handler=request_handler
