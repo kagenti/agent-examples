@@ -85,7 +85,7 @@ spec:
         - name: LLM_API_KEY
           value: dummy
         # For production, use a Secret:
-        # - name: OPENAI_API_KEY
+        # - name: LLM_API_KEY
         #   valueFrom:
         #     secretKeyRef:
         #       name: llm-credentials
@@ -101,8 +101,9 @@ spec:
         #       key: openai-api-key
         - name: LLM_MODEL
           value: llama3.2:3b-instruct-fp16
-        - name: GITHUB_SECRET_NAME
-          value: github-token-secret
+        # Kagenti will supply a GITHUB_SECRET_NAME, but the weather service does not need it.
+        # - name: GITHUB_SECRET_NAME
+        #   value: github-token-secret
         # Pin to a specific version
         image: ghcr.io/kagenti/agent-examples/weather_service:v0.1.0-alpha.1
         # Or use the latest version
@@ -151,7 +152,6 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: weather-service
       serviceAccountName: weather-service
       terminationGracePeriodSeconds: 30
       # This is for agents that use uv and its dependency cache

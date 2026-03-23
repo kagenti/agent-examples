@@ -114,7 +114,6 @@ spec:
         runAsNonRoot: true
         seccompProfile:
           type: RuntimeDefault
-      serviceAccount: weather-tool
       serviceAccountName: weather-tool
       terminationGracePeriodSeconds: 30
       volumes:

@@ -83,7 +83,7 @@ spec:
         - name: LLM_API_KEY
           value: dummy
         # For production, use a Secret:
-        # - name: OPENAI_API_KEY
+        # - name: LLM_API_KEY
         #   valueFrom:
         #     secretKeyRef:
         #       name: llm-credentials
