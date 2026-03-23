@@ -128,6 +128,13 @@ spec:
           requests:
             cpu: 100m
             memory: 256Mi
+        # Note that Kagenti's UI doesn't create security contexts for agents, but it's a good practice to set them for defense in depth. This is a fairly restrictive security context that should work for most agents, but you may need to adjust it based on your Agent's needs.
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsUser: 1000
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
         volumeMounts:
@@ -140,6 +147,10 @@ spec:
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
       serviceAccount: weather-service
       serviceAccountName: weather-service
       terminationGracePeriodSeconds: 30

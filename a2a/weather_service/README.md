@@ -16,7 +16,7 @@ Kagenti's UI is aware of this example agent.  To deploy through the UI
 - Build from source
 - Weather service agent
 - Expand Environment Variables
-  - Import from File/URL, URL, https://raw.githubusercontent.com/kagenti/agent-examples/refs/heads/main/a2a/weather_service/.env.ollama
+  - Import from File/URL, URL, https://raw.githubusercontent.com/kagenti/agent-examples/refs/heads/main/a2a/weather_service/.env.openai
     - If using [Ollama](https://ollama.com/), instead of the default use https://raw.githubusercontent.com/kagenti/agent-examples/refs/heads/main/a2a/weather_service/.env.ollama
   - Fetch and parse
   - Import

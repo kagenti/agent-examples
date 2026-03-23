@@ -11,7 +11,7 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: weather-tool
-    # kagenti.io/type=agent is required for the Agent to be discovered by Kagenti and show up in the UI
+    # kagenti.io/type=tool is required for the MCP Server that provides tool to be discovered by Kagenti and show up in the UI
     kagenti.io/type: tool
     protocol.kagenti.io/mcp: ""
   name: weather-tool-mcp
@@ -27,7 +27,7 @@ spec:
     kagenti.io/type: tool
   type: ClusterIP
 ---
-# Deploy a test build of the Agent
+# Deploy a test build of the Tool
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -68,7 +68,6 @@ spec:
         # Host to bind MCP server (0.0.0.0 means bind to all interfaces)
         - name: HOST
           value: 0.0.0.0
-        # AGENT_ENDPOINT is the endpoint that appears on the Agent Card
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector.kagenti-system.svc.cluster.local:8335
         - name: KEYCLOAK_URL
@@ -85,6 +84,8 @@ spec:
         - containerPort: 8000
           name: http
           protocol: TCP
+        # Note that a readinessProbe is recommended.  Kagenti doesn't generate one for UI
+        # deployments, and we follow that pattern in this example, but you may want to add one for your own tools.
         resources:
           limits:
             cpu: 500m
@@ -117,7 +118,7 @@ spec:
       serviceAccountName: weather-tool
       terminationGracePeriodSeconds: 30
       volumes:
-      # This is for agents that use uv and its dependency cache
+      # This is for tools that use uv and its dependency cache
       - emptyDir: {}
         name: cache
       - emptyDir: {}
