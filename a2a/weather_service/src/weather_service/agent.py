@@ -21,7 +21,6 @@ from weather_service.observability import (
     set_span_output,
 )
 
-logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
 
 
