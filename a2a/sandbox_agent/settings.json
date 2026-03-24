@@ -1,0 +1,20 @@
+{
+  "_comment": "Agent sandbox operation settings. Operations not in allow or deny go through HITL.",
+  "context_workspace": "/workspace/${CONTEXT_ID}",
+  "permissions": {
+    "allow": [
+      "shell(*:*)",
+      "network(outbound:*)",
+      "file(read:${WORKSPACE}/**)", "file(write:${WORKSPACE}/**)",
+      "file(delete:${WORKSPACE}/**)"
+    ],
+    "deny": [
+      "shell(rm -rf /:*)", "shell(rm -rf /*:*)", "shell(sudo:*)",
+      "shell(chmod 777:*)",
+      "shell(nc:*)", "shell(ncat:*)",
+      "file(read:/etc/shadow:*)", "file(write:/etc/**:*)",
+      "file(read:/proc/**:*)", "shell(mount:*)", "shell(umount:*)",
+      "shell(chroot:*)", "shell(nsenter:*)"
+    ]
+  }
+}
