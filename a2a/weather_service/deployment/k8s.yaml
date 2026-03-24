@@ -2,7 +2,7 @@
 apiVersion: v1
 kind: ServiceAccount
 metadata:
-  name: a2a-currency-converter
+  name: weather-service
   namespace: team1
 ---
 # Expose the A2A endpoint and Agent Card.
@@ -10,11 +10,11 @@ apiVersion: v1
 kind: Service
 metadata:
   labels:
-    app.kubernetes.io/name: a2a-currency-converter
+    app.kubernetes.io/name: weather-service
     # kagenti.io/type=agent is required for the Agent to be discovered by Kagenti and show up in the UI
     kagenti.io/type: agent
     protocol.kagenti.io/a2a: ""
-  name: a2a-currency-converter
+  name: weather-service
   namespace: team1
 spec:
   ports:
@@ -23,7 +23,7 @@ spec:
     protocol: TCP
     targetPort: 8000
   selector:
-    app.kubernetes.io/name: a2a-currency-converter
+    app.kubernetes.io/name: weather-service
     kagenti.io/type: agent
   type: ClusterIP
 ---
@@ -33,12 +33,12 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/component: agent
-    app.kubernetes.io/name: a2a-currency-converter
+    app.kubernetes.io/name: weather-service
     kagenti.io/framework: LangGraph
     kagenti.io/type: agent
     kagenti.io/workload-type: deployment
     protocol.kagenti.io/a2a: ""
-  name: a2a-currency-converter
+  name: weather-service
   namespace: team1
 spec:
   progressDeadlineSeconds: 600
@@ -46,12 +46,12 @@ spec:
   revisionHistoryLimit: 10
   selector:
     matchLabels:
-      app.kubernetes.io/name: a2a-currency-converter
+      app.kubernetes.io/name: weather-service
       kagenti.io/type: agent
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: a2a-currency-converter
+        app.kubernetes.io/name: weather-service
         kagenti.io/framework: LangGraph
         kagenti.io/type: agent
         protocol.kagenti.io/a2a: ""
@@ -66,16 +66,18 @@ spec:
           value: 0.0.0.0
         # AGENT_ENDPOINT is the endpoint that appears on the Agent Card
         - name: AGENT_ENDPOINT
-          value: http://a2a-currency-converter.team1.svc.cluster.local:8080/
+          value: http://weather-service.team1.svc.cluster.local:8080/
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
           value: http://otel-collector.kagenti-system.svc.cluster.local:8335
         - name: KEYCLOAK_URL
           value: http://keycloak.keycloak.svc.cluster.local:8080
         - name: UV_CACHE_DIR
           value: /app/.cache/uv
-        # Many A2A agents call tools, and find them at this endpoint
-        # - name: MCP_URL
-        #   value: http://weather-tool-mcp.team1.svc.cluster.local:8000/mcp
+        # Make direct call to tool.  
+        - name: MCP_URL
+          value: http://weather-tool-mcp.team1.svc.cluster.local:8000/mcp
+        # Use this value to make call through MCP Gateway
+        #  value: http://mcp-gateway-istio.gateway-system.svc.cluster.local:8080/mcp
         # This is the LLM_API_BASE for ollama running on the host machine. In production, this would point to a real LLM API.
         - name: LLM_API_BASE
           value: http://host.docker.internal:11434/v1
@@ -99,12 +101,13 @@ spec:
         #       key: openai-api-key
         - name: LLM_MODEL
           value: llama3.2:3b-instruct-fp16
-        - name: GITHUB_SECRET_NAME
-          value: github-token-secret
+        # Kagenti will supply a GITHUB_SECRET_NAME, but the weather service does not need it.
+        # - name: GITHUB_SECRET_NAME
+        #   value: github-token-secret
         # Pin to a specific version
-        image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:v0.1.0-alpha.1
+        image: ghcr.io/kagenti/agent-examples/weather_service:v0.1.0-alpha.1
         # Or use the latest version
-        # image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:latest
+        # image: ghcr.io/kagenti/agent-examples/weather_service:latest
         imagePullPolicy: Always
         name: agent
         ports:
@@ -126,6 +129,13 @@ spec:
           requests:
             cpu: 100m
             memory: 256Mi
+        # Note that Kagenti's UI doesn't create security contexts for agents, but it's a good practice to set them for defense in depth. This is a fairly restrictive security context that should work for most agents, but you may need to adjust it based on your Agent's needs.
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+            - ALL
+          runAsUser: 1000
         terminationMessagePath: /dev/termination-log
         terminationMessagePolicy: File
         volumeMounts:
@@ -138,8 +148,11 @@ spec:
       dnsPolicy: ClusterFirst
       restartPolicy: Always
       schedulerName: default-scheduler
-      serviceAccount: a2a-currency-converter
-      serviceAccountName: a2a-currency-converter
+      securityContext:
+        runAsNonRoot: true
+        seccompProfile:
+          type: RuntimeDefault
+      serviceAccountName: weather-service
       terminationGracePeriodSeconds: 30
       # This is for agents that use uv and its dependency cache
       volumes:
