@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from textwrap import dedent
 
 import uvicorn
@@ -14,6 +15,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
+from weather_service.configuration import Configuration
 from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
     create_tracing_middleware,
@@ -21,7 +23,53 @@ from weather_service.observability import (
     set_span_output,
 )
 
-logging.basicConfig(level=logging.DEBUG)
+
+class SecretRedactionFilter(logging.Filter):
+    """Redacts Bearer tokens and API keys from log messages.
+
+    Covers three layers:
+    1. Bearer tokens in Authorization headers (any format).
+    2. OpenAI-style ``sk-*`` API keys (pattern-based).
+    3. The literal configured ``LLM_API_KEY`` value (provider-agnostic,
+       catches non-standard key formats like RHOAI MaaS 32-char keys).
+    """
+
+    _BEARER_RE = re.compile(r"(Bearer\s+)\S+", re.IGNORECASE)
+    _API_KEY_RE = re.compile(r"(sk-[a-zA-Z0-9]{3})[a-zA-Z0-9]+")
+
+    def __init__(self, name: str = ""):
+        super().__init__(name)
+        # Redact the literal configured key when it's long enough to be real
+        configured_key = os.environ.get("LLM_API_KEY", "").strip()
+        if len(configured_key) > 8:
+            self._literal_key_re: re.Pattern | None = re.compile(re.escape(configured_key))
+        else:
+            self._literal_key_re = None
+
+    def _redact(self, text: str) -> str:
+        text = self._BEARER_RE.sub(r"\1[REDACTED]", text)
+        text = self._API_KEY_RE.sub(r"\1...[REDACTED]", text)
+        if self._literal_key_re is not None:
+            text = self._literal_key_re.sub("[REDACTED]", text)
+        return text
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._redact(record.msg)
+        if record.args:
+            args = record.args if isinstance(record.args, tuple) else (record.args,)
+            new_args = []
+            for arg in args:
+                if isinstance(arg, str):
+                    arg = self._redact(arg)
+                new_args.append(arg)
+            record.args = tuple(new_args)
+        return True
+
+
+logging.basicConfig(level=logging.INFO)
+# Apply secret redaction filter to the root logger so all loggers benefit
+logging.getLogger().addFilter(SecretRedactionFilter())
 logger = logging.getLogger(__name__)
 
 
@@ -110,6 +158,17 @@ class WeatherExecutor(AgentExecutor):
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
+
+        # Check API key before attempting LLM calls
+        config = Configuration()
+        if not config.has_valid_api_key:
+            await event_emitter.emit_event(
+                "Error: No LLM API key configured. Please set the LLM_API_KEY "
+                "environment variable (or charts.kagenti.values.secrets.openaiApiKey "
+                "during Kagenti installation).",
+                failed=True,
+            )
+            return
 
         # Get user input for the agent
         user_input = context.get_user_input()
@@ -215,15 +274,5 @@ def run():
 
     # Add tracing middleware - creates root span with MLflow/GenAI attributes
     app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-
-    # Add logging middleware
-    @app.middleware("http")
-    async def log_authorization_header(request, call_next):
-        auth_header = request.headers.get("authorization", "No Authorization header")
-        logger.info(
-            f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}"
-        )
-        response = await call_next(request)
-        return response
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
