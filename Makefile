@@ -1,4 +1,4 @@
-.PHONY: lint fmt test test-a2a test-mcp sync-all-uv sync-a2a sync-mcp
+.PHONY: lint fmt test-docker test-a2a test-mcp sync-all-uv sync-a2a sync-mcp
 
 lint:
 	pre-commit run --all-files
@@ -7,7 +7,8 @@ fmt:
 	ruff format .
 	ruff check --fix .
 
-test: test-a2a test-mcp
+# This builds all of the A2A and MCP example Docker images to verify they can be built successfully.
+test-docker: test-a2a test-mcp
 
 # Verify all of the A2A example Docker images can be built
 # (Optional KAGENTI_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)

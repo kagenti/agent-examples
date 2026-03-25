@@ -222,5 +222,5 @@ secrets.*
 # Orchestration working directory
 .repos/
 
-# Bogus lock files created by running uv in wrong directory.
+# Bogus lock files created by running uv in home directory.
 uv.lock
