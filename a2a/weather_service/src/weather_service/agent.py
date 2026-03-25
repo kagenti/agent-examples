@@ -216,13 +216,13 @@ def run():
     app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
 
     class LogAuthorizationMiddleware(BaseHTTPMiddleware):
-      async def dispatch(self, request, call_next):
-          auth_header = request.headers.get("authorization", "No Authorization header")
-          logger.info(
-              f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}"
-          )
-          response = await call_next(request)
-          return response
+        async def dispatch(self, request, call_next):
+            auth_header = request.headers.get("authorization", "No Authorization header")
+            logger.info(
+                f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}"
+            )
+            response = await call_next(request)
+            return response
 
     # Add logging middleware
     app.add_middleware(LogAuthorizationMiddleware)
