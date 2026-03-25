@@ -13,6 +13,7 @@ dependencies = [
     "mcp>=1.23.0",              # Indirect; prevents CVE-2025-66416
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
     "pydantic-ai>=1.56.0",      # Indirect; prevents CVE-2026-25580
+    "filelock>=3.20.1",         # Indirect; prevents CVE-2025-68146
 ]
 
 [tool.uv.sources]
