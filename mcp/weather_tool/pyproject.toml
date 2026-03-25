@@ -8,4 +8,7 @@ dependencies = [
     "httpx>=0.28.1",
     "fastmcp>=2.11.0",
     "requests>=2.32.3",
+    "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
+    "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
+    "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
 ]
