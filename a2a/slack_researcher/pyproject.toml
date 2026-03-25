@@ -8,6 +8,7 @@ dependencies = [
     "tavily-python>=0.7.7",
     "python-dotenv>=1.1.0",
     "a2a-sdk>=0.2.16",
+    "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
 ]
 
 [tool.ruff]
