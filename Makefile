@@ -42,7 +42,7 @@ sync-a2a:
 
 sync-mcp:
 	@for f in $(shell find mcp -mindepth 1 -maxdepth 1 -type d); do \
-		pushd mcp/$${f}; \
+		pushd $${f}; \
 		echo "Syncing dependencies for $${f}..."; \
 		uv sync --no-dev || exit; \
 		popd; \
