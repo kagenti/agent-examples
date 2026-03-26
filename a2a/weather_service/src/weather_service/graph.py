@@ -16,15 +16,15 @@ class ExtendedMessagesState(MessagesState):
     final_answer: str = ""
 
 
-def get_mcpclient():
-    return MultiServerMCPClient(
-        {
-            "math": {
-                "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
-                "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
-            }
-        }
-    )
+def get_mcpclient(headers=None):
+    """Create MCP client, optionally forwarding headers (e.g. Authorization)."""
+    mcp_config = {
+        "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
+        "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+    }
+    if headers:
+        mcp_config["headers"] = headers
+    return MultiServerMCPClient({"math": mcp_config})
 
 
 async def get_graph(client) -> StateGraph:
