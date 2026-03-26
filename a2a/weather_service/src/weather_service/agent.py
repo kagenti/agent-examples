@@ -122,10 +122,20 @@ class WeatherExecutor(AgentExecutor):
         # Here we just run the agent logic - spans from LangChain are auto-captured
         output = None
 
+        # Forward inbound Authorization header to outbound MCP tool calls.
+        # This enables transparent token exchange when deployed behind a waypoint
+        # or AuthBridge proxy (same pattern as git_issue_agent, see c8ebde1).
+        mcp_headers = None
+        if context.call_context and (context.call_context.state or {}).get("headers", {}).get("authorization"):
+            mcp_headers = {"Authorization": context.call_context.state["headers"]["authorization"]}
+            logger.info("Forwarding inbound Authorization header to MCP tool calls")
+        else:
+            logger.warning("No inbound Authorization header; MCP tool calls will be unauthenticated")
+
         # Test MCP connection first
         logger.info(f"Attempting to connect to MCP server at: {os.getenv('MCP_URL', 'http://localhost:8000/sse')}")
 
-        mcpclient = get_mcpclient()
+        mcpclient = get_mcpclient(headers=mcp_headers)
 
         # Try to get tools to verify connection
         try:
