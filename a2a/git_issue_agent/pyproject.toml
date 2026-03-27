@@ -6,7 +6,7 @@ description = "Git issue Agent module"
 dependencies = [
     "python-dotenv>=1.1.0",
     "a2a-sdk>=0.2.16",
-    "crewai[litellm]==1.10.1",
+    "crewai[litellm]==1.12.2",
     "crewai-tools[mcp]==1.10.1",
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
