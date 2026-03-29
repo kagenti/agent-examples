@@ -12,7 +12,7 @@ class Settings(BaseSettings):
         description="Application log level",
     )
     TASK_MODEL_ID: str = Field(
-        os.getenv("TASK_MODEL_ID", "ollama/ibm/granite4:latest"),
+        os.getenv("TASK_MODEL_ID", "ollama_chat/ibm/granite4:latest"),
         description="The ID of the task model",
     )
     LLM_API_BASE: str = Field(
