@@ -1,3 +1,5 @@
+SHELL := /bin/bash
+
 .PHONY: lint fmt test-docker test-a2a test-mcp sync-all-uv sync-a2a sync-mcp test-startup-all test-startup-a2a test-startup-mcp
 
 lint:
