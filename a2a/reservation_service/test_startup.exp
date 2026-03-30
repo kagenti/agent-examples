@@ -5,7 +5,7 @@
 set timeout 10
 
 # This is similar the Dockerfile CMD
-spawn env HOST=localhost PORT=8001 uv run python -c "from src.reservation_service.agent import run; run()" --host localhost --port 8001
+spawn env HOST=localhost PORT=8001 uv run --no-sync python -c "from src.reservation_service.agent import run; run()" --host localhost --port 8001
 
 expect {
     "Uvicorn running on" { puts "Success"; exit 0 }
