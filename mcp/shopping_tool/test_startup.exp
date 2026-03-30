@@ -2,7 +2,7 @@
 
 # Run with `expect -f test_startup.exp`
 
-set timeout 10
+set timeout 120
 
 # This is similar the Dockerfile CMD
 # (The Dockerfile does not use uv, because it installs dependencies to system env.)

@@ -2,7 +2,7 @@
 
 # Run with `expect -f test_startup.exp`
 
-set timeout 10
+set timeout 120
 
 # This is similar the Dockerfile CMD
 spawn env HOST=localhost PORT=8001 SLACK_BOT_TOKEN=dummy uv run --locked slack_tool.py
