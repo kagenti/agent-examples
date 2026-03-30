@@ -2,3 +2,6 @@ __pycache__
 *.pyc
 .venv
 .git
+
+# `expect` scripts
+test_startup.exp

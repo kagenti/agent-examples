@@ -1,0 +1,14 @@
+# This script tests if the server has dependencies and reaches the point of starting its server.
+
+# Run with `expect -f test_startup.exp`
+
+set timeout 10
+
+# This is similar the Dockerfile CMD
+spawn env HOST=localhost PORT=8001 uv run --no-sync . --host localhost --port 8001
+
+expect {
+    "Uvicorn running on" { puts "Success"; exit 0 }
+    timeout { puts "Timed out waiting for startup"; exit 1 }
+    eof { puts "Process exited early; exit 2 }
+}

@@ -1,4 +1,4 @@
-.PHONY: lint fmt test-docker test-a2a test-mcp sync-all-uv sync-a2a sync-mcp
+.PHONY: lint fmt test-docker test-a2a test-mcp sync-all-uv sync-a2a sync-mcp test-startup-all test-startup-a2a test-startup-mcp
 
 lint:
 	pre-commit run --all-files
@@ -46,5 +46,28 @@ sync-mcp:
 		pushd $${f} || exit; \
 		echo "Syncing dependencies for $${f}..."; \
 		uv sync --no-dev || exit; \
+		popd; \
+	done
+
+test-startup-all: test-startup-a2a test-startup-mcp
+
+# Run the test_startup.exp script for each A2A example that has one to verify it starts successfully.
+test-startup-a2a:
+	@for f in $(shell find a2a -mindepth 1 -maxdepth 1); do \
+		pushd $${f} || exit; \
+		if [ -f test_startup.exp ]; then \
+			echo "Testing startup for $${f}..."; \
+			expect -f test_startup.exp || exit; \
+		fi; \
+		popd; \
+	done
+
+test-startup-mcp:
+	@for f in $(shell find mcp -mindepth 1 -maxdepth 1 -type d); do \
+		pushd $${f} || exit; \
+		if [ -f test_startup.exp ]; then \
+			echo "Testing startup for $${f}..."; \
+			expect -f test_startup.exp || exit; \
+		fi; \
 		popd; \
 	done
