@@ -53,7 +53,7 @@ test-startup-all: test-startup-a2a test-startup-mcp
 
 # Run the test_startup.exp script for each A2A example that has one to verify it starts successfully.
 test-startup-a2a:
-	@for f in $(shell find a2a -mindepth 1 -maxdepth 1); do \
+	@for f in $(shell find a2a -mindepth 1 -maxdepth 1 -type d); do \
 		pushd $${f} || exit; \
 		if [ -f test_startup.exp ]; then \
 			echo "Testing startup for $${f}..."; \

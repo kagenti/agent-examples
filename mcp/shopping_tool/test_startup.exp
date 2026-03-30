@@ -11,5 +11,5 @@ spawn env HOST=localhost PORT=8001 SERPAPI_API_KEY=dummy uv run --no-sync shoppi
 expect {
     "Uvicorn running on" { puts "Success"; exit 0 }
     timeout { puts "Timed out waiting for startup"; exit 1 }
-    eof { puts "Process exited early; exit 2 }
+    eof { puts "Process exited early"; exit 2 }
 }

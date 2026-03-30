@@ -10,5 +10,5 @@ spawn env HOST=localhost PORT=8001 uv run --no-sync flight_tool.py
 expect {
     "http://localhost:8001/mcp" { puts "Success"; exit 0 }
     timeout { puts "Timed out waiting for startup"; exit 1 }
-    eof { puts "Process exited early; exit 2 }
+    eof { puts "Process exited early"; exit 2 }
 }
