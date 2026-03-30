@@ -5,7 +5,7 @@
 set timeout 10
 
 # This is similar the Dockerfile CMD
-set child_pid [spawn env HOST=localhost PORT=8001 uv run --no-sync server]
+set child_pid [spawn env HOST=localhost PORT=8001 uv run --locked server]
 
 expect {
     "Uvicorn running on" {

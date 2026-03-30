@@ -5,7 +5,7 @@
 set timeout 10
 
 # This is similar the Dockerfile CMD
-spawn env HOST=localhost PORT=8001 uv run --no-sync flight_tool.py
+spawn env HOST=localhost PORT=8001 uv run --locked flight_tool.py
 
 expect {
     "http://localhost:8001/mcp" { puts "Success"; exit 0 }

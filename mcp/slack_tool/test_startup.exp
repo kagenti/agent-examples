@@ -5,7 +5,7 @@
 set timeout 10
 
 # This is similar the Dockerfile CMD
-spawn env HOST=localhost PORT=8001 SLACK_BOT_TOKEN=dummy uv run --no-sync slack_tool.py
+spawn env HOST=localhost PORT=8001 SLACK_BOT_TOKEN=dummy uv run --locked slack_tool.py
 
 expect {
     "Uvicorn running on" { puts "Success"; exit 0 }

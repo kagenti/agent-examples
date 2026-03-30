@@ -5,7 +5,7 @@
 set timeout 10
 
 # This is similar the Dockerfile CMD
-spawn env HOST=localhost PORT=8001 uv run --no-sync movie_tool.py
+spawn env HOST=localhost PORT=8001 uv run --locked movie_tool.py
 
 expect {
     "Uvicorn running on" { puts "Success"; exit 0 }

@@ -6,7 +6,7 @@ set timeout 10
 
 # This is similar the Dockerfile CMD
 # (The Dockerfile does not use uv, because it installs dependencies to system env.)
-spawn env HOST=localhost PORT=8001 SERPAPI_API_KEY=dummy uv run --no-sync shopping_agent.py
+spawn env HOST=localhost PORT=8001 SERPAPI_API_KEY=dummy uv run --locked shopping_agent.py
 
 expect {
     "Uvicorn running on" { puts "Success"; exit 0 }
