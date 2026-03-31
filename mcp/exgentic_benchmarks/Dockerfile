@@ -11,10 +11,12 @@ RUN if [ -z "$BENCHMARK_NAME" ]; then \
         exit 1; \
     fi
 
-# Install system dependencies (git is needed for cloning)
+# Install system dependencies (git and git-lfs are needed for cloning)
 RUN apt-get update && apt-get install -y \
     git \
-    && rm -rf /var/lib/apt/lists/*
+    git-lfs \
+    && rm -rf /var/lib/apt/lists/* \
+    && git lfs install
 
 # Configure git to handle large repositories and avoid HTTP/2 issues
 RUN git config --global http.postBuffer 524288000 && \
