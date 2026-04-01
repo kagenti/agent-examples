@@ -13,3 +13,6 @@ build
 .git
 .gitignore
 .DS_Store
+
+# `expect` scripts
+test_startup.exp

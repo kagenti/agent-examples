@@ -37,3 +37,19 @@ jobs:
         run: pip install pytest pydantic pydantic-settings httpx python-dotenv
       - name: Run tests
         run: python -m pytest -v
+
+  # Make sure all of the examples start up successfully by running their `test_startup.exp` scripts, which use `expect` to verify the agent starts and responds to a simple input.
+  test-startup:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6
+      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6
+        with:
+          python-version: "3.12"
+      - name: Install uv
+        uses: astral-sh/setup-uv@c7f87aa956e4c323abf06d5dec078e358f6b4d04  # v6
+      - name: Install expect
+        run: sudo apt-get update && sudo apt-get install -y expect
+      - name: Verify agents start
+        run: make test-startup-all
