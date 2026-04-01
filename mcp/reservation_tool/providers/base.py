@@ -2,7 +2,8 @@
 
 from abc import ABC, abstractmethod
 from typing import List, Optional
-from schemas import Restaurant, AvailabilitySlot, Reservation, CancellationReceipt
+
+from schemas import AvailabilitySlot, CancellationReceipt, Reservation, Restaurant
 
 
 class ReservationProvider(ABC):

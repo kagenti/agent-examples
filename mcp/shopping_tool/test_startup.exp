@@ -1,0 +1,16 @@
+# This script tests if the server has dependencies and reaches the point of starting its server.
+
+# Run with `expect -f test_startup.exp`
+
+set timeout 120
+
+# This is similar the Dockerfile CMD
+# (The Dockerfile does not use uv, because it installs dependencies to system env.)
+# (We don't expect a lock because the Dockerfile doesn't, it installs globally)
+spawn env HOST=localhost PORT=8001 SERPAPI_API_KEY=dummy uv run shopping_agent.py
+
+expect {
+    "Uvicorn running on" { puts "Success"; exit 0 }
+    timeout { puts "Timed out waiting for startup"; exit 1 }
+    eof { puts "Process exited early"; exit 2 }
+}

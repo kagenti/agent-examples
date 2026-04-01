@@ -14,5 +14,11 @@ Please follow the [Contribution guide](https://github.com/kagenti/kagenti/blob/m
 
 Please follow our [Developer's Guide](https://github.com/kagenti/kagenti/blob/main/docs/dev-guide.md#developers-guide), as found in the Kagenti Repository, where you can find comprehensive instructions for common development operations.
 
-Please note that the section concerning pre-commit does not apply to this repository. 
+Please note that the section concerning pre-commit does not apply to this repository.
+
+Please run `make test` before pushing PRs.
+
+## Claiming an Issue
+
+Comment `/claim` on an issue to have it automatically assigned to you. Issues labeled `blocked` or `in-progress` cannot be claimed this way. If you need to release an issue, comment `/unassign` or ask a maintainer.
 

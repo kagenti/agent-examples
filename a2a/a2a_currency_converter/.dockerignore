@@ -1,1 +1,5 @@
 .venv
+deployment
+
+# `expect` scripts
+test_startup.exp

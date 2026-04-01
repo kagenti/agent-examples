@@ -4,19 +4,23 @@ It is integrated with the Agent2Agent (A2A) protocol.
 """
 
 import logging
+import os
 
 import click
 import httpx
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import InMemoryPushNotifier, InMemoryTaskStore
+from a2a.server.tasks import (
+    BasePushNotificationSender,
+    InMemoryPushNotificationConfigStore,
+    InMemoryTaskStore,
+)
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
-from starlette.routing import Route
-from agent import ExtractorAgent
 from dotenv import load_dotenv
 from pydantic import BaseModel, EmailStr, Field
+from starlette.routing import Route
 
-from agent import ExtractorAgent  # type: ignore[import-untyped]
+from agent import ExtractorAgent
 from agent_executor import ExtractorAgentExecutor  # type: ignore[import-untyped]
 
 load_dotenv()
@@ -55,10 +59,16 @@ def main(host, port, result_type, instructions):
         exit(1)
     agent = ExtractorAgent(instructions=instructions, result_type=result_type)
     httpx_client = httpx.AsyncClient()
+    push_notification_config_store = InMemoryPushNotificationConfigStore()
+    push_notification_sender = BasePushNotificationSender(
+        httpx_client, config_store=push_notification_config_store
+    )
+
     request_handler = DefaultRequestHandler(
         agent_executor=ExtractorAgentExecutor(agent=agent),
         task_store=InMemoryTaskStore(),
-        push_notifier=InMemoryPushNotifier(httpx_client),
+        push_config_store=push_notification_config_store,
+        push_sender=push_notification_sender,
     )
     server = A2AStarletteApplication(
         agent_card=get_agent_card(host, port), http_handler=request_handler
@@ -68,12 +78,15 @@ def main(host, port, result_type, instructions):
     app = server.build()
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host=host, port=port)
 
@@ -93,7 +106,8 @@ def get_agent_card(host: str, port: int):
     return AgentCard(
         name="Marvin Contact Extractor",
         description="Extracts structured contact information from text using Marvin's extraction capabilities",
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         defaultInputModes=ExtractorAgent.SUPPORTED_CONTENT_TYPES,
         defaultOutputModes=ExtractorAgent.SUPPORTED_CONTENT_TYPES,

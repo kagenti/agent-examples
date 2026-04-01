@@ -1,10 +1,10 @@
 from crewai import Agent, Crew, Process, Task
 from git_issue_agent.config import Settings
-from git_issue_agent.data_types import IssueSearchInfo
 from git_issue_agent.llm import CrewLLM
 from git_issue_agent.prompts import TOOL_CALL_PROMPT, INFO_PARSER_PROMPT
-class GitAgents():
-    
+
+
+class GitAgents:
     def __init__(self, config: Settings, issue_tools):
         self.llm = CrewLLM(config)
 
@@ -16,17 +16,15 @@ class GitAgents():
             goal="To extract the information about github artifacts that a user is looking for",
             backstory=INFO_PARSER_PROMPT,
             verbose=True,
-            llm=self.llm.llm
+            llm=self.llm.llm,
         )
 
         self.prereq_identifier_task = Task(
-            description=(
-                "User query: {request}"
-            ),
+            description=("User query: {request}"),
             agent=self.prereq_identifier,
-            output_pydantic=IssueSearchInfo,
             expected_output=(
-                "A pydantic object representing the extracted relevant information."
+                'A JSON object with keys "owner", "repo", and "issue_numbers". '
+                'Example: {"owner": "kagenti", "repo": "kagenti", "issue_numbers": null}'
             ),
         )
 
@@ -34,7 +32,7 @@ class GitAgents():
             agents=[self.prereq_identifier],
             tasks=[self.prereq_identifier_task],
             process=Process.sequential,
-            verbose=True,           
+            verbose=True,
         )
 
         ###################
@@ -51,9 +49,11 @@ class GitAgents():
             verbose=True,
             llm=self.llm.llm,
             inject_date=True,
-            max_iter=6
+            max_iter=6,
+            max_retry_limit=3,
+            respect_context_window=True,
         )
-            
+
         # --- A generic task template -------------------------------------------------
         # The agent will use MCP tools to fulfill natural-language queries.
         self.issue_query_task = Task(

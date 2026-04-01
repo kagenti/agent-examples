@@ -1,10 +1,11 @@
 import logging
+import os
+from textwrap import dedent
 
 import uvicorn
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
-from textwrap import dedent
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -13,7 +14,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
-
 from recipe_agent.recipe_llm import chat
 
 logging.basicConfig(level=logging.DEBUG)
@@ -47,7 +47,8 @@ def get_agent_card(host: str, port: int):
             - Get 2-3 recipe suggestions with instructions
             """,
         ),
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],

@@ -3,13 +3,18 @@
 import base64
 import logging
 import os
-import requests
 import sys
+
+import requests
 from fastmcp import FastMCP
 
 mcp = FastMCP("Image")
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"), stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(
+    level=os.getenv("LOG_LEVEL", "INFO"),
+    stream=sys.stdout,
+    format="%(levelname)s: %(message)s",
+)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
@@ -23,7 +28,7 @@ def get_image(width: int, height: int) -> dict:
     Returns a dict containing:
     - image_base64: base64-encoded image data (string)
     - url: the source URL of the image (string)
-    
+
     Example return value:
     {"image_base64": "/9j/4AAQSkZJRg...", "url": "https://picsum.photos/200/300"}
     """

@@ -1,18 +1,18 @@
 import json
 import os
-import sys
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
 from typing import Literal, Optional
 
+
 class Settings(BaseSettings):
-    LOG_LEVEL: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = Field(
+    LOG_LEVEL: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = Field(
         os.getenv("LOG_LEVEL", "INFO"),
         description="Application log level",
     )
     TASK_MODEL_ID: str = Field(
-        os.getenv("TASK_MODEL_ID", "ollama/ibm/granite4:latest"),
+        os.getenv("TASK_MODEL_ID", "ollama_chat/ibm/granite4:latest"),
         description="The ID of the task model",
     )
     LLM_API_BASE: str = Field(
@@ -26,9 +26,14 @@ class Settings(BaseSettings):
         description="The temperature for the model",
         ge=0,
     )
-    MCP_URL: str = Field(os.getenv("MCP_URL", "https://api.githubcopilot.com/mcp/"), description="Endpoint for an option MCP server")
+    MCP_URL: str = Field(
+        os.getenv("MCP_URL", "https://api.githubcopilot.com/mcp/"), description="Endpoint for an option MCP server"
+    )
     SERVICE_PORT: int = Field(os.getenv("SERVICE_PORT", 8000), description="Port on which the service will run.")
-    GITHUB_TOKEN: Optional[str] = Field(os.getenv("GITHUB_TOKEN", None), description="If not using agent with authorization, the default Github token to use")
+    GITHUB_TOKEN: Optional[str] = Field(
+        os.getenv("GITHUB_TOKEN", None),
+        description="If not using agent with authorization, the default Github token to use",
+    )
 
     class Config:
         env_file = ".env"
@@ -43,5 +48,6 @@ class Settings(BaseSettings):
                 raise ValueError("EXTRA_HEADERS must be a valid JSON string")
 
         return self
+
 
 settings = Settings()  # type: ignore[call-arg]

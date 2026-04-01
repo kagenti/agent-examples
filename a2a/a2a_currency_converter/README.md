@@ -84,6 +84,14 @@ sequenceDiagram
    uv run app/test_client.py
    ```
 
+## Running the agent on Kubernetes with [Kagenti](https://kagenti.github.io/.github/)
+
+Deploy the sample manifest:
+
+```bash
+kubectl apply -f deployment/k8s.yaml
+```
+
 ## Technical Implementation
 
 - **LangGraph ReAct Agent**: Uses the ReAct pattern for reasoning and tool usage

@@ -8,4 +8,7 @@ dependencies = [
     "fastmcp>=2.12.1",
     "requests>=2.32.3",
     "slack_sdk>=3.36.0",
+    "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
+    "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
+    "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
 ]

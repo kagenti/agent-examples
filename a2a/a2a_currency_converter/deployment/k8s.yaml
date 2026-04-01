@@ -1,0 +1,150 @@
+# Best practice to create a ServiceAccount for each agent to allow for more granular permissions if needed.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: a2a-currency-converter
+  namespace: team1
+---
+# Expose the A2A endpoint and Agent Card.
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app.kubernetes.io/name: a2a-currency-converter
+    # kagenti.io/type=agent is required for the Agent to be discovered by Kagenti and show up in the UI
+    kagenti.io/type: agent
+    protocol.kagenti.io/a2a: ""
+  name: a2a-currency-converter
+  namespace: team1
+spec:
+  ports:
+  - name: http
+    port: 8080
+    protocol: TCP
+    targetPort: 8000
+  selector:
+    app.kubernetes.io/name: a2a-currency-converter
+    kagenti.io/type: agent
+  type: ClusterIP
+---
+# Deploy a test build of the Agent
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app.kubernetes.io/component: agent
+    app.kubernetes.io/name: a2a-currency-converter
+    kagenti.io/framework: LangGraph
+    kagenti.io/type: agent
+    kagenti.io/workload-type: deployment
+    protocol.kagenti.io/a2a: ""
+  name: a2a-currency-converter
+  namespace: team1
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: a2a-currency-converter
+      kagenti.io/type: agent
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: a2a-currency-converter
+        kagenti.io/framework: LangGraph
+        kagenti.io/type: agent
+        protocol.kagenti.io/a2a: ""
+    spec:
+      containers:
+      - env:
+        # Port to bind A2A server
+        - name: PORT
+          value: "8000"
+        # Host to bind A2A server (0.0.0.0 means bind to all interfaces)
+        - name: HOST
+          value: 0.0.0.0
+        # AGENT_ENDPOINT is the endpoint that appears on the Agent Card
+        - name: AGENT_ENDPOINT
+          value: http://a2a-currency-converter.team1.svc.cluster.local:8080/
+        - name: OTEL_EXPORTER_OTLP_ENDPOINT
+          value: http://otel-collector.kagenti-system.svc.cluster.local:8335
+        - name: KEYCLOAK_URL
+          value: http://keycloak.keycloak.svc.cluster.local:8080
+        - name: UV_CACHE_DIR
+          value: /app/.cache/uv
+        # Many A2A agents call tools, and find them at this endpoint
+        # - name: MCP_URL
+        #   value: http://weather-tool-mcp.team1.svc.cluster.local:8000/mcp
+        # This is the LLM_API_BASE for ollama running on the host machine. In production, this would point to a real LLM API.
+        - name: LLM_API_BASE
+          value: http://host.docker.internal:11434/v1
+        # This is a dummy key; if using a real LLM API use a real key
+        - name: LLM_API_KEY
+          value: dummy
+        # For production, use a Secret:
+        # - name: LLM_API_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: llm-credentials
+        #       key: openai-api-key
+        # This is a dummy key; if using OpenAI use a real key
+        - name: OPENAI_API_KEY
+          value: dummy
+        # For production, use a Secret:
+        # - name: OPENAI_API_KEY
+        #   valueFrom:
+        #     secretKeyRef:
+        #       name: llm-credentials
+        #       key: openai-api-key
+        - name: LLM_MODEL
+          value: llama3.2:3b-instruct-fp16
+        - name: GITHUB_SECRET_NAME
+          value: github-token-secret
+        # Pin to a specific version
+        image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:v0.1.0-alpha.1
+        # Or use the latest version
+        # image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:latest
+        imagePullPolicy: Always
+        name: agent
+        ports:
+        - containerPort: 8000
+          name: http
+          protocol: TCP
+        readinessProbe:
+          failureThreshold: 12
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          successThreshold: 1
+          tcpSocket:
+            port: 8000
+          timeoutSeconds: 1
+        resources:
+          limits:
+            cpu: 500m
+            memory: 1Gi
+          requests:
+            cpu: 100m
+            memory: 256Mi
+        terminationMessagePath: /dev/termination-log
+        terminationMessagePolicy: File
+        volumeMounts:
+        # This is for agents that use uv and its dependency cache
+        - mountPath: /app/.cache
+          name: cache
+        # Something like this is needed if the Agent has a Marvin dependency
+        # - mountPath: /.marvin
+        #   name: marvin
+      dnsPolicy: ClusterFirst
+      restartPolicy: Always
+      schedulerName: default-scheduler
+      serviceAccount: a2a-currency-converter
+      serviceAccountName: a2a-currency-converter
+      terminationGracePeriodSeconds: 30
+      # This is for agents that use uv and its dependency cache
+      volumes:
+      - emptyDir: {}
+        name: cache
+      # Something like this is needed if the Agent has a Marvin dependency
+      # - emptyDir: {}
+      #   name: marvin

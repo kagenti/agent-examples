@@ -1,26 +1,31 @@
 import os
-from langgraph.graph import StateGraph, MessagesState, START
+
+from langchain_core.messages import AIMessage, SystemMessage
 from langchain_mcp_adapters.client import MultiServerMCPClient
-from langchain_core.messages import SystemMessage,  AIMessage
-from langgraph.prebuilt import tools_condition, ToolNode
 from langchain_openai import ChatOpenAI
+from langgraph.graph import START, MessagesState, StateGraph
+from langgraph.prebuilt import ToolNode, tools_condition
 
 from file_organizer.configuration import Configuration
 
 config = Configuration()
 
+
 # Extend MessagesState to include a final answer
 class ExtendedMessagesState(MessagesState):
-     final_answer: str = ""
+    final_answer: str = ""
+
 
 def get_mcpclient():
-    
-    return MultiServerMCPClient({
-        "cloud_storage": {
-            "url": os.getenv("MCP_URL", "http://cloud-storage-tool:8000/mcp"),
-            "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+    return MultiServerMCPClient(
+        {
+            "cloud_storage": {
+                "url": os.getenv("MCP_URL", "http://cloud-storage-tool:8000/mcp"),
+                "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
+            }
         }
-    })
+    )
+
 
 async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
@@ -35,9 +40,14 @@ async def get_graph(client) -> StateGraph:
     llm_with_tools = llm.bind_tools(tools)
     bucket_uri = os.getenv("BUCKET_URI")
 
-    bucket_info = f"Target bucket: {bucket_uri}" if bucket_uri else "No bucket URI configured. Ask the user to specify which bucket to organize."
+    bucket_info = (
+        f"Target bucket: {bucket_uri}"
+        if bucket_uri
+        else "No bucket URI configured. Ask the user to specify which bucket to organize."
+    )
 
-    sys_msg = SystemMessage(content=f"""You are a file organization assistant for cloud storage buckets.
+    sys_msg = SystemMessage(
+        content=f"""You are a file organization assistant for cloud storage buckets.
 
 {bucket_info}
 
@@ -50,7 +60,8 @@ Your workflow:
    - Logical grouping (similar file types together)
 4. Use the perform_action tool to move the object as needed
 5. Provide a summary of what you did
-""")
+"""
+    )
 
     # Node
     def assistant(state: ExtendedMessagesState) -> ExtendedMessagesState:

@@ -2,10 +2,17 @@
 
 import hashlib
 import logging
-from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict
+from datetime import datetime, timezone
+from typing import Dict, List, Optional
+
 from providers.base import ReservationProvider
-from schemas import Restaurant, Location, AvailabilitySlot, Reservation, CancellationReceipt
+from schemas import (
+    AvailabilitySlot,
+    CancellationReceipt,
+    Location,
+    Reservation,
+    Restaurant,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -261,7 +268,16 @@ class MockProvider(ReservationProvider):
         # Generate slots for lunch (11:30-14:00) and dinner (17:00-21:00)
         slots = []
         lunch_times = ["11:30", "12:00", "12:30", "13:00", "13:30"]
-        dinner_times = ["17:00", "17:30", "18:00", "18:30", "19:00", "19:30", "20:00", "20:30"]
+        dinner_times = [
+            "17:00",
+            "17:30",
+            "18:00",
+            "18:30",
+            "19:00",
+            "19:30",
+            "20:00",
+            "20:30",
+        ]
 
         all_times = lunch_times + dinner_times
 

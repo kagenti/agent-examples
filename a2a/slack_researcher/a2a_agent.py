@@ -3,6 +3,7 @@ Module for A2A Agent.
 """
 
 import logging
+import os
 import sys
 import traceback
 from typing import Callable
@@ -17,7 +18,15 @@ from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart, SecurityScheme, HTTPAuthSecurityScheme
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentSkill,
+    TaskState,
+    TextPart,
+    SecurityScheme,
+    HTTPAuthSecurityScheme,
+)
 from a2a.utils import new_agent_text_message, new_task
 
 from starlette.routing import Route
@@ -27,7 +36,8 @@ from slack_researcher.event import Event
 from slack_researcher.main import SlackAgent
 
 logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format='%(levelname)s: %(message)s')
+logging.basicConfig(level=logging.DEBUG, stream=sys.stdout, format="%(levelname)s: %(message)s")
+
 
 def get_agent_card(host: str, port: int):
     """Returns the Agent Card for the AG2 Agent."""
@@ -45,7 +55,8 @@ def get_agent_card(host: str, port: int):
     return AgentCard(
         name="Web Research Agent",
         description="Answer queries by searching through a given slack server",
-        url=f"http://{host}:{port}/",
+        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -54,10 +65,7 @@ def get_agent_card(host: str, port: int):
         securitySchemes={
             "Bearer": SecurityScheme(
                 root=HTTPAuthSecurityScheme(
-                    type="http",
-                    scheme="bearer",
-                    bearerFormat="JWT",
-                    description="OAuth 2.0 JWT token"
+                    type="http", scheme="bearer", bearerFormat="JWT", description="OAuth 2.0 JWT token"
                 )
             )
         },
@@ -110,13 +118,15 @@ class ResearchExecutor(AgentExecutor):
     """
     A class to handle research execution for A2A Agent.
     """
-    async def _run_agent(self,
+
+    async def _run_agent(
+        self,
         messages: dict,
         settings: Settings,
         event_emitter: Event,
         assistant_tool_map: dict[str, Callable],
-        toolkit: Toolkit):
-
+        toolkit: Toolkit,
+    ):
         slack_agent = SlackAgent(
             config=settings,
             eventer=event_emitter,
@@ -163,30 +173,39 @@ class ResearchExecutor(AgentExecutor):
             if settings.MCP_URL:
                 logging.info("Connecting to MCP server at %s", settings.MCP_URL)
 
-                async with streamablehttp_client(
-                    url=settings.MCP_URL,
-                ) as (
-                    read_stream,
-                    write_stream,
-                    _,
-                ), ClientSession(read_stream, write_stream) as session:
+                async with (
+                    streamablehttp_client(
+                        url=settings.MCP_URL,
+                    ) as (
+                        read_stream,
+                        write_stream,
+                        _,
+                    ),
+                    ClientSession(read_stream, write_stream) as session,
+                ):
                     await session.initialize()
-                    toolkit = await create_toolkit(
-                        session=session, use_mcp_resources=False
-                    )
-                    await self._run_agent(messages, settings,
+                    toolkit = await create_toolkit(session=session, use_mcp_resources=False)
+                    await self._run_agent(
+                        messages,
+                        settings,
                         event_emitter,
                         assistant_tool_map,
-                        toolkit,)
+                        toolkit,
+                    )
             else:
-                await self._run_agent(messages, settings,
+                await self._run_agent(
+                    messages,
+                    settings,
                     event_emitter,
                     assistant_tool_map,
-                    toolkit,)
+                    toolkit,
+                )
 
         except Exception as e:
             traceback.print_exc()
-            await event_emitter.emit_event(f"I'm sorry I was unable to fulfill your request. I encountered the following exception: {str(e)}", True)
+            await event_emitter.emit_event(
+                f"I'm sorry I was unable to fulfill your request. I encountered the following exception: {str(e)}", True
+            )
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
@@ -214,11 +233,14 @@ def run():
     app = server.build()  # this returns a Starlette app
 
     # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(0, Route(
-        '/.well-known/agent-card.json',
-        server._handle_get_agent_card,
-        methods=['GET'],
-        name='agent_card_new',
-    ))
+    app.routes.insert(
+        0,
+        Route(
+            "/.well-known/agent-card.json",
+            server._handle_get_agent_card,
+            methods=["GET"],
+            name="agent_card_new",
+        ),
+    )
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)
