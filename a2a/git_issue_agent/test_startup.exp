@@ -16,7 +16,7 @@ expect {
         puts "Success"; exit 0
     }
     timeout {
-        exec kill -9 $child_pid
+        exec pkill -P $child_pid
         puts "Timed out waiting for startup"; exit 1
     }
     eof { puts "Process exited early"; exit 2 }
