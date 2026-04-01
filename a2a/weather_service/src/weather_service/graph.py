@@ -17,7 +17,12 @@ class ExtendedMessagesState(MessagesState):
 
 
 def get_mcpclient(headers=None):
-    """Create MCP client, optionally forwarding headers (e.g. Authorization)."""
+    """Create MCP client, optionally forwarding headers (e.g. Authorization).
+
+    Trace context propagation (traceparent headers) to the MCP gateway is
+    handled automatically by opentelemetry-instrumentation-httpx, which
+    injects the current span's context on every outgoing HTTP request.
+    """
     mcp_config = {
         "url": os.getenv("MCP_URL", "http://localhost:8000/mcp"),
         "transport": os.getenv("MCP_TRANSPORT", "streamable_http"),
