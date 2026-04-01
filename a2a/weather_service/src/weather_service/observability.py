@@ -139,11 +139,13 @@ def setup_observability() -> None:
     # tool call will automatically carry the current span's traceparent header
     try:
         from opentelemetry.instrumentation.httpx import HTTPXClientInstrumentor
+
         HTTPXClientInstrumentor().instrument()
         logger.info("httpx instrumented for automatic trace context propagation")
     except ImportError:
-        logger.warning("opentelemetry-instrumentation-httpx not available - "
-                       "MCP tool calls will not propagate trace context")
+        logger.warning(
+            "opentelemetry-instrumentation-httpx not available - MCP tool calls will not propagate trace context"
+        )
 
     # Instrument OpenAI for GenAI semantic conventions
     try:
@@ -443,7 +445,9 @@ def create_tracing_middleware():
             logger.debug(f"Could not parse request body: {e}")
 
         # Extract incoming W3C Trace Context from request headers to connect
-        # agent spans to MCP gateway spans
+        # agent spans to MCP gateway spans. Callers without traceparent still
+        # get root spans (extract returns empty context), while callers with traceparent
+        # (like MCP gateway) get connected end-to-end traces
         incoming_ctx = extract(dict(request.headers))
         detach_token = context.attach(incoming_ctx)
 

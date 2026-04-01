@@ -31,6 +31,7 @@ def get_mcpclient(headers=None):
         mcp_config["headers"] = headers
     return MultiServerMCPClient({"math": mcp_config})
 
+
 async def get_graph(client) -> StateGraph:
     llm = ChatOpenAI(
         model=config.llm_model,
