@@ -1,14 +1,14 @@
-from crewai_tools.adapters.tool_collection import ToolCollection
-
 import json
 import logging
 import re
 import sys
 
+from crewai_tools.adapters.tool_collection import ToolCollection
+
+from git_issue_agent.agents import GitAgents
 from git_issue_agent.config import Settings, settings
 from git_issue_agent.data_types import IssueSearchInfo
 from git_issue_agent.event import Event
-from git_issue_agent.agents import GitAgents
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format="%(levelname)s: %(message)s")
@@ -20,8 +20,9 @@ def _parse_prereq_from_raw(raw: str) -> IssueSearchInfo:
     Some Ollama models don't produce structured tool calls that crewai's instructor
     integration expects. This fallback extracts JSON from the raw text output.
     """
-    # Try to find JSON in the raw output
-    json_match = re.search(r'\{[^{}]*\}', raw)
+    # Only matches flat JSON (no nested braces). Sufficient for the current
+    # IssueSearchInfo schema; revisit if the model gains nested fields.
+    json_match = re.search(r"\{[^{}]*\}", raw)
     if json_match:
         try:
             data = json.loads(json_match.group())
@@ -29,7 +30,7 @@ def _parse_prereq_from_raw(raw: str) -> IssueSearchInfo:
         except (json.JSONDecodeError, ValueError):
             pass
 
-    # Fallback: return empty IssueSearchInfo (no pre-identified fields)
+    logger.warning("Could not parse prereq JSON from raw output: %s", raw)
     return IssueSearchInfo()
 
 

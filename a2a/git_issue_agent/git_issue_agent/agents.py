@@ -24,7 +24,7 @@ class GitAgents:
             agent=self.prereq_identifier,
             expected_output=(
                 'A JSON object with keys "owner", "repo", and "issue_numbers". '
-                "Example: {\"owner\": \"kagenti\", \"repo\": \"kagenti\", \"issue_numbers\": null}"
+                'Example: {"owner": "kagenti", "repo": "kagenti", "issue_numbers": null}'
             ),
         )
 
