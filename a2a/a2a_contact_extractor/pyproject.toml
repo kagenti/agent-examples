@@ -5,7 +5,7 @@ description = "Currency conversion using A2A and Marvin"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "marvin>=3.0.0", 
+    "marvin>=3.2.0",  # 3.0.x/3.1.x incompatible with pydantic-ai>=1.56
     "a2a-sdk>=0.2.5,<0.4.0",
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
