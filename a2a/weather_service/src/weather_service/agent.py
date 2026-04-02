@@ -1,5 +1,6 @@
 import logging
 import os
+import re
 from textwrap import dedent
 
 import uvicorn
@@ -14,6 +15,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
+from weather_service.configuration import Configuration
 from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
     create_tracing_middleware,
@@ -21,6 +23,35 @@ from weather_service.observability import (
     set_span_output,
 )
 
+
+class SecretRedactionFilter(logging.Filter):
+    """Redacts Bearer tokens and the configured API key from log messages."""
+
+    _BEARER_RE = re.compile(r"(Bearer\s+)\S+", re.IGNORECASE)
+
+    def __init__(self):
+        super().__init__()
+        key = os.environ.get("LLM_API_KEY", "").strip()
+        self._key_re = re.compile(re.escape(key)) if len(key) > 8 else None
+
+    def _redact(self, text: str) -> str:
+        text = self._BEARER_RE.sub(r"\1[REDACTED]", text)
+        if self._key_re:
+            text = self._key_re.sub("[REDACTED]", text)
+        return text
+
+    def filter(self, record: logging.LogRecord) -> bool:
+        if isinstance(record.msg, str):
+            record.msg = self._redact(record.msg)
+        if isinstance(record.args, dict):
+            record.args = {k: self._redact(v) if isinstance(v, str) else v for k, v in record.args.items()}
+        elif isinstance(record.args, tuple):
+            record.args = tuple(self._redact(a) if isinstance(a, str) else a for a in record.args)
+        return True
+
+
+logging.basicConfig(level=logging.INFO)
+logging.getLogger().addFilter(SecretRedactionFilter())
 logger = logging.getLogger(__name__)
 
 
@@ -109,6 +140,16 @@ class WeatherExecutor(AgentExecutor):
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
+
+        # Check API key before attempting LLM calls
+        config = Configuration()
+        if not config.has_valid_api_key:
+            await event_emitter.emit_event(
+                "Error: No LLM API key configured. Set the LLM_API_KEY "
+                "environment variable.",
+                failed=True,
+            )
+            return
 
         # Get user input for the agent
         user_input = context.get_user_input()
@@ -224,17 +265,5 @@ def run():
 
     # Add tracing middleware - creates root span with MLflow/GenAI attributes
     app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
-
-    class LogAuthorizationMiddleware(BaseHTTPMiddleware):
-        async def dispatch(self, request, call_next):
-            auth_header = request.headers.get("authorization", "No Authorization header")
-            logger.info(
-                f"🔐 Incoming request to {request.url.path} with Authorization: {auth_header[:80] + '...' if len(auth_header) > 80 else auth_header}"
-            )
-            response = await call_next(request)
-            return response
-
-    # Add logging middleware
-    app.add_middleware(LogAuthorizationMiddleware)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
