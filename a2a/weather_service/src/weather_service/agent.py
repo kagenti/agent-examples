@@ -145,8 +145,7 @@ class WeatherExecutor(AgentExecutor):
         config = Configuration()
         if not config.has_valid_api_key:
             await event_emitter.emit_event(
-                "Error: No LLM API key configured. Set the LLM_API_KEY "
-                "environment variable.",
+                "Error: No LLM API key configured. Set the LLM_API_KEY environment variable.",
                 failed=True,
             )
             return
