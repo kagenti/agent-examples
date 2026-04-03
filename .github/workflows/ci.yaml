@@ -48,7 +48,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install uv
-        uses: astral-sh/setup-uv@c7f87aa956e4c323abf06d5dec078e358f6b4d04  # v6
+        uses: astral-sh/setup-uv@cec208311dfd045dd5311c1add060b2062131d57  # v6
       - name: Install expect
         run: sudo apt-get update && sudo apt-get install -y expect
       - name: Verify agents start
