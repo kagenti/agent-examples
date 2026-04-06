@@ -33,12 +33,14 @@ RUN git clone https://github.com/Exgentic/exgentic.git /app/exgentic
 WORKDIR /app/exgentic
 RUN git checkout feature/mcp-command
 
+# Set UV_SYSTEM_PYTHON before any uv operations to ensure uv uses system Python
+ENV UV_SYSTEM_PYTHON=1
+
 # Install Exgentic and its dependencies using uv
 RUN uv pip install --system --no-cache -e .
 
-# Setup the benchmark with UV_SYSTEM_PYTHON to ensure uv uses system Python
-ENV UV_SYSTEM_PYTHON=1
-RUN exgentic setup --benchmark ${BENCHMARK_NAME}
+# Setup the benchmark - UV_SYSTEM_PYTHON is already set above
+RUN exgentic install --benchmark ${BENCHMARK_NAME}
 
 # Copy entrypoint script
 WORKDIR /app
