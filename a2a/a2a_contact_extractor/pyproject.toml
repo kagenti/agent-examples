@@ -5,7 +5,7 @@ description = "Currency conversion using A2A and Marvin"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "marvin>=3.0.0", 
+    "marvin>=3.2.0",  # 3.0.x/3.1.x incompatible with pydantic-ai>=1.56
     "a2a-sdk>=0.2.5,<0.4.0",
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
@@ -14,6 +14,9 @@ dependencies = [
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
     "pydantic-ai>=1.56.0",      # Indirect; prevents CVE-2026-25580
     "filelock>=3.20.1",         # Indirect; prevents CVE-2025-68146
+    "fastmcp>=3.2.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
+    "anthropic>=0.87.0",        # Indirect; prevents CVE-2026-34452, CVE-2026-34450
+    "aiohttp>=3.13.4",          # Indirect; prevents CVE-2026-34525, CVE-2026-34516, CVE-2026-34515, CVE-2026-22815
 ]
 
 [tool.uv.sources]

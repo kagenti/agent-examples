@@ -11,6 +11,10 @@ updates:
     directory: /a2a/a2a_contact_extractor
     schedule:
       interval: weekly
+    ignore:
+      - dependency-name: marvin
+        # marvin>=3.2.0 is pinned for pydantic-ai compatibility;
+        # major bumps need manual testing before merge
   - package-ecosystem: pip
     directory: /a2a/a2a_currency_converter
     schedule:
