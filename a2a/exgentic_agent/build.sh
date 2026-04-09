@@ -41,12 +41,23 @@ build_agent() {
     local agent=$1
     local runtime=$2
     local image_name="exgentic-a2a-${agent}"
-    local tag="${3:-latest}"
+    local tag=$3
+    local use_cache=$4
     
     print_info "Building ${image_name}:${tag} using ${runtime}..."
+    if [ "$use_cache" = "false" ]; then
+        print_info "Building without cache (default)"
+    else
+        print_info "Building with cache enabled"
+    fi
     
     # Build the image with the agent name as build arg
-    if $runtime build \
+    local build_cmd="$runtime build"
+    if [ "$use_cache" = "false" ]; then
+        build_cmd="$build_cmd --no-cache"
+    fi
+    
+    if $build_cmd \
         --build-arg AGENT_NAME="${agent}" \
         -t "${image_name}:${tag}" \
         -f Dockerfile \
@@ -72,16 +83,68 @@ main() {
     print_info "Detected container runtime: ${RUNTIME}"
     
     # Parse command line arguments
-    AGENT="${1}"
-    TAG="${2:-latest}"
+    AGENT=""
+    TAG="latest"
+    USE_CACHE="false"  # Default: do not use cache for consistency
+    
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            --tag)
+                TAG="$2"
+                shift 2
+                ;;
+            --use-cache)
+                USE_CACHE="true"
+                shift
+                ;;
+            --help|-h)
+                cat << EOF
+Usage: $0 AGENT_NAME [--tag TAG] [--use-cache]
+
+Build exgentic a2a agent Docker/Podman image.
+
+Arguments:
+  AGENT_NAME     Agent name (required, positional)
+  --tag TAG      Image tag (optional, default: latest)
+  --use-cache    Use Docker cache during build (optional, default: no cache for consistency)
+
+Examples:
+  $0 my_agent                      # Build without cache (default)
+  $0 my_agent --tag v1.0.0         # Build v1.0.0 without cache
+  $0 my_agent --use-cache          # Build with cache enabled
+  $0 my_agent --tag v1.0.0 --use-cache  # Build v1.0.0 with cache
+
+The script automatically detects whether to use docker or podman.
+By default, builds do not use cache to ensure consistency.
+EOF
+                exit 0
+                ;;
+            -*)
+                print_error "Unknown option: $1"
+                echo "Use --help for usage information"
+                exit 1
+                ;;
+            *)
+                if [ -z "$AGENT" ]; then
+                    AGENT="$1"
+                    shift
+                else
+                    print_error "Unexpected argument: $1"
+                    echo "Use --help for usage information"
+                    exit 1
+                fi
+                ;;
+        esac
+    done
     
     # Validate agent name is provided
     if [ -z "$AGENT" ]; then
         print_error "Agent name is required!"
         echo ""
-        echo "Usage: $0 AGENT_NAME [TAG]"
+        echo "Usage: $0 AGENT_NAME [--tag TAG] [--no-cache]"
         echo ""
-        echo "Example: $0 my_agent v1.0.0"
+        echo "Example: $0 my_agent --tag v1.0.0"
+        echo "Use --help for more information"
         exit 1
     fi
     
@@ -89,6 +152,11 @@ main() {
     
     print_info "Building agent: ${AGENT}"
     print_info "Image tag: ${TAG}"
+    if [ "$USE_CACHE" = "true" ]; then
+        print_info "Cache: enabled"
+    else
+        print_info "Cache: disabled (default)"
+    fi
     echo ""
     
     # Build each agent
@@ -96,7 +164,7 @@ main() {
     FAIL_COUNT=0
     
     for agent in "${AGENTS[@]}"; do
-        if build_agent "$agent" "$RUNTIME" "$TAG"; then
+        if build_agent "$agent" "$RUNTIME" "$TAG" "$USE_CACHE"; then
             ((SUCCESS_COUNT++))
         else
             ((FAIL_COUNT++))
@@ -120,27 +188,6 @@ main() {
         done
     fi
 }
-
-# Show usage if --help is passed
-if [[ "$1" == "--help" ]] || [[ "$1" == "-h" ]]; then
-    cat << EOF
-Usage: $0 AGENT_NAME [TAG]
-
-Build exgentic a2a agent Docker/Podman image.
-
-Arguments:
-  AGENT_NAME  Agent name (required)
-  TAG         Image tag (optional, default: latest)
-
-Examples:
-  $0 my_agent              # Build my_agent with 'latest' tag
-  $0 my_agent v1.0.0       # Build my_agent with 'v1.0.0' tag
-  $0 my_agent dev          # Build my_agent with 'dev' tag
-
-The script automatically detects whether to use docker or podman.
-EOF
-    exit 0
-fi
 
 main "$@"
 
