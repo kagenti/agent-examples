@@ -4,7 +4,6 @@ import json
 import logging
 import os
 import sys
-import time
 
 import requests
 from fastmcp import FastMCP
@@ -25,7 +24,7 @@ _MAX_RETRIES = int(os.getenv("WEATHER_MAX_RETRIES", "3"))
 _BACKOFF_FACTOR = float(os.getenv("WEATHER_BACKOFF_FACTOR", "1.0"))
 
 
-def _resilient_session() -> requests.Session:
+def _build_resilient_session() -> requests.Session:
     """Create an HTTP session with automatic retry and exponential backoff."""
     session = requests.Session()
     retry_strategy = Retry(
@@ -41,17 +40,20 @@ def _resilient_session() -> requests.Session:
     return session
 
 
+# Module-level session — reused across tool calls for connection pooling
+_session = _build_resilient_session()
+
+
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 def get_weather(city: str) -> str:
     """Get weather info for a city"""
     logger.debug(f"Getting weather info for city '{city}'.")
-    session = _resilient_session()
 
     # Geocoding: resolve city name to coordinates
     base_url = "https://geocoding-api.open-meteo.com/v1/search"
     params = {"name": city, "count": 1}
     try:
-        response = session.get(base_url, params=params, timeout=_REQUEST_TIMEOUT)
+        response = _session.get(base_url, params=params, timeout=_REQUEST_TIMEOUT)
         response.raise_for_status()
         data = response.json()
     except (requests.RequestException, ValueError) as exc:
@@ -72,7 +74,7 @@ def get_weather(city: str) -> str:
         "current_weather": True,
     }
     try:
-        weather_response = session.get(
+        weather_response = _session.get(
             weather_url, params=weather_params, timeout=_REQUEST_TIMEOUT
         )
         weather_response.raise_for_status()

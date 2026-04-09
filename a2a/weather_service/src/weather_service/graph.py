@@ -38,8 +38,8 @@ async def get_graph(client) -> StateGraph:
         openai_api_key=config.llm_api_key,
         openai_api_base=config.llm_api_base,
         temperature=0,
-        max_retries=5,
-        request_timeout=60,
+        max_retries=int(os.getenv("LLM_MAX_RETRIES", "5")),
+        request_timeout=int(os.getenv("LLM_REQUEST_TIMEOUT", "60")),
     )
 
     # Get tools asynchronously
