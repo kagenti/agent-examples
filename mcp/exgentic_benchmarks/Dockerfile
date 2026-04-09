@@ -39,7 +39,10 @@ ENV UV_SYSTEM_PYTHON=1
 # Install Exgentic and its dependencies using uv
 RUN uv pip install --system --no-cache -e .
 
-# Setup the benchmark - UV_SYSTEM_PYTHON is already set above
+# Set HOME to /app before installing benchmark so data goes to the right location
+ENV HOME=/app
+
+# Setup the benchmark - this will install to /app/.exgentic/
 RUN exgentic install --benchmark ${BENCHMARK_NAME}
 
 # Copy entrypoint script
@@ -61,9 +64,6 @@ RUN useradd -m -u 1001 exgentic && \
     chmod -R g+rwX /app
     
 USER 1001
-
-# Set HOME environment variable to /app
-ENV HOME=/app
 
 
 # Expose the default port
