@@ -14,6 +14,7 @@ This MCP server provides access to Exgentic benchmarks through a standardized in
 - **Consistent Interface**: Follows MCP protocol standards
 - **Security**: Runs as non-root user (UID 1001)
 - **Production Ready**: Includes proper error handling and logging
+- **Build Script**: Convenient build.sh script with docker/podman auto-detection
 
 ## Prerequisites
 
@@ -30,6 +31,10 @@ Build an image with the `tau2` benchmark:
 ```bash
 cd mcp/exgentic_benchmarks
 
+# Using the build script (recommended)
+./build.sh tau2
+
+# Or using docker directly
 docker build \
   --build-arg BENCHMARK_NAME=tau2 \
   -t exgentic-mcp-tau2:latest \
@@ -54,28 +59,58 @@ curl http://localhost:8000/health
 curl http://localhost:8000/tools
 ```
 
+## Using the Build Script
+
+The `build.sh` script provides a convenient way to build benchmark images:
+
+```bash
+# Basic usage
+./build.sh BENCHMARK [--tag TAG] [--use-cache]
+
+# Examples
+./build.sh tau2                    # Build without cache (default)
+./build.sh gsm8k --tag v1.0.0      # Build v1.0.0 without cache
+./build.sh tau2 --tag dev          # Build with 'dev' tag
+./build.sh tau2 --use-cache        # Build with cache enabled
+./build.sh gsm8k --tag v1.0.0 --use-cache  # Build v1.0.0 with cache
+
+# Get help
+./build.sh --help
+```
+
+**Features:**
+- Automatically detects docker or podman
+- Colored output for better readability
+- Build summary with success/failure counts
+- Builds without cache by default for consistency
+- Optional cache usage with `--use-cache` flag
+
 ## Building for Different Benchmarks
 
-You can build images for different benchmarks by changing the `BENCHMARK_NAME` argument:
+You can build images for different benchmarks:
 
-### WebArena Benchmark
+### Using build.sh (Recommended)
 ```bash
+./build.sh tau2
+./build.sh gsm8k
+./build.sh webarena
+```
+
+### Using Docker Directly
+```bash
+# WebArena Benchmark
 docker build \
   --build-arg BENCHMARK_NAME=webarena \
   -t exgentic-mcp-webarena:latest \
   .
-```
 
-### MiniWoB Benchmark
-```bash
+# MiniWoB Benchmark
 docker build \
   --build-arg BENCHMARK_NAME=miniwob \
   -t exgentic-mcp-miniwob:latest \
   .
-```
 
-### Tau2 Benchmark (Default Example)
-```bash
+# Tau2 Benchmark
 docker build \
   --build-arg BENCHMARK_NAME=tau2 \
   -t exgentic-mcp-tau2:latest \
@@ -333,6 +368,10 @@ docker run -p 8000:8000 \
 After making changes, rebuild the image:
 
 ```bash
+# Using build script (builds without cache by default)
+./build.sh tau2
+
+# Or using docker directly
 docker build --no-cache \
   --build-arg BENCHMARK_NAME=tau2 \
   -t exgentic-mcp-tau2:latest \
@@ -377,7 +416,7 @@ This server implements the Model Context Protocol (MCP), which allows AI assista
 When adding support for new benchmarks:
 
 1. Verify the benchmark exists in the Exgentic repository
-2. Test the build process
+2. Test the build process using `./build.sh benchmark_name`
 3. Document any special requirements
 4. Update this README with examples
 

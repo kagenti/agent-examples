@@ -71,12 +71,14 @@ The `build.sh` script provides a convenient way to build agent images:
 
 ```bash
 # Basic usage
-./build.sh AGENT_NAME [TAG]
+./build.sh AGENT_NAME [--tag TAG] [--use-cache]
 
 # Examples
-./build.sh tool_calling              # Build with 'latest' tag
-./build.sh tool_calling v1.0.0       # Build with 'v1.0.0' tag
-./build.sh tool_calling dev          # Build with 'dev' tag
+./build.sh tool_calling                    # Build without cache (default)
+./build.sh tool_calling --tag v1.0.0       # Build v1.0.0 without cache
+./build.sh tool_calling --tag dev          # Build with 'dev' tag
+./build.sh tool_calling --use-cache        # Build with cache enabled
+./build.sh tool_calling --tag v1.0.0 --use-cache  # Build v1.0.0 with cache
 
 # Get help
 ./build.sh --help
@@ -86,7 +88,8 @@ The `build.sh` script provides a convenient way to build agent images:
 - Automatically detects docker or podman
 - Colored output for better readability
 - Build summary with success/failure counts
-- No-cache builds for consistency
+- Builds without cache by default for consistency
+- Optional cache usage with `--use-cache` flag
 
 ## Configuration
 
