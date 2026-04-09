@@ -1,7 +1,13 @@
 """
-OpenTelemetry observability setup for Weather Agent.
+Observability setup for Weather Agent.
 
-Key Features:
+Auto-detects tracing backend from environment variables:
+- MLFLOW_TRACKING_URI → MLflow LangChain autolog (no OTEL exporter needed)
+- OTEL_EXPORTER_OTLP_ENDPOINT → OpenTelemetry with OpenInference instrumentation
+- Both → both active
+- Neither → no tracing, warning logged
+
+OTEL mode features:
 - Tracing middleware for root span with MLflow attributes
 - Auto-instrumentation of LangChain with OpenInference
 - Resource attributes for static agent metadata
@@ -37,6 +43,9 @@ AGENT_FRAMEWORK = "langchain"
 # even though trace.get_current_span() would return a child span
 _root_span_var: ContextVar = ContextVar("root_span", default=None)
 
+# Module-level flag set by setup_observability() to indicate active backend
+_use_otel = False
+
 
 def get_root_span():
     """Get the root span created by tracing middleware.
@@ -47,6 +56,8 @@ def get_root_span():
     Returns:
         The root span, or None if not in a traced request context.
     """
+    if not _use_otel:
+        return None
     return _root_span_var.get()
 
 
@@ -71,10 +82,52 @@ def _get_otlp_exporter(endpoint: str):
 
 def setup_observability() -> None:
     """
-    Set up OpenTelemetry tracing with OpenInference instrumentation.
+    Set up tracing: MLflow autolog or OpenTelemetry, auto-detected from env vars.
+
+    - MLFLOW_TRACKING_URI set → MLflow autolog (no OTEL exporter)
+    - OTEL_EXPORTER_OTLP_ENDPOINT set → OTEL exporter (existing behavior)
+    - Both set → both active
+    - Neither set → no tracing, warning logged
 
     Call this ONCE at agent startup, before importing agent code.
     """
+    global _use_otel
+
+    use_mlflow = bool(os.getenv("MLFLOW_TRACKING_URI"))
+    use_otel = bool(os.getenv("OTEL_EXPORTER_OTLP_ENDPOINT"))
+    _use_otel = use_otel
+
+    if use_mlflow:
+        import mlflow
+
+        mlflow.langchain.autolog(log_traces=True, run_tracer_inline=True)
+        logger.info("MLflow LangChain auto-instrumentation enabled")
+
+        if use_otel:
+            # When both MLflow and OTEL are configured, MLflow SDK defaults to
+            # sending traces only to the OTEL Collector. Enable dual export so
+            # traces reach both MLflow Tracking Server and OTEL Collector.
+            if not os.getenv("MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT"):
+                os.environ["MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT"] = "true"
+                logger.info(
+                    "MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT=true set automatically "
+                    "(both MLFLOW_TRACKING_URI and OTEL_EXPORTER_OTLP_ENDPOINT are configured)"
+                )
+            else:
+                logger.info(
+                    "MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT=%s (user-configured)",
+                    os.getenv("MLFLOW_TRACE_ENABLE_OTLP_DUAL_EXPORT"),
+                )
+
+    if not use_otel:
+        if not use_mlflow:
+            logger.warning(
+                "No tracing backend configured. "
+                "Set MLFLOW_TRACKING_URI for MLflow autolog or "
+                "OTEL_EXPORTER_OTLP_ENDPOINT for OpenTelemetry."
+            )
+        return
+
     service_name = os.getenv("OTEL_SERVICE_NAME", "weather-service")
     namespace = os.getenv("K8S_NAMESPACE_NAME", "team1")
     otlp_endpoint = os.getenv(
@@ -284,6 +337,8 @@ def set_span_output(span, output: str):
         span: The span to update
         output: The output/response text
     """
+    if not _use_otel:
+        return
     if output:
         truncated = str(output)[:1000]
         span.set_attribute("gen_ai.completion", truncated)
@@ -408,11 +463,20 @@ def create_tracing_middleware():
     3. Parses A2A JSON-RPC request to extract user input
     4. Captures response to set output attributes
 
+    When OTEL is not active (MLflow autolog or no tracing), returns a
+    passthrough middleware that just calls the next handler.
+
     Usage in agent.py:
         from weather_service.observability import create_tracing_middleware
         app = server.build()
         app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
     """
+    if not _use_otel:
+
+        async def passthrough_middleware(request, call_next):
+            return await call_next(request)
+
+        return passthrough_middleware
 
     from starlette.requests import Request
     from starlette.responses import Response, StreamingResponse
