@@ -18,6 +18,10 @@ class Configuration(BaseSettings):
         when the API base points to localhost.
         """
         host = urlparse(self.llm_api_base).hostname or ""
-        if host in {"localhost", "127.0.0.1", "0.0.0.0"}:
+        # Local LLMs: localhost, docker host aliases, cluster-internal services
+        if host in {"localhost", "127.0.0.1", "0.0.0.0", "dockerhost", "host.docker.internal"}:
+            return True
+        # Cluster-internal services (*.svc.cluster.local) accept any key
+        if host.endswith(".svc.cluster.local"):
             return True
         return self.llm_api_key.strip() not in _PLACEHOLDER_KEYS
