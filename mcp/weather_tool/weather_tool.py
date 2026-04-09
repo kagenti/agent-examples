@@ -74,9 +74,7 @@ def get_weather(city: str) -> str:
         "current_weather": True,
     }
     try:
-        weather_response = _session.get(
-            weather_url, params=weather_params, timeout=_REQUEST_TIMEOUT
-        )
+        weather_response = _session.get(weather_url, params=weather_params, timeout=_REQUEST_TIMEOUT)
         weather_response.raise_for_status()
         weather_data = weather_response.json()
     except (requests.RequestException, ValueError) as exc:
