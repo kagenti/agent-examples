@@ -1,4 +1,4 @@
-FROM public.ecr.aws/docker/library/golang:1.26.1-bookworm
+FROM public.ecr.aws/docker/library/golang:1.26.2-bookworm
 
 WORKDIR /app
 EXPOSE 8080
