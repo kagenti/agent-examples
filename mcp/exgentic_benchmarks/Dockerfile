@@ -58,13 +58,16 @@ ENV BENCHMARK_NAME=${BENCHMARK_NAME} \
     PRODUCTION_MODE=True \
     RELEASE_VERSION=${RELEASE_VERSION}
 
-# Create non-root user and set permissions
-RUN useradd -m -u 1001 exgentic && \
-    chown -R 1001:0 /app && \
+# Create non-root user with /app as home directory and set permissions
+# Using UID 1000 to match Kubernetes securityContext runAsUser
+RUN useradd -u 1000 -d /app exgentic && \
+    chown -R 1000:0 /app && \
     chmod -R g+rwX /app
     
-USER 1001
+USER 1000
 
+# Set HOME after switching user to ensure it's not overridden
+ENV HOME=/app
 
 # Expose the default port
 EXPOSE 8000

@@ -1,6 +1,9 @@
 #!/bin/bash
 set -e
 
+# Ensure HOME is set (Kubernetes may override it)
+export HOME=${HOME:-/app}
+
 # Read environment variables with defaults
 HOST=${HOST:-0.0.0.0}
 PORT=${PORT:-8000}
@@ -11,6 +14,10 @@ if [ -z "$BENCHMARK_NAME" ]; then
     echo "ERROR: BENCHMARK_NAME environment variable is not set"
     exit 1
 fi
+
+# Set TAU2_DATA_DIR to the parent directory
+# Temp fix until wwe have a better way to handle this
+export TAU2_DATA_DIR="/app/.exgentic/benchmarks/tau2"
 
 echo "Starting Exgentic MCP Server"
 echo "Benchmark: $BENCHMARK_NAME"
