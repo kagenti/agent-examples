@@ -30,7 +30,7 @@ func MakeMCPServer(mcpServerURL, initAuthHeader, listenAddr string, listenPort i
 		logger.Error("failed to list tools", "err", err)
 		os.Exit(4)
 	}
-	fmt.Printf("@@@ ecs resTools=%v\n", resTools)
+	logger.Debug("MakeMCPServer listed resTools", "resTools", resTools)
 
 	mcpServer, httpSrv, err := MakeDownstream(listenAddr, listenPort)
 	if err != nil {
@@ -79,7 +79,7 @@ func MakeDownstream(listenAddr string, listenPort int) (*server.MCPServer, *http
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	fmt.Printf("@@@ ecs created http.Serve for %q\n", httpSrv.Addr)
+	slog.Info("MakeDownstream created http.Serve", "httpSrv.Addr", httpSrv.Addr)
 
 	listeningMCPServer := server.NewMCPServer(
 		"MitM MCP Broker",

@@ -413,12 +413,12 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 
 	scopesObj, ok := decodedToken["scope"]
 	if !ok {
-		fmt.Printf("@@@ decoded token had no scopes, decodedToken=%#v\n", decodedToken)
+		fmt.Printf("decoded token had no scopes, decodedToken=%#v\n", decodedToken)
 		return ""
 	}
 	scopesStr, ok := scopesObj.(string)
 	if !ok {
-		fmt.Printf("@@@ decoded token scopes wasn't a string\n")
+		fmt.Printf("decoded token scopes wasn't a string\n")
 		return ""
 	}
 	fmt.Printf("This OIDC user has scopes %q\n", scopesStr)
