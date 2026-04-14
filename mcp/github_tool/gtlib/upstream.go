@@ -353,7 +353,7 @@ func (m *mcpAuthImpl) ListenAndServe() error {
 func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	// fmt.Printf("incoming auth header is %q\n", auth)
 	if !strings.HasPrefix(auth, "Bearer ") {
-		fmt.Printf("Oops, the man-in-the-middle didn't get an Auth header starting with 'Bearer '!")
+		m.logger.Warn("Oops, the man-in-the-middle didn't get an Auth header starting with 'Bearer '")
 		return ""
 	}
 
@@ -362,7 +362,7 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	// For explanation see https://stackoverflow.com/questions/55698770/decode-jwt-without-validation-and-find-scope
 	jwtToken, _, err := new(jwt.Parser).ParseUnverified(token, jwt.MapClaims{})
 	if err != nil {
-		fmt.Printf("Bearer token couldn't be parsed: %v\n", err)
+		m.logger.Warn("Bearer token couldn't be parsed", "err", err)
 		return ""
 	}
 
@@ -370,7 +370,7 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 
 	claims, ok := jwtToken.Claims.(jwt.MapClaims)
 	if !ok {
-		fmt.Printf("Parsed token not MapClaims: %v\n", err)
+		m.logger.Warn("Parsed token not MapClaims", "err", err)
 		return ""
 	}
 
@@ -421,7 +421,7 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 		m.logger.Info("decoded token scopes wasn't a string")
 		return ""
 	}
-	fmt.Printf("This OIDC user has scopes %q\n", scopesStr)
+	m.logger.Info("This OIDC user has scopes", "scopesStr", scopesStr)
 	scopes := strings.Split(scopesStr, " ")
 	requiredScope := os.Getenv("REQUIRED_SCOPE")
 	scopeMatches := slices.Contains(scopes, requiredScope)
@@ -433,10 +433,10 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	// return os.Getenv(fmt.Sprintf("GITHUB_TOKEN_for_%s", decodedToken["preferred_username"]))
 
 	if scopeMatches {
-		fmt.Printf("The REQUIRED_SCOPE %q in scopes %v\n", requiredScope, scopes)
+		m.logger.Debug("The REQUIRED_SCOPE in scopes", "requiredScope", requiredScope, "scopes", scopes)
 		return os.Getenv("UPSTREAM_HEADER_TO_USE_IF_IN_AUDIENCE")
 	} else {
-		fmt.Printf("The REQUIRED_SCOPE %q NOT IN scopes %v\n", requiredScope, scopes)
+		m.logger.Info("The REQUIRED_SCOPE NOT IN scopes", "requiredScope", requiredScope, "scopes", scopes)
 		return os.Getenv("UPSTREAM_HEADER_TO_USE_IF_NOT_IN_AUDIENCE")
 	}
 
