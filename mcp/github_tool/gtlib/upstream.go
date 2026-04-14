@@ -209,7 +209,7 @@ func (m *mcpAuthImpl) CallTool(
 		incomingAuthHeader := request.Header.Get("Authorization")
 		// auth options
 		var options []transport.StreamableHTTPCOption
-		serverAuthHeaderValue := getAuthorizationHeaderFromBearer(incomingAuthHeader)
+		serverAuthHeaderValue := m.getAuthorizationHeaderFromBearer(incomingAuthHeader)
 		if serverAuthHeaderValue != "" {
 			// slog.Info("Creating upstream session with authentication", "url", m.url)
 			options = append(options, transport.WithHTTPHeaders(map[string]string{
@@ -294,7 +294,7 @@ func (m *mcpAuthImpl) Shutdown(ctx context.Context) error {
 // createMCPClient creates and initializes an MCP client with the appropriate configuration
 func (m *mcpAuthImpl) createMCPClient(ctx context.Context, authorization string, options ...transport.StreamableHTTPCOption) (*client.Client, *mcp.InitializeResult, error) {
 	// Use the registered upstream with its CredentialEnvVar
-	authHeader := getAuthorizationHeaderFromBearer(authorization)
+	authHeader := m.getAuthorizationHeaderFromBearer(authorization)
 	if authHeader != "" {
 		// slog.Info("Creating upstream session with authentication", "authHeader", authHeader)
 		options = append(options, transport.WithHTTPHeaders(map[string]string{
@@ -350,7 +350,7 @@ func (m *mcpAuthImpl) ListenAndServe() error {
 }
 
 // In this proof-of-concept we do this explicitly in our logic, instead of using middleware, to make the control flow obvious.
-func getAuthorizationHeaderFromBearer(auth string) string {
+func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	// fmt.Printf("incoming auth header is %q\n", auth)
 	if !strings.HasPrefix(auth, "Bearer ") {
 		fmt.Printf("Oops, the man-in-the-middle didn't get an Auth header starting with 'Bearer '!")
@@ -413,12 +413,12 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 
 	scopesObj, ok := decodedToken["scope"]
 	if !ok {
-		fmt.Printf("decoded token had no scopes, decodedToken=%#v\n", decodedToken)
+		m.logger.Info("decoded token had no scopes", "decodedToken", decodedToken)
 		return ""
 	}
 	scopesStr, ok := scopesObj.(string)
 	if !ok {
-		fmt.Printf("decoded token scopes wasn't a string\n")
+		m.logger.Info("decoded token scopes wasn't a string")
 		return ""
 	}
 	fmt.Printf("This OIDC user has scopes %q\n", scopesStr)
