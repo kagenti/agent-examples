@@ -30,9 +30,9 @@ func MakeMCPServer(mcpServerURL, initAuthHeader, listenAddr string, listenPort i
 		logger.Error("failed to list tools", "err", err)
 		os.Exit(4)
 	}
-	fmt.Printf("@@@ ecs resTools=%v\n", resTools)
+	logger.Debug("MakeMCPServer listed resTools", "resTools", resTools)
 
-	mcpServer, httpSrv, err := MakeDownstream(listenAddr, listenPort)
+	mcpServer, httpSrv, err := MakeDownstream(listenAddr, listenPort, logger)
 	if err != nil {
 		return nil, err
 	}
@@ -50,26 +50,26 @@ func MakeMCPServer(mcpServerURL, initAuthHeader, listenAddr string, listenPort i
 	}, nil
 }
 
-func MakeDownstream(listenAddr string, listenPort int) (*server.MCPServer, *http.Server, error) {
+func MakeDownstream(listenAddr string, listenPort int, logger *slog.Logger) (*server.MCPServer, *http.Server, error) {
 	hooks := &server.Hooks{}
 
 	hooks.AddOnUnregisterSession(func(_ context.Context, session server.ClientSession) {
-		slog.Info("Client disconnected", "sessionID", session.SessionID())
+		logger.Info("Client disconnected", "sessionID", session.SessionID())
 	})
 
 	// Enhanced session registration to log gateway session assignment
 	hooks.AddOnRegisterSession(func(_ context.Context, session server.ClientSession) {
 		// Note that AddOnRegisterSession is for GET, not POST, for a session.
 		// https://modelcontextprotocol.io/specification/2025-03-26/basic/transports#listening-for-messages-from-the-server
-		slog.Info("Gateway client connected with session", "gatewaySessionID", session.SessionID())
+		logger.Info("Gateway client connected with session", "gatewaySessionID", session.SessionID())
 	})
 
 	hooks.AddBeforeAny(func(_ context.Context, _ any, method mcp.MCPMethod, _ any) {
-		slog.Info("Processing request", "method", method)
+		logger.Info("Processing request", "method", method)
 	})
 
 	hooks.AddOnError(func(_ context.Context, _ any, method mcp.MCPMethod, _ any, err error) {
-		slog.Info("MCP server error", "method", method, "error", err)
+		logger.Info("MCP server error", "method", method, "error", err)
 	})
 
 	mux := http.NewServeMux()
@@ -79,7 +79,7 @@ func MakeDownstream(listenAddr string, listenPort int) (*server.MCPServer, *http
 		ReadTimeout:  5 * time.Second,
 		WriteTimeout: 10 * time.Second,
 	}
-	fmt.Printf("@@@ ecs created http.Serve for %q\n", httpSrv.Addr)
+	logger.Info("MakeDownstream created http.Serve", "httpSrv.Addr", httpSrv.Addr)
 
 	listeningMCPServer := server.NewMCPServer(
 		"MitM MCP Broker",
@@ -95,7 +95,7 @@ func MakeDownstream(listenAddr string, listenPort int) (*server.MCPServer, *http
 
 	mux.Handle("/mcp", streamableHTTPServer)
 
-	fmt.Printf("Will listen for MCP on %s:%d\n", listenAddr, listenPort)
+	logger.Info("MakeDownstream initialized", "listenAddr", listenAddr, "listenPort", listenPort)
 
 	return listeningMCPServer, httpSrv, nil
 }

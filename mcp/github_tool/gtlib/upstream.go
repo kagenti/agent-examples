@@ -209,7 +209,7 @@ func (m *mcpAuthImpl) CallTool(
 		incomingAuthHeader := request.Header.Get("Authorization")
 		// auth options
 		var options []transport.StreamableHTTPCOption
-		serverAuthHeaderValue := getAuthorizationHeaderFromBearer(incomingAuthHeader)
+		serverAuthHeaderValue := m.getAuthorizationHeaderFromBearer(incomingAuthHeader)
 		if serverAuthHeaderValue != "" {
 			// slog.Info("Creating upstream session with authentication", "url", m.url)
 			options = append(options, transport.WithHTTPHeaders(map[string]string{
@@ -294,7 +294,7 @@ func (m *mcpAuthImpl) Shutdown(ctx context.Context) error {
 // createMCPClient creates and initializes an MCP client with the appropriate configuration
 func (m *mcpAuthImpl) createMCPClient(ctx context.Context, authorization string, options ...transport.StreamableHTTPCOption) (*client.Client, *mcp.InitializeResult, error) {
 	// Use the registered upstream with its CredentialEnvVar
-	authHeader := getAuthorizationHeaderFromBearer(authorization)
+	authHeader := m.getAuthorizationHeaderFromBearer(authorization)
 	if authHeader != "" {
 		// slog.Info("Creating upstream session with authentication", "authHeader", authHeader)
 		options = append(options, transport.WithHTTPHeaders(map[string]string{
@@ -350,10 +350,10 @@ func (m *mcpAuthImpl) ListenAndServe() error {
 }
 
 // In this proof-of-concept we do this explicitly in our logic, instead of using middleware, to make the control flow obvious.
-func getAuthorizationHeaderFromBearer(auth string) string {
+func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	// fmt.Printf("incoming auth header is %q\n", auth)
 	if !strings.HasPrefix(auth, "Bearer ") {
-		fmt.Printf("Oops, the man-in-the-middle didn't get an Auth header starting with 'Bearer '!")
+		m.logger.Warn("Oops, the man-in-the-middle didn't get an Auth header starting with 'Bearer '")
 		return ""
 	}
 
@@ -362,7 +362,7 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 	// For explanation see https://stackoverflow.com/questions/55698770/decode-jwt-without-validation-and-find-scope
 	jwtToken, _, err := new(jwt.Parser).ParseUnverified(token, jwt.MapClaims{})
 	if err != nil {
-		fmt.Printf("Bearer token couldn't be parsed: %v\n", err)
+		m.logger.Warn("Bearer token couldn't be parsed", "err", err)
 		return ""
 	}
 
@@ -370,7 +370,7 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 
 	claims, ok := jwtToken.Claims.(jwt.MapClaims)
 	if !ok {
-		fmt.Printf("Parsed token not MapClaims: %v\n", err)
+		m.logger.Warn("Parsed token not MapClaims", "err", err)
 		return ""
 	}
 
@@ -413,15 +413,16 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 
 	scopesObj, ok := decodedToken["scope"]
 	if !ok {
-		fmt.Printf("@@@ decoded token had no scopes, decodedToken=%#v\n", decodedToken)
+		m.logger.Info("decoded token had no scopes; see debug log for details")
+		m.logger.Debug("decoded token had no scopes", "decodedToken", decodedToken)
 		return ""
 	}
 	scopesStr, ok := scopesObj.(string)
 	if !ok {
-		fmt.Printf("@@@ decoded token scopes wasn't a string\n")
+		m.logger.Warn("decoded token scopes wasn't a string")
 		return ""
 	}
-	fmt.Printf("This OIDC user has scopes %q\n", scopesStr)
+	m.logger.Debug("This OIDC user has scopes", "scopesStr", scopesStr)
 	scopes := strings.Split(scopesStr, " ")
 	requiredScope := os.Getenv("REQUIRED_SCOPE")
 	scopeMatches := slices.Contains(scopes, requiredScope)
@@ -433,10 +434,10 @@ func getAuthorizationHeaderFromBearer(auth string) string {
 	// return os.Getenv(fmt.Sprintf("GITHUB_TOKEN_for_%s", decodedToken["preferred_username"]))
 
 	if scopeMatches {
-		fmt.Printf("The REQUIRED_SCOPE %q in scopes %v\n", requiredScope, scopes)
+		m.logger.Debug("The REQUIRED_SCOPE in scopes", "requiredScope", requiredScope, "scopes", scopes)
 		return os.Getenv("UPSTREAM_HEADER_TO_USE_IF_IN_AUDIENCE")
 	} else {
-		fmt.Printf("The REQUIRED_SCOPE %q NOT IN scopes %v\n", requiredScope, scopes)
+		m.logger.Info("The REQUIRED_SCOPE NOT IN scopes", "requiredScope", requiredScope, "scopes", scopes)
 		return os.Getenv("UPSTREAM_HEADER_TO_USE_IF_NOT_IN_AUDIENCE")
 	}
 
