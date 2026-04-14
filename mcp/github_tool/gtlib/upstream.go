@@ -413,15 +413,16 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 
 	scopesObj, ok := decodedToken["scope"]
 	if !ok {
-		m.logger.Info("decoded token had no scopes", "decodedToken", decodedToken)
+		m.logger.Info("decoded token had no scopes; see debug log for details")
+		m.logger.Debug("decoded token had no scopes", "decodedToken", decodedToken)
 		return ""
 	}
 	scopesStr, ok := scopesObj.(string)
 	if !ok {
-		m.logger.Info("decoded token scopes wasn't a string")
+		m.logger.Warn("decoded token scopes wasn't a string")
 		return ""
 	}
-	m.logger.Info("This OIDC user has scopes", "scopesStr", scopesStr)
+	m.logger.Debug("This OIDC user has scopes", "scopesStr", scopesStr)
 	scopes := strings.Split(scopesStr, " ")
 	requiredScope := os.Getenv("REQUIRED_SCOPE")
 	scopeMatches := slices.Contains(scopes, requiredScope)
