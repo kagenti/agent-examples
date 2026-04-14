@@ -5,8 +5,8 @@ description = "MCP tool for returning images from picsum.photos"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=2.11.0",
     "requests>=2.0.0",
     "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
+    "fastmcp>=3.2.0",   # Indirect; prevents CVE-2026-32871
 ]
