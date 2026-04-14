@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = ">=3.10"
 
 [[package]]
@@ -512,7 +512,6 @@ dependencies = [
 requires-dist = [
     { name = "authlib", specifier = ">=1.6.9" },
     { name = "fast-flights", specifier = ">=0.1.0" },
-    { name = "fastmcp", specifier = ">=2.11.0" },
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "playwright", specifier = ">=1.55.0" },
     { name = "urllib3", specifier = ">=2.6.3" },

@@ -468,7 +468,6 @@ dependencies = [
 requires-dist = [
     { name = "authlib", specifier = ">=1.6.9" },
     { name = "cryptography", specifier = ">=46.0.5" },
-    { name = "fastmcp", specifier = ">=2.11.0" },
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "python-multipart", specifier = ">=0.0.22" },

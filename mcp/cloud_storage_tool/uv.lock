@@ -314,7 +314,6 @@ requires-dist = [
     { name = "azure-core", specifier = ">=1.38.0" },
     { name = "azure-storage-blob" },
     { name = "boto3" },
-    { name = "fastmcp" },
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "google-cloud-storage" },
     { name = "jwt" },

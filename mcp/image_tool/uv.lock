@@ -551,7 +551,6 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = ">=1.6.9" },
-    { name = "fastmcp", specifier = ">=2.11.0" },
     { name = "fastmcp", specifier = ">=3.2.0" },
     { name = "requests", specifier = ">=2.0.0" },
     { name = "urllib3", specifier = ">=2.6.3" },
