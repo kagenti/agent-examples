@@ -18,7 +18,7 @@ dependencies = [
     "mlflow[langchain,kubernetes]>=3.11.1,<4",
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
-    "python-keycloak>=5.5.1",
+    "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp",
     # Auto-instrument httpx so outgoing MCP tool calls propagate traceparent
     "opentelemetry-instrumentation-httpx>=0.49b0",
