@@ -18,7 +18,7 @@ dependencies = [
     "openinference-instrumentation-langchain>=0.1.36",
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
-    "python-keycloak>=5.5.1",
+    "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp",
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
