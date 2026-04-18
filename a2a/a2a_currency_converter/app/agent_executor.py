@@ -51,7 +51,7 @@ class CurrencyAgentExecutor(AgentExecutor):
         if not task:
             task = new_task(context.message)
             logger.info(f"Created task for message : {context.message}")
-            event_queue.enqueue_event(task)
+            await event_queue.enqueue_event(task)
         updater = TaskUpdater(event_queue, task.id, task.context_id)
         try:
             async for item in self.agent.stream(query, task.context_id):

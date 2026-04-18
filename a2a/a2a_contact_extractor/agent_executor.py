@@ -71,7 +71,7 @@ class ExtractorAgentExecutor(AgentExecutor):
                 )
 
             if require_user_input:
-                event_queue.enqueue_event(
+                await event_queue.enqueue_event(
                     TaskStatusUpdateEvent(
                         status=TaskStatus(
                             state=TaskState.input_required,
@@ -87,7 +87,7 @@ class ExtractorAgentExecutor(AgentExecutor):
                     )
                 )
             elif is_task_complete:
-                event_queue.enqueue_event(
+                await event_queue.enqueue_event(
                     TaskArtifactUpdateEvent(
                         append=False,
                         contextId=task.context_id,
@@ -96,7 +96,7 @@ class ExtractorAgentExecutor(AgentExecutor):
                         artifact=artifact,
                     )
                 )
-                event_queue.enqueue_event(
+                await event_queue.enqueue_event(
                     TaskStatusUpdateEvent(
                         status=TaskStatus(state=TaskState.completed),
                         final=True,
@@ -105,7 +105,7 @@ class ExtractorAgentExecutor(AgentExecutor):
                     )
                 )
             else:
-                event_queue.enqueue_event(
+                await event_queue.enqueue_event(
                     TaskStatusUpdateEvent(
                         status=TaskStatus(
                             state=TaskState.working,
