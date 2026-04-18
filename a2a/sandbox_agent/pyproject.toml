@@ -14,6 +14,7 @@ dependencies = [
     "langgraph-checkpoint-postgres>=2.0.0",
     "asyncpg>=0.30.0",
     "psycopg[binary]>=3.1.0",
+    "psycopg-pool>=3.2.0",
     "pydantic-settings>=2.8.1",
     "opentelemetry-exporter-otlp",
     "opentelemetry-instrumentation-starlette",

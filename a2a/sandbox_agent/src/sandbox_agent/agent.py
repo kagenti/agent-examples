@@ -339,43 +339,42 @@ class SandboxAgentExecutor(AgentExecutor):
         _tofu_verify(_PACKAGE_ROOT)
 
     async def _ensure_checkpointer(self) -> None:
-        """Initialize or re-initialize the PostgreSQL checkpointer.
+        """Initialize the PostgreSQL checkpointer with a connection pool.
 
-        Creates a new connection pool if not initialized yet, or if the
-        existing connection is stale (e.g., after a PostgreSQL restart).
+        Uses AsyncConnectionPool (psycopg3) which handles reconnection,
+        health checks, and connection recycling natively. This prevents
+        the indefinite hangs from stale connections during long LLM calls.
         """
         if not self._checkpoint_db_url:
             return
 
-        needs_init = not self._checkpointer_initialized
+        if self._checkpointer_initialized:
+            return
 
-        # Check if existing connection is stale
-        if self._checkpointer_initialized and self._checkpointer:
-            try:
-                # Lightweight health check — attempt a simple query
-                pool = getattr(self._checkpointer, 'conn', None) or getattr(self._checkpointer, '_conn', None)
-                if pool and hasattr(pool, 'execute'):
-                    await pool.execute("SELECT 1")
-            except Exception:
-                logger.warning("PostgreSQL checkpointer connection stale — re-initializing")
-                # Close old connection
-                if hasattr(self, '_checkpointer_cm') and self._checkpointer_cm:
-                    try:
-                        await self._checkpointer_cm.__aexit__(None, None, None)
-                    except Exception:
-                        pass
-                needs_init = True
-                self._checkpointer_initialized = False
+        from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        from psycopg_pool import AsyncConnectionPool
+        from psycopg.rows import dict_row
 
-        if needs_init:
-            from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+        self._checkpoint_pool = AsyncConnectionPool(
+            conninfo=self._checkpoint_db_url,
+            min_size=2,
+            max_size=3,
+            open=False,
+            kwargs={
+                "autocommit": True,
+                "prepare_threshold": 0,
+                "row_factory": dict_row,
+                "options": "-c statement_timeout=30000",
+            },
+            check=AsyncConnectionPool.check_connection,
+            max_idle=60,
+        )
+        await self._checkpoint_pool.open(wait=True, timeout=10)
 
-            cm = AsyncPostgresSaver.from_conn_string(self._checkpoint_db_url)
-            self._checkpointer = await cm.__aenter__()
-            self._checkpointer_cm = cm
-            await self._checkpointer.setup()
-            self._checkpointer_initialized = True
-            logger.info("PostgreSQL checkpointer initialized")
+        self._checkpointer = AsyncPostgresSaver(self._checkpoint_pool)
+        await self._checkpointer.setup()
+        self._checkpointer_initialized = True
+        logger.info("PostgreSQL checkpointer initialized (pool, max_size=3)")
 
     # ------------------------------------------------------------------
 
@@ -510,6 +509,14 @@ class SandboxAgentExecutor(AgentExecutor):
                                     "DB connection stale (%d/%d), re-initializing checkpointer: %s",
                                     attempt + 1, max_retries, retry_err,
                                 )
+                                pool = getattr(self, '_checkpoint_pool', None)
+                                if pool:
+                                    try:
+                                        await pool.close()
+                                    except Exception:
+                                        pass
+                                self._checkpoint_pool = None
+                                self._checkpointer_initialized = False
                                 await self._ensure_checkpointer()
                                 # Rebuild graph with fresh checkpointer
                                 graph = build_graph(
