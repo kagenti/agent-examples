@@ -471,6 +471,7 @@ class SandboxAgentExecutor(AgentExecutor):
 
             try:
                 output = None
+                all_events = []
                 serializer = LangGraphSerializer(context_id=context_id)
                 llm_request_ids: list[str] = []
 
@@ -489,7 +490,8 @@ class SandboxAgentExecutor(AgentExecutor):
                     for attempt in range(max_retries + 1):
                         try:
                             async for ev in graph.astream(
-                                input_state, config=graph_config, stream_mode="updates"
+                                input_state, config=graph_config, stream_mode="updates",
+                                durability="exit",
                             ):
                                 await event_queue.put(ev)
                             break  # success
@@ -646,6 +648,7 @@ class SandboxAgentExecutor(AgentExecutor):
                             event_count, update_err,
                         )
                     output = event
+                    all_events.append(event)
 
                     # Capture LLM request_ids from AIMessage responses
                     for _node_val in event.values():
@@ -699,36 +702,42 @@ class SandboxAgentExecutor(AgentExecutor):
                             except Exception:
                                 pass  # best-effort
 
-                # Extract final answer from the last event.
-                # The reporter node sets {"final_answer": "..."}.
-                # Fall back to checking messages from reporter or executor.
+                # Extract final answer — check ALL events for reporter output,
+                # not just the last one (reflector_route may fire after reporter).
                 final_answer = None
-                if output:
-                    # 1. Check reporter node output (plan-execute-reflect)
-                    reporter_output = output.get("reporter", {})
-                    if isinstance(reporter_output, dict):
-                        final_answer = reporter_output.get("final_answer")
 
-                    # 2. Fall back to executor/assistant message content
-                    if not final_answer:
-                        for node_name in ("reporter", "executor", "assistant"):
-                            node_output = output.get(node_name, {})
-                            if isinstance(node_output, dict):
-                                msgs = node_output.get("messages", [])
-                                if msgs:
-                                    content = getattr(msgs[-1], "content", None)
-                                    if isinstance(content, list):
-                                        final_answer = "\n".join(
-                                            block.get("text", "") if isinstance(block, dict) else str(block)
-                                            for block in content
-                                            if isinstance(block, dict) and block.get("type") == "text"
-                                        ) or None
-                                    elif content:
-                                        final_answer = str(content)
-                                    if final_answer:
-                                        break
+                # 1. Check accumulated reporter output from any event
+                for ev_candidate in all_events:
+                    if isinstance(ev_candidate, dict):
+                        rep = ev_candidate.get("reporter", {})
+                        if isinstance(rep, dict) and rep.get("final_answer"):
+                            final_answer = rep["final_answer"]
+
+                # 2. Fall back to last event's node messages
+                if not final_answer and output:
+                    for node_name in ("reporter", "reflector_route", "executor", "assistant"):
+                        node_output = output.get(node_name, {})
+                        if isinstance(node_output, dict):
+                            fa = node_output.get("final_answer")
+                            if fa:
+                                final_answer = fa
+                                break
+                            msgs = node_output.get("messages", [])
+                            if msgs:
+                                content = getattr(msgs[-1], "content", None)
+                                if isinstance(content, list):
+                                    final_answer = "\n".join(
+                                        block.get("text", "") if isinstance(block, dict) else str(block)
+                                        for block in content
+                                        if isinstance(block, dict) and block.get("type") == "text"
+                                    ) or None
+                                elif content:
+                                    final_answer = str(content)
+                                if final_answer:
+                                    break
 
                 if final_answer is None:
+                    logger.warning("Empty response from graph execution")
                     final_answer = "No response generated."
 
                 # Store LLM request_ids in task metadata for token usage tracking
