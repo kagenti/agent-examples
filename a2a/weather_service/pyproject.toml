@@ -9,16 +9,16 @@ readme = "README.md"
 license = { text = "Apache" }
 requires-python = ">=3.11"
 dependencies = [
-    "a2a-sdk>=0.2.16",
+    "a2a-sdk>=0.3.26",
     "langgraph>=1.1.3",
-    "langchain-core>=1.2.11",
-    "langchain-community>=0.3.27",
-    "langchain-ollama>=0.2.1",
+    "langchain-core>=1.2.31",
+    "langchain-community>=0.4.1",
+    "langchain-ollama>=1.1.0",
     "langchain-openai>=0.3.7",
     "mlflow[langchain,kubernetes]>=3.11.1,<4",
     "pydantic-settings>=2.8.1",
     "langchain-mcp-adapters>=0.1.0",
-    "python-keycloak>=5.5.1",
+    "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp",
     # Auto-instrument httpx so outgoing MCP tool calls propagate traceparent
     "opentelemetry-instrumentation-httpx>=0.49b0",
