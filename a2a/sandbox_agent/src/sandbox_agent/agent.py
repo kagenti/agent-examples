@@ -469,6 +469,17 @@ class SandboxAgentExecutor(AgentExecutor):
             }
             logger.info("Processing messages: %s (thread_id=%s)", input_state, context_id)
 
+            # Emit early status so SSE connections see data immediately
+            # (prevents Istio/Envoy idle timeout during graph initialization)
+            await task_updater.update_status(
+                TaskState.working,
+                new_agent_text_message(
+                    json.dumps({"type": "status", "message": "Processing request..."}),
+                    task_updater.context_id,
+                    task_updater.task_id,
+                ),
+            )
+
             try:
                 output = None
                 all_events = []
@@ -481,7 +492,7 @@ class SandboxAgentExecutor(AgentExecutor):
                 # to the A2A event stream.  If the consumer is cancelled the
                 # graph keeps running and saves results to the task store.
                 _SENTINEL = object()
-                event_queue: asyncio.Queue = asyncio.Queue()
+                graph_event_queue: asyncio.Queue = asyncio.Queue()
 
                 async def _run_graph() -> None:
                     """Execute graph and push events to queue (shielded)."""
@@ -493,7 +504,7 @@ class SandboxAgentExecutor(AgentExecutor):
                                 input_state, config=graph_config, stream_mode="updates",
                                 durability="exit",
                             ):
-                                await event_queue.put(ev)
+                                await graph_event_queue.put(ev)
                             break  # success
                         except Exception as retry_err:
                             err_str = str(retry_err).lower()
@@ -502,7 +513,7 @@ class SandboxAgentExecutor(AgentExecutor):
                             is_db_stale = "connection is closed" in err_str or "operationalerror" in err_str
                             if is_quota:
                                 logger.error("LLM quota exceeded: %s", retry_err)
-                                await event_queue.put(
+                                await graph_event_queue.put(
                                     {"_error": "LLM API quota exceeded. Check billing."}
                                 )
                                 break
@@ -540,9 +551,9 @@ class SandboxAgentExecutor(AgentExecutor):
                                 continue
                             else:
                                 logger.error("Graph execution failed: %s", retry_err, exc_info=True)
-                                await event_queue.put({"_error": str(retry_err)})
+                                await graph_event_queue.put({"_error": str(retry_err)})
                                 break
-                    await event_queue.put(_SENTINEL)
+                    await graph_event_queue.put(_SENTINEL)
 
                 # Shield the graph task from cancellation
                 graph_task = asyncio.ensure_future(asyncio.shield(_run_graph()))
@@ -552,7 +563,7 @@ class SandboxAgentExecutor(AgentExecutor):
                 client_disconnected = False
                 while True:
                     try:
-                        event = await event_queue.get()
+                        event = await graph_event_queue.get()
                     except asyncio.CancelledError:
                         logger.warning(
                             "Event consumer cancelled (context=%s) — graph continues in background",
@@ -669,7 +680,7 @@ class SandboxAgentExecutor(AgentExecutor):
                     # since the SSE consumer was cancelled and missed these.
                     bg_event_count = 0
                     bg_serialized_lines: list[str] = []
-                    while not event_queue.empty():
+                    while not graph_event_queue.empty():
                         ev = event_queue.get_nowait()
                         if ev is _SENTINEL or "_error" in ev:
                             continue
