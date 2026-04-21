@@ -18,7 +18,7 @@ The Github Issue Agent is designed to perform tasks dealing with Github issues, 
 | EXTRA_HEADERS | Extra headers for the OpenAI API, e.g. {"MY_HEADER": "my_value"} | No | `{}` |
 | MODEL_TEMPERATURE | The temperature for the model | Yes | `0` |
 | MCP_URL | Endpoint where the Slack MCP server can be found | No |  "" |
-| SERVICE_PORT | Port on which the service will run | Yes | `8000` |
+| PORT | Port on which the service will run | Yes | `8000` |
 | LOG_LEVEL | Application log level | No | DEBUG |
 | GITHUB_TOKEN | If set, will send requests to Github MCP Server with `Authorization: Bearer <GITHUB_TOKEN>` header. | No | - |
 | JWKS_URI | Endpoint to obtain JWKS for token validation. Enables token validation. | No | - |
