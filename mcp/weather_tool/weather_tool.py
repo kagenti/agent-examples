@@ -7,8 +7,11 @@ import sys
 
 import httpx
 import requests
+import uvicorn
 from fastmcp import FastMCP
 from requests.adapters import HTTPAdapter
+from starlette.middleware import Middleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from urllib3.util.retry import Retry
 from fastmcp.server.dependencies import get_http_headers
 
@@ -157,15 +160,31 @@ async def get_weather(city: str) -> str:
 
 
 
+async def _trace_propagation_middleware(request, call_next):
+    """Extract W3C traceparent from HTTP headers before FastMCP creates its span.
+
+    FastMCP creates its own root span per request. Without this middleware,
+    that span has no parent, producing a disconnected trace in Phoenix/Jaeger.
+    Attaching the incoming context here makes FastMCP's span a child of the
+    caller's span automatically, since OTEL picks up the ambient context.
+    """
+    incoming_ctx = extract(dict(request.headers))
+    token = otel_context.attach(incoming_ctx)
+    try:
+        return await call_next(request)
+    finally:
+        otel_context.detach(token)
+
+
 # host can be specified with HOST env variable
 # transport can be specified with MCP_TRANSPORT env variable (defaults to streamable-http)
 def run_server():
     "Run the MCP server"
     setup_tracing()
-    transport = os.getenv("MCP_TRANSPORT", "streamable-http")
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    mcp.run(transport=transport, host=host, port=port)
+    app = mcp.http_app(middleware=[Middleware(BaseHTTPMiddleware, dispatch=_trace_propagation_middleware)])
+    uvicorn.run(app, host=host, port=port)
 
 
 if __name__ == "__main__":
