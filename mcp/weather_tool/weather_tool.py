@@ -117,6 +117,7 @@ async def get_weather(city: str) -> str:
             base_url = "https://geocoding-api.open-meteo.com/v1/search"
             async with httpx.AsyncClient() as client:
                 response = await client.get(base_url, params={"name": city, "count": 1}, timeout=10)
+            response.raise_for_status()
             data = response.json()
 
             if not data or "results" not in data:
@@ -137,6 +138,7 @@ async def get_weather(city: str) -> str:
             }
             async with httpx.AsyncClient() as client:
                 weather_response = await client.get(weather_url, params=weather_params, timeout=10)
+            weather_response.raise_for_status()
             weather_data = weather_response.json()
 
             result = json.dumps(weather_data["current_weather"])
