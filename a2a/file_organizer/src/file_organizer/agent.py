@@ -170,7 +170,9 @@ def run():
     """
     Runs the A2A Agent application.
     """
-    agent_card = get_agent_card(host="0.0.0.0", port=8000)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    agent_card = get_agent_card(host=host, port=port)
 
     request_handler = DefaultRequestHandler(
         agent_executor=FileOrganizerExecutor(),
@@ -195,4 +197,4 @@ def run():
         ),
     )
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=host, port=port)

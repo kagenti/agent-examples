@@ -116,7 +116,9 @@ async def agent_card_compat(request: Request) -> JSONResponse:
 
 def run():
     """Runs the A2A Agent application."""
-    agent_card = get_agent_card(host="0.0.0.0", port=8000)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    agent_card = get_agent_card(host=host, port=port)
 
     request_handler = DefaultRequestHandler(
         agent_executor=CheerupExecutor(),
@@ -134,4 +136,4 @@ def run():
     app.routes.insert(0, Route("/health", health, methods=["GET"]))
     app.routes.insert(0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"]))
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host=host, port=port)
