@@ -5,7 +5,9 @@ import logging
 import os
 import sys
 
-import httpx
+import asyncio
+import functools
+
 import requests
 import uvicorn
 from fastmcp import FastMCP
@@ -13,7 +15,6 @@ from requests.adapters import HTTPAdapter
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from urllib3.util.retry import Retry
-from fastmcp.server.dependencies import get_http_headers
 
 from opentelemetry import trace, context as otel_context
 from opentelemetry.sdk.trace import TracerProvider
@@ -60,9 +61,6 @@ def _build_resilient_session() -> requests.Session:
 _session = _build_resilient_session()
 
 
-_tracer: trace.Tracer | None = None
-
-
 def setup_tracing() -> None:
     """Initialize OpenTelemetry tracing with W3C trace context propagation."""
     otlp_endpoint = os.getenv(
@@ -89,12 +87,6 @@ def setup_tracing() -> None:
     logger.info(f"Tracing initialized: service={service_name} otlp={otlp_endpoint}")
 
 
-def get_tracer() -> trace.Tracer:
-    global _tracer
-    if _tracer is None:
-        _tracer = trace.get_tracer("weather-mcp-tool")
-    return _tracer
-
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 async def get_weather(city: str) -> str:
@@ -102,60 +94,61 @@ async def get_weather(city: str) -> str:
     # Extract W3C traceparent from the incoming MCP HTTP request so this tool's
     # span becomes a child of the MCP gateway span (which is itself a child of
     # the agent span), giving a full agent → gateway → tool trace chain.
-    headers = get_http_headers()
-    incoming_ctx = extract(headers)
-    token = otel_context.attach(incoming_ctx)
+    # Enrich FastMCP's own span with gen_ai attributes rather than creating a
+    # child span — FastMCP already creates a tools/call span, so a second one
+    # with the same name is misleading. Adding to the current span merges both
+    # sets of attributes into a single, complete span.
+    span = trace.get_current_span()
+    span.set_attribute("gen_ai.operation.name", "execute_tool")
+    span.set_attribute("gen_ai.tool.name", "get_weather")
+    span.set_attribute("gen_ai.tool.call.arguments", json.dumps({"city": city}))
 
-    # Span name follows the MCP semconv format: "{mcp.method.name} {gen_ai.tool.name}"
+    logger.debug(f"Getting weather info for city '{city}'.")
+
+    loop = asyncio.get_event_loop()
+
     try:
-        with get_tracer().start_as_current_span("tools/call get_weather", context=incoming_ctx) as span:
-            span.set_attribute("mcp.method.name", "tools/call")
-            span.set_attribute("gen_ai.operation.name", "execute_tool")
-            span.set_attribute("gen_ai.tool.name", "get_weather")
-            span.set_attribute("gen_ai.tool.call.arguments", json.dumps({"city": city}))
+        base_url = "https://geocoding-api.open-meteo.com/v1/search"
+        response = await loop.run_in_executor(
+            None,
+            functools.partial(_session.get, base_url, params={"name": city, "count": 1}, timeout=_REQUEST_TIMEOUT),
+        )
+        response.raise_for_status()
+        data = response.json()
 
-            logger.debug(f"Getting weather info for city '{city}'.")
+        if not data or "results" not in data:
+            result = f"City {city} not found"
+            span.set_attribute("error.type", "tool_error")
+            span.set_status(Status(StatusCode.ERROR, result))
+            return result
 
-            try:
-                base_url = "https://geocoding-api.open-meteo.com/v1/search"
-                async with httpx.AsyncClient() as client:
-                    response = await client.get(base_url, params={"name": city, "count": 1}, timeout=10)
-                response.raise_for_status()
-                data = response.json()
+        latitude = data["results"][0]["latitude"]
+        longitude = data["results"][0]["longitude"]
 
-                if not data or "results" not in data:
-                    result = f"City {city} not found"
-                    span.set_attribute("error.type", "tool_error")
-                    span.set_status(Status(StatusCode.ERROR, result))
-                    return result
+        weather_url = "https://api.open-meteo.com/v1/forecast"
+        weather_params = {
+            "latitude": latitude,
+            "longitude": longitude,
+            "temperature_unit": "fahrenheit",
+            "current_weather": True,
+        }
+        weather_response = await loop.run_in_executor(
+            None,
+            functools.partial(_session.get, weather_url, params=weather_params, timeout=_REQUEST_TIMEOUT),
+        )
+        weather_response.raise_for_status()
+        weather_data = weather_response.json()
 
-                latitude = data["results"][0]["latitude"]
-                longitude = data["results"][0]["longitude"]
+        result = json.dumps(weather_data["current_weather"])
+        span.set_attribute("gen_ai.tool.call.result", result)
+        span.set_status(Status(StatusCode.OK))
+        return result
 
-                weather_url = "https://api.open-meteo.com/v1/forecast"
-                weather_params = {
-                    "latitude": latitude,
-                    "longitude": longitude,
-                    "temperature_unit": "fahrenheit",
-                    "current_weather": True,
-                }
-                async with httpx.AsyncClient() as client:
-                    weather_response = await client.get(weather_url, params=weather_params, timeout=10)
-                weather_response.raise_for_status()
-                weather_data = weather_response.json()
-
-                result = json.dumps(weather_data["current_weather"])
-                span.set_attribute("gen_ai.tool.call.result", result)
-                span.set_status(Status(StatusCode.OK))
-                return result
-
-            except Exception as e:
-                span.set_attribute("error.type", type(e).__name__)
-                span.set_status(Status(StatusCode.ERROR, str(e)))
-                span.record_exception(e)
-                raise
-    finally:
-        otel_context.detach(token)
+    except Exception as e:
+        span.set_attribute("error.type", type(e).__name__)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.record_exception(e)
+        raise
 
 
 

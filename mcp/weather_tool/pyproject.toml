@@ -5,7 +5,6 @@ description = "simple weather tool"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "httpx>=0.28.1",
     "requests>=2.32.3",
     "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
