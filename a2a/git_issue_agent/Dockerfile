@@ -12,7 +12,4 @@ ENV PRODUCTION_MODE=True \
 RUN chown -R 1001:1001 /app
 USER 1001
 
-# Default port 8000; override with PORT env var.
-# The kagenti operator sets PORT during proxy-sidecar port-stealing.
-EXPOSE 8000
 CMD ["uv", "run", "--no-sync", "server"]
