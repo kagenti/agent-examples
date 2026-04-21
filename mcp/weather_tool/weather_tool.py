@@ -112,49 +112,48 @@ async def get_weather(city: str) -> str:
             span.set_attribute("mcp.method.name", "tools/call")
             span.set_attribute("gen_ai.operation.name", "execute_tool")
             span.set_attribute("gen_ai.tool.name", "get_weather")
-            # Opt-in: include tool arguments per semconv
             span.set_attribute("gen_ai.tool.call.arguments", json.dumps({"city": city}))
 
             logger.debug(f"Getting weather info for city '{city}'.")
 
-            base_url = "https://geocoding-api.open-meteo.com/v1/search"
-            async with httpx.AsyncClient() as client:
-                response = await client.get(base_url, params={"name": city, "count": 1}, timeout=10)
-            response.raise_for_status()
-            data = response.json()
+            try:
+                base_url = "https://geocoding-api.open-meteo.com/v1/search"
+                async with httpx.AsyncClient() as client:
+                    response = await client.get(base_url, params={"name": city, "count": 1}, timeout=10)
+                response.raise_for_status()
+                data = response.json()
 
-            if not data or "results" not in data:
-                result = f"City {city} not found"
-                span.set_attribute("error.type", "tool_error")
-                span.set_status(Status(StatusCode.ERROR, result))
+                if not data or "results" not in data:
+                    result = f"City {city} not found"
+                    span.set_attribute("error.type", "tool_error")
+                    span.set_status(Status(StatusCode.ERROR, result))
+                    return result
+
+                latitude = data["results"][0]["latitude"]
+                longitude = data["results"][0]["longitude"]
+
+                weather_url = "https://api.open-meteo.com/v1/forecast"
+                weather_params = {
+                    "latitude": latitude,
+                    "longitude": longitude,
+                    "temperature_unit": "fahrenheit",
+                    "current_weather": True,
+                }
+                async with httpx.AsyncClient() as client:
+                    weather_response = await client.get(weather_url, params=weather_params, timeout=10)
+                weather_response.raise_for_status()
+                weather_data = weather_response.json()
+
+                result = json.dumps(weather_data["current_weather"])
+                span.set_attribute("gen_ai.tool.call.result", result)
+                span.set_status(Status(StatusCode.OK))
                 return result
 
-            latitude = data["results"][0]["latitude"]
-            longitude = data["results"][0]["longitude"]
-
-            weather_url = "https://api.open-meteo.com/v1/forecast"
-            weather_params = {
-                "latitude": latitude,
-                "longitude": longitude,
-                "temperature_unit": "fahrenheit",
-                "current_weather": True,
-            }
-            async with httpx.AsyncClient() as client:
-                weather_response = await client.get(weather_url, params=weather_params, timeout=10)
-            weather_response.raise_for_status()
-            weather_data = weather_response.json()
-
-            result = json.dumps(weather_data["current_weather"])
-            # Opt-in: include tool result per semconv
-            span.set_attribute("gen_ai.tool.call.result", result)
-            span.set_status(Status(StatusCode.OK))
-            return result
-
-    except Exception as e:
-        span.set_attribute("error.type", type(e).__name__)
-        span.set_status(Status(StatusCode.ERROR, str(e)))
-        span.record_exception(e)
-        raise
+            except Exception as e:
+                span.set_attribute("error.type", type(e).__name__)
+                span.set_status(Status(StatusCode.ERROR, str(e)))
+                span.record_exception(e)
+                raise
     finally:
         otel_context.detach(token)
 
