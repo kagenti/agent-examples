@@ -105,7 +105,7 @@ async def get_weather(city: str) -> str:
 
     # Span name follows the MCP semconv format: "{mcp.method.name} {gen_ai.tool.name}"
     try:
-        with get_tracer().start_as_current_span("tools/call get_weather") as span:
+        with get_tracer().start_as_current_span("tools/call get_weather", context=incoming_ctx) as span:
             span.set_attribute("mcp.method.name", "tools/call")
             span.set_attribute("gen_ai.operation.name", "execute_tool")
             span.set_attribute("gen_ai.tool.name", "get_weather")
