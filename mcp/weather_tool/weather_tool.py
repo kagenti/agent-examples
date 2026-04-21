@@ -6,6 +6,7 @@ import os
 import sys
 
 import httpx
+import requests
 from fastmcp import FastMCP
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
