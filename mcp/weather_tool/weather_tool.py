@@ -1,31 +1,30 @@
 "Weather MCP tool example"
 
+import asyncio
+import functools
 import json
 import logging
 import os
 import sys
 
-import asyncio
-import functools
-
 import requests
 import uvicorn
 from fastmcp import FastMCP
+from opentelemetry import context as otel_context
+from opentelemetry import trace
+from opentelemetry.baggage.propagation import W3CBaggagePropagator
+from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+from opentelemetry.propagate import extract, set_global_textmap
+from opentelemetry.propagators.composite import CompositePropagator
+from opentelemetry.sdk.resources import SERVICE_NAME, Resource
+from opentelemetry.sdk.trace import TracerProvider
+from opentelemetry.sdk.trace.export import BatchSpanProcessor
+from opentelemetry.trace import Status, StatusCode
+from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
 from requests.adapters import HTTPAdapter
 from starlette.middleware import Middleware
 from starlette.middleware.base import BaseHTTPMiddleware
 from urllib3.util.retry import Retry
-
-from opentelemetry import trace, context as otel_context
-from opentelemetry.sdk.trace import TracerProvider
-from opentelemetry.sdk.trace.export import BatchSpanProcessor
-from opentelemetry.sdk.resources import Resource, SERVICE_NAME
-from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
-from opentelemetry.propagate import extract, set_global_textmap
-from opentelemetry.propagators.composite import CompositePropagator
-from opentelemetry.trace.propagation.tracecontext import TraceContextTextMapPropagator
-from opentelemetry.baggage.propagation import W3CBaggagePropagator
-from opentelemetry.trace import Status, StatusCode
 
 mcp = FastMCP("Weather")
 logger = logging.getLogger(__name__)
@@ -64,8 +63,7 @@ _session = _build_resilient_session()
 def setup_tracing() -> None:
     """Initialize OpenTelemetry tracing with W3C trace context propagation."""
     otlp_endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.kagenti-system.svc.cluster.local:8335"
     )
     service_name = os.getenv("OTEL_SERVICE_NAME", "weather-mcp-tool")
 
@@ -74,30 +72,25 @@ def setup_tracing() -> None:
 
     resource = Resource(attributes={SERVICE_NAME: service_name})
     provider = TracerProvider(resource=resource)
-    provider.add_span_processor(
-        BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint))
-    )
+    provider.add_span_processor(BatchSpanProcessor(OTLPSpanExporter(endpoint=otlp_endpoint)))
     trace.set_tracer_provider(provider)
 
-    set_global_textmap(CompositePropagator([
-        TraceContextTextMapPropagator(),
-        W3CBaggagePropagator(),
-    ]))
+    set_global_textmap(
+        CompositePropagator(
+            [
+                TraceContextTextMapPropagator(),
+                W3CBaggagePropagator(),
+            ]
+        )
+    )
 
     logger.info(f"Tracing initialized: service={service_name} otlp={otlp_endpoint}")
-
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
 async def get_weather(city: str) -> str:
     """Get weather info for a city"""
-    # Extract W3C traceparent from the incoming MCP HTTP request so this tool's
-    # span becomes a child of the MCP gateway span (which is itself a child of
-    # the agent span), giving a full agent → gateway → tool trace chain.
-    # Enrich FastMCP's own span with gen_ai attributes rather than creating a
-    # child span — FastMCP already creates a tools/call span, so a second one
-    # with the same name is misleading. Adding to the current span merges both
-    # sets of attributes into a single, complete span.
+    # Enrich FastMCP's span with gen_ai attributes rather than creating a child span.
     span = trace.get_current_span()
     span.set_attribute("gen_ai.operation.name", "execute_tool")
     span.set_attribute("gen_ai.tool.name", "get_weather")
@@ -105,7 +98,7 @@ async def get_weather(city: str) -> str:
 
     logger.debug(f"Getting weather info for city '{city}'.")
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
 
     try:
         base_url = "https://geocoding-api.open-meteo.com/v1/search"
@@ -149,7 +142,6 @@ async def get_weather(city: str) -> str:
         span.set_status(Status(StatusCode.ERROR, str(e)))
         span.record_exception(e)
         raise
-
 
 
 async def _trace_propagation_middleware(request, call_next):
