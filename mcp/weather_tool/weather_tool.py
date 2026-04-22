@@ -84,7 +84,7 @@ def setup_tracing() -> None:
         )
     )
 
-    logger.info(f"Tracing initialized: service={service_name} otlp={otlp_endpoint}")
+    logger.info("Tracing initialized: service=%s otlp=%s", service_name, otlp_endpoint)
 
 
 @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True})
@@ -111,8 +111,8 @@ async def get_weather(city: str) -> str:
 
         if not data or "results" not in data:
             result = f"City {city} not found"
-            span.set_attribute("error.type", "tool_error")
-            span.set_status(Status(StatusCode.ERROR, result))
+            span.set_attribute("gen_ai.tool.call.result", result)
+            span.set_status(Status(StatusCode.OK))
             return result
 
         latitude = data["results"][0]["latitude"]
@@ -137,6 +137,12 @@ async def get_weather(city: str) -> str:
         span.set_status(Status(StatusCode.OK))
         return result
 
+    except requests.RequestException as e:
+        logger.warning("Weather API error for '%s': %s", city, e)
+        span.set_attribute("error.type", type(e).__name__)
+        span.set_status(Status(StatusCode.ERROR, str(e)))
+        span.record_exception(e)
+        return f"Weather service temporarily unavailable for {city}"
     except Exception as e:
         span.set_attribute("error.type", type(e).__name__)
         span.set_status(Status(StatusCode.ERROR, str(e)))
@@ -160,8 +166,7 @@ async def _trace_propagation_middleware(request, call_next):
         otel_context.detach(token)
 
 
-# host can be specified with HOST env variable
-# transport can be specified with MCP_TRANSPORT env variable (defaults to streamable-http)
+# Environment variables: host can be specified with HOST, port with PORT
 def run_server():
     "Run the MCP server"
     setup_tracing()
