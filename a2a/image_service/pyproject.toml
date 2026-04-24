@@ -7,7 +7,7 @@ license = { text = "Apache" }
 requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk>=0.2.16",
-    "langgraph>=0.2.55",
+    "langgraph>=1.1.9",
     "langchain-core>=1.2.11",
     "langchain-community>=0.4.1",
     "langchain-ollama>=1.1.0",
