@@ -24,7 +24,7 @@ dependencies = [
     "opentelemetry-instrumentation-httpx>=0.49b0",
     # OpenTelemetry GenAI semantic convention instrumentation
     # Emits spans with gen_ai.* attributes for MLflow compatibility
-    "opentelemetry-instrumentation-openai>=0.34b0",
+    "opentelemetry-instrumentation-openai>=0.60.0",
     # OpenInference for LangChain instrumentation and AGENT span semantics
     "openinference-semantic-conventions>=0.1.12",
     "openinference-instrumentation-langchain>=0.1.27",
