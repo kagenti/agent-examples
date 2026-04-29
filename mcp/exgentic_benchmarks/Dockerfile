@@ -38,6 +38,7 @@ ENV UV_SYSTEM_PYTHON=1
 
 # Install Exgentic and its dependencies using uv
 RUN uv pip install --system --no-cache -e .
+RUN uv pip install --system --no-cache datasets # to allow direct (and not venv) access to GSK8k and another simple benchmarks
 
 # Set HOME to /app before installing benchmark so data goes to the right location
 ENV HOME=/app
