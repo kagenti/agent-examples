@@ -1,4 +1,6 @@
+import logging
 from functools import lru_cache
+from pathlib import Path
 from typing import List
 
 from langchain_core.messages import AIMessage, SystemMessage
@@ -10,6 +12,7 @@ from langgraph.prebuilt import ToolNode, tools_condition
 from generic_agent.config import Configuration
 
 config = Configuration()
+logger = logging.getLogger(__name__)
 
 
 # Extend MessagesState to include a final answer
@@ -25,16 +28,33 @@ def _get_mcp_urls() -> List[str]:
 
 @lru_cache(maxsize=1)
 def get_mcpclient() -> MultiServerMCPClient:
+    """
+    Create MCP client with error handling.
+
+    If individual MCP servers fail to connect, logs warnings but continues
+    with available servers.
+
+    Returns:
+        MultiServerMCPClient instance (may have empty configs if all servers fail)
+    """
     urls = _get_mcp_urls()
 
     client_configs = {}
     transport = config.MCP_TRANSPORT
 
     for i, url in enumerate(urls, 1):
-        client_configs[f"mcp{i}"] = {
-            "url": url,
-            "transport": transport,
-        }
+        try:
+            client_configs[f"mcp{i}"] = {
+                "url": url,
+                "transport": transport,
+            }
+        except Exception as e:
+            logger.warning(f"Failed to configure MCP server {url}: {e}")
+            continue
+
+    if not client_configs:
+        logger.warning("No MCP servers configured successfully. Agent will work without MCP tools.")
+
     return MultiServerMCPClient(client_configs)
 
 
@@ -64,6 +84,126 @@ def get_mcp_server_names() -> List[str]:
     return mcp_names
 
 
+def get_skill_folder_paths() -> List[str]:
+    """
+    Extract skill folder paths from the SKILL_FOLDERS configuration.
+
+    The SKILL_FOLDERS field contains comma-separated folder paths.
+    Example: "/app/skills/pdf,/app/skills/skill-creator" -> ["/app/skills/pdf", "/app/skills/skill-creator"]
+
+    Returns:
+        List of skill folder paths
+    """
+    folders_str = config.SKILL_FOLDERS
+    if not folders_str or not folders_str.strip():
+        return []
+
+    folder_paths = []
+    for folder in folders_str.split(","):
+        folder = folder.strip()
+        if folder:
+            folder_paths.append(folder)
+
+    return folder_paths
+
+
+def load_skills_content() -> str:
+    """
+    Load skill content from skill folders with error handling.
+
+    Reads all relevant files from each skill folder:
+    - SKILL.md: Main skill description and instructions
+    - *.py: Python scripts and tools
+    - *.md: Additional documentation files
+
+    If individual skills fail to load, logs warnings but continues with other skills.
+
+    Returns:
+        Combined skill content as a string, or empty string if no skills found
+    """
+    skill_folders = get_skill_folder_paths()
+    if not skill_folders:
+        return ""
+
+    skills_content = []
+    failed_skills = []
+
+    for folder_path in skill_folders:
+        try:
+            skill_path = Path(folder_path)
+            if not skill_path.exists() or not skill_path.is_dir():
+                logger.warning(f"Skill folder does not exist or is not a directory: {folder_path}")
+                failed_skills.append(skill_path.name if skill_path else folder_path)
+                continue
+
+            skill_name = skill_path.name
+            skill_parts = [f"### Skill: {skill_name}\n"]
+
+            # Load SKILL.md first (main description)
+            skill_md_path = skill_path / "SKILL.md"
+            if skill_md_path.exists() and skill_md_path.is_file():
+                try:
+                    with open(skill_md_path, "r", encoding="utf-8") as f:
+                        content = f.read().strip()
+                        if content:
+                            skill_parts.append(f"#### Main Description\n\n{content}")
+                except Exception as e:
+                    logger.warning(f"Failed to read {skill_md_path}: {e}")
+
+            # Load Python scripts (these are tools/utilities the skill provides)
+            python_files = sorted(skill_path.rglob("*.py"))
+            if python_files:
+                scripts_content = []
+                for py_file in python_files:
+                    try:
+                        # Get relative path from skill folder
+                        rel_path = py_file.relative_to(skill_path)
+                        with open(py_file, "r", encoding="utf-8") as f:
+                            code = f.read().strip()
+                            if code:
+                                scripts_content.append(f"**File: {rel_path}**\n```python\n{code}\n```")
+                    except Exception as e:
+                        logger.warning(f"Failed to read {py_file}: {e}")
+
+                if scripts_content:
+                    skill_parts.append("#### Available Scripts\n\n" + "\n\n".join(scripts_content))
+
+            # Load additional markdown files (documentation, examples, etc.)
+            md_files = sorted([f for f in skill_path.rglob("*.md") if f.name != "SKILL.md"])
+            if md_files:
+                docs_content = []
+                for md_file in md_files:
+                    try:
+                        rel_path = md_file.relative_to(skill_path)
+                        with open(md_file, "r", encoding="utf-8") as f:
+                            content = f.read().strip()
+                            if content:
+                                docs_content.append(f"**{rel_path}**\n\n{content}")
+                    except Exception as e:
+                        logger.warning(f"Failed to read {md_file}: {e}")
+
+                if docs_content:
+                    skill_parts.append("#### Additional Documentation\n\n" + "\n\n".join(docs_content))
+
+            if len(skill_parts) > 1:  # More than just the header
+                skills_content.append("\n\n".join(skill_parts))
+        except Exception as e:
+            logger.warning(f"Failed to load skill from {folder_path}: {e}")
+            failed_skills.append(Path(folder_path).name)
+            continue
+
+    if failed_skills:
+        logger.warning(f"Failed to load {len(failed_skills)} skill(s): {', '.join(failed_skills)}")
+
+    if skills_content:
+        loaded_count = len(skills_content)
+        logger.info(f"Successfully loaded {loaded_count} skill(s)")
+        return "\n\n" + "\n\n---\n\n".join(skills_content)
+
+    logger.info("No skills loaded")
+    return ""
+
+
 async def get_graph(client: MultiServerMCPClient) -> StateGraph:
     llm = ChatOpenAI(
         model=config.LLM_MODEL,
@@ -72,14 +212,31 @@ async def get_graph(client: MultiServerMCPClient) -> StateGraph:
         temperature=0,
     )
 
-    # Get tools asynchronously
-    tools = await client.get_tools()
-    llm_with_tools = llm.bind_tools(tools)
+    # Get tools asynchronously with error handling
+    try:
+        tools = await client.get_tools()
+        if tools:
+            logger.info(f"Successfully loaded {len(tools)} MCP tool(s)")
+        else:
+            logger.warning("No MCP tools available")
+        llm_with_tools = llm.bind_tools(tools)
+    except Exception as e:
+        logger.warning(f"Failed to load MCP tools: {e}. Agent will work without MCP tools.")
+        tools = []
+        llm_with_tools = llm
 
-    # System message
-    sys_msg = SystemMessage(
-        content="You are the **Generic Assistant**, a multi-purpose, tool-based expert. Your primary directive is to fulfill user requests by effectively utilizing the available **MCP tools**. You will select the most appropriate tool(s) based on the user's need (e.g., weather, calculations, data retrieval) and strictly adhere to their output to generate your final answer. Be precise and concise."
-    )
+    # Load skills content if available
+    skills_content = load_skills_content()
+
+    # Build system message
+    base_instruction = "You are the **Generic Assistant**, a multi-purpose, tool-based expert. Your primary directive is to fulfill user requests by effectively utilizing the available **MCP tools**. You will select the most appropriate tool(s) based on the user's need (e.g., weather, calculations, data retrieval) and strictly adhere to their output to generate your final answer. Be precise and concise."
+
+    if skills_content:
+        system_content = f"{base_instruction}\n\n## Available Skills\n\nYou have access to the following specialized skills. Use them when the user's request matches the skill's capabilities:{skills_content}"
+    else:
+        system_content = base_instruction
+
+    sys_msg = SystemMessage(content=system_content)
 
     # Node
     def assistant(state: ExtendedMessagesState) -> ExtendedMessagesState:

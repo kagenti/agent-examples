@@ -9,7 +9,18 @@ A flexible A2A agent that can be configured with multiple MCP servers to provide
 - **Multi-MCP Support**: Connect to multiple MCP servers simultaneously
 - **Dynamic Tool Loading**: Automatically discovers and uses tools from connected MCP servers
 - **LLM Agnostic**: Works with any OpenAI-compatible API (Ollama, OpenAI, etc.)
+- **Skill Loading**: Load custom skills to enhance agent capabilities
 - **A2A Protocol**: Full integration with A2A server for task management and streaming
+
+## Testing
+
+To test the agent's skill loading functionality, see the [tests directory](./tests/README.md).
+
+Quick start:
+```bash
+cd tests
+./run_skill_test.sh
+```
 
 ### Environment Variables
 
@@ -17,6 +28,7 @@ A flexible A2A agent that can be configured with multiple MCP servers to provide
 |----------|-------------|---------|
 | `MCP_URLS` | Comma-separated list of MCP server URLs | `http://localhost:8000/mcp` |
 | `MCP_TRANSPORT` | Transport protocol for MCP | `streamable_http` |
+| `SKILL_FOLDERS` | Comma-separated list of skill folder paths | `/app/skills/` |
 | `LLM_MODEL` | Model name to use | `llama3.2:3b-instruct-fp16` |
 | `LLM_API_BASE` | Base URL for LLM API | `http://localhost:11434/v1` |
 | `LLM_API_KEY` | API key for LLM service | `dummy` |
@@ -40,7 +52,7 @@ Once deployed, the agent can handle requests like:
 "Find me flights from SFO to TPE for November 22, 2025."
 ```
 
-The agent automatically selects the appropriate tool from connected MCP servers and returns formatted results. 
+The agent automatically selects the appropriate tool from connected MCP servers and returns formatted results.
 
 ## Running in Kagenti
 

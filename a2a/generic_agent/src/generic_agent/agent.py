@@ -15,7 +15,7 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
 from a2a.utils import new_agent_text_message, new_task
 from generic_agent.config import Configuration
-from generic_agent.graph import get_graph, get_mcp_server_names, get_mcpclient
+from generic_agent.graph import get_graph, get_mcp_server_names, get_mcpclient, get_skill_folder_paths
 
 logging.basicConfig(level=logging.DEBUG)
 logger = logging.getLogger(__name__)
@@ -31,23 +31,36 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     except Exception as e:
         logger.warning(f"Failed to get MCP server names: {e}")
         mcp_names = []
+
+    try:
+        skill_folder_paths = get_skill_folder_paths()
+        # Extract skill names from folder paths (last component of path)
+        skill_names = [path.rstrip("/").split("/")[-1] for path in skill_folder_paths if path]
+    except Exception as e:
+        logger.warning(f"Failed to get skill folder paths: {e}")
+        skill_names = []
+
     mcp_section = ""
     if mcp_names:
         mcp_section = "\n\nConnected MCP Servers:\n" + "\n".join(f"- {name}" for name in mcp_names)
+
+    skills_section = ""
+    if skill_names:
+        skills_section = "\n\nAvailable Skills:\n" + "\n".join(f"- {name}" for name in skill_names)
 
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
         id="generic_agent",
         name="Generic Agent",
         description="**Generic Assistant** – Multi-purpose assistant for different tasks based on different MCP tools.",
-        tags=mcp_names,
+        tags=mcp_names + skill_names,
         examples=[],
     )
     return AgentCard(
         name="Generic Agent",
         description=dedent(
             f"""\
-            This agent provides assistance for various tasks using different MCP tools.{mcp_section}
+            This agent provides assistance for various tasks using different MCP tools.{mcp_section}{skills_section}
             """,
         ),
         # Allow env var AGENT_ENDPOINT to override the URL in the agent card
@@ -133,7 +146,7 @@ class GenericExecutor(AgentExecutor):
 
         try:
             output = None
-            # Test MCP connection first
+            # Initialize MCP client with error handling
             logger.info(f"Attempting to connect to MCP server(s) at: {config.MCP_URLS}")
 
             mcpclient = get_mcpclient()
@@ -141,17 +154,22 @@ class GenericExecutor(AgentExecutor):
             # Try to get tools to verify connection
             try:
                 tools = await mcpclient.get_tools()
-                logger.info(
-                    f"Successfully connected to MCP server(s). Available tools: {[tool.name for tool in tools]}"
-                )
+                if tools:
+                    logger.info(
+                        f"Successfully connected to MCP server(s). Available tools: {[tool.name for tool in tools]}"
+                    )
+                else:
+                    logger.warning("No MCP tools available, but agent will continue")
             except Exception as tool_error:
-                logger.error(f"Failed to connect to MCP server(s): {tool_error}")
-                await event_emitter.emit_event(
-                    f"Error: Cannot connect to MCP server(s) at {config.MCP_URLS}. Please ensure the MCP server(s) are running. Error: {tool_error}",
-                    failed=True,
+                logger.warning(
+                    f"Failed to connect to MCP server(s): {tool_error}. Agent will continue without MCP tools."
                 )
-                return
+                await event_emitter.emit_event(
+                    "⚠️ Warning: Cannot connect to MCP server(s). Agent will continue with limited capabilities.",
+                    final=False,
+                )
 
+            # Create graph (will work even without MCP tools)
             graph = await get_graph(mcpclient)
             async for event in graph.astream(input, stream_mode="updates"):
                 await event_emitter.emit_event(
