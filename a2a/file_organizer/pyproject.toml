@@ -16,7 +16,7 @@ dependencies = [
     "langchain-ollama>=0.2.1",
     "langchain-openai>=0.3.7",
     "openinference-instrumentation-langchain>=0.1.62",
-    "pydantic-settings>=2.8.1",
+    "pydantic-settings>=2.14.0",
     "langchain-mcp-adapters>=0.1.0",
     "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp",
