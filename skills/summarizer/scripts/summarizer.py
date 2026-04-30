@@ -7,7 +7,7 @@ executive summaries, and key point extraction.
 
 from typing import Dict, List
 
-from text_analyzer import analyze_text, extract_key_sentences, split_into_sentences, tokenize
+from .text_analyzer import analyze_text, extract_key_sentences, split_into_sentences, tokenize
 
 
 def create_bullet_summary(text: str, max_bullets: int = 7) -> List[str]:

@@ -1,5 +1,4 @@
 import logging
-from functools import lru_cache
 from pathlib import Path
 from typing import List
 
@@ -26,7 +25,6 @@ def _get_mcp_urls() -> List[str]:
     return [url.strip() for url in urls_str.split(",") if url.strip()]
 
 
-@lru_cache(maxsize=1)
 def get_mcpclient() -> MultiServerMCPClient:
     """
     Create MCP client with error handling.
@@ -36,6 +34,10 @@ def get_mcpclient() -> MultiServerMCPClient:
 
     Returns:
         MultiServerMCPClient instance (may have empty configs if all servers fail)
+    
+    Note:
+        This function is not cached to allow retry on transient failures.
+        Each call creates a new client instance.
     """
     urls = _get_mcp_urls()
 
@@ -43,14 +45,10 @@ def get_mcpclient() -> MultiServerMCPClient:
     transport = config.MCP_TRANSPORT
 
     for i, url in enumerate(urls, 1):
-        try:
-            client_configs[f"mcp{i}"] = {
-                "url": url,
-                "transport": transport,
-            }
-        except Exception as e:
-            logger.warning(f"Failed to configure MCP server {url}: {e}")
-            continue
+        client_configs[f"mcp{i}"] = {
+            "url": url,
+            "transport": transport,
+        }
 
     if not client_configs:
         logger.warning("No MCP servers configured successfully. Agent will work without MCP tools.")
@@ -120,6 +118,10 @@ def load_skills_content() -> str:
 
     Returns:
         Combined skill content as a string, or empty string if no skills found
+    
+    Note:
+        Content is limited to 100KB total to avoid exceeding LLM context windows
+        and ConfigMap size limits (1 MiB). A warning is logged if this limit is exceeded.
     """
     skill_folders = get_skill_folder_paths()
     if not skill_folders:
@@ -127,6 +129,8 @@ def load_skills_content() -> str:
 
     skills_content = []
     failed_skills = []
+    total_size = 0
+    MAX_CONTENT_SIZE = 100 * 1024  # 100KB limit (summarizer skill is ~45KB)
 
     for folder_path in skill_folders:
         try:
@@ -161,7 +165,16 @@ def load_skills_content() -> str:
                         with open(py_file, "r", encoding="utf-8") as f:
                             code = f.read().strip()
                             if code:
-                                scripts_content.append(f"**File: {rel_path}**\n```python\n{code}\n```")
+                                content_piece = f"**File: {rel_path}**\n```python\n{code}\n```"
+                                # Check size before adding
+                                if total_size + len(content_piece) > MAX_CONTENT_SIZE:
+                                    logger.warning(
+                                        f"Skill content size limit ({MAX_CONTENT_SIZE} bytes) exceeded. "
+                                        f"Skipping remaining files in {skill_name}."
+                                    )
+                                    break
+                                scripts_content.append(content_piece)
+                                total_size += len(content_piece)
                     except Exception as e:
                         logger.warning(f"Failed to read {py_file}: {e}")
 
@@ -197,8 +210,16 @@ def load_skills_content() -> str:
 
     if skills_content:
         loaded_count = len(skills_content)
-        logger.info(f"Successfully loaded {loaded_count} skill(s)")
-        return "\n\n" + "\n\n---\n\n".join(skills_content)
+        final_content = "\n\n" + "\n\n---\n\n".join(skills_content)
+        logger.info(f"Successfully loaded {loaded_count} skill(s), total size: {len(final_content)} bytes")
+        
+        if len(final_content) > MAX_CONTENT_SIZE:
+            logger.warning(
+                f"Total skill content size ({len(final_content)} bytes) exceeds recommended limit "
+                f"({MAX_CONTENT_SIZE} bytes). This may impact LLM context window and ConfigMap limits."
+            )
+        
+        return final_content
 
     logger.info("No skills loaded")
     return ""

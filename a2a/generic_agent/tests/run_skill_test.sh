@@ -3,7 +3,7 @@
 # Script to run the Generic Agent skill loading test
 # This script sets up the environment and runs the test
 
-set -e  # Exit on error
+set -euo pipefail  # Exit on error, undefined variables, and pipe failures
 
 # Colors for output
 GREEN='\033[0;32m'
@@ -82,7 +82,7 @@ echo ""
 cd "$SCRIPT_DIR"
 
 # Run the test
-python test_skill_loading.py
+python manual_test_skill_loading.py
 
 # Capture exit code
 TEST_EXIT_CODE=$?
