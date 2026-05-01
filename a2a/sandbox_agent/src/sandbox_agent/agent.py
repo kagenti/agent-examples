@@ -1070,4 +1070,60 @@ def run() -> None:
         ),
     )
 
+    # ── Warm-up: initialize LLM + DB before accepting requests ─────────
+    # Without this, the first A2A message triggers all initialization
+    # (ChatOpenAI client, DB pool, graph compilation) which takes 30-60s.
+    # Kubernetes marks the pod Ready immediately (agent card responds),
+    # but the executor isn't functional yet — causing empty SSE responses.
+    _warmup_status: dict[str, Any] = {"ready": False, "error": None}
+
+    async def _warmup() -> None:
+        """Pre-warm the LLM connection and DB pool at startup."""
+        from sandbox_agent.configuration import Configuration
+        from langchain_core.messages import HumanMessage
+
+        config = Configuration()
+        try:
+            llm = ChatOpenAI(
+                model=config.llm_model,
+                base_url=config.llm_api_base,
+                api_key=config.llm_api_key,
+                timeout=30,
+                max_retries=2,
+            )
+            response = await llm.ainvoke([HumanMessage(content="ping")])
+            if response and response.content:
+                logger.info("LLM warm-up OK (model=%s)", config.llm_model)
+            else:
+                logger.warning("LLM warm-up: empty response")
+        except Exception as e:
+            logger.warning("LLM warm-up failed (non-fatal): %s", e)
+            _warmup_status["error"] = str(e)
+
+        # Warm up the DB checkpointer pool
+        try:
+            executor = request_handler._agent_executor
+            await executor._ensure_checkpointer()
+            logger.info("DB checkpointer warm-up OK")
+        except Exception as e:
+            logger.warning("DB warm-up failed (non-fatal): %s", e)
+
+        _warmup_status["ready"] = True
+
+    async def _handle_ready(request: Any) -> Any:  # noqa: ARG001
+        from starlette.responses import JSONResponse
+        if _warmup_status["ready"]:
+            return JSONResponse({"status": "ready"}, status_code=200)
+        return JSONResponse(
+            {"status": "warming_up", "error": _warmup_status.get("error")},
+            status_code=503,
+        )
+
+    app.routes.insert(0, Route("/ready", _handle_ready, methods=["GET"], name="ready"))
+
+    async def _on_startup() -> None:
+        await _warmup()
+
+    app.on_startup.append(_on_startup)
+
     uvicorn.run(app, host="0.0.0.0", port=8000)
