@@ -1080,11 +1080,12 @@ def run() -> None:
     async def _warmup() -> None:
         """Pre-warm the LLM connection and DB pool at startup."""
         from sandbox_agent.configuration import Configuration
+        from langchain_openai import ChatOpenAI as _ChatOpenAI
         from langchain_core.messages import HumanMessage
 
         config = Configuration()
         try:
-            llm = ChatOpenAI(
+            llm = _ChatOpenAI(
                 model=config.llm_model,
                 base_url=config.llm_api_base,
                 api_key=config.llm_api_key,
@@ -1102,7 +1103,7 @@ def run() -> None:
 
         # Warm up the DB checkpointer pool
         try:
-            executor = request_handler._agent_executor
+            executor = request_handler.agent_executor
             await executor._ensure_checkpointer()
             logger.info("DB checkpointer warm-up OK")
         except Exception as e:
