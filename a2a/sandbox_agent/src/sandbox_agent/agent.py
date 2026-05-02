@@ -1121,9 +1121,6 @@ def run() -> None:
 
     app.routes.insert(0, Route("/ready", _handle_ready, methods=["GET"], name="ready"))
 
-    async def _on_startup() -> None:
-        await _warmup()
-
-    app.on_startup.append(_on_startup)
+    app.add_event_handler("startup", _warmup)
 
     uvicorn.run(app, host="0.0.0.0", port=8000)
