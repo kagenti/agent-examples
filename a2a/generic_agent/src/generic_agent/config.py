@@ -9,3 +9,4 @@ class Configuration(BaseSettings):
     MCP_TRANSPORT: str = "streamable_http"
     MAX_EVENT_DISPLAY_LENGTH: int = 256
     AGENT_VERSION: str = "1.0.0"
+    SKILL_FOLDERS: str = "/app/skills/"
