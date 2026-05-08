@@ -17,7 +17,7 @@ dependencies = [
     "langchain-mcp-adapters>=0.2.2",
     "python-keycloak>=5.5.1",
     "opentelemetry-exporter-otlp",
-    "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
+    "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.26", # Indirect; prevents CVE-2026-24486
 ]
 
