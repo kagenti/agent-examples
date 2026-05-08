@@ -68,6 +68,27 @@ import os as _os
 # Disabled by default to reduce event size and prevent OOM on large sessions.
 _DEBUG_PROMPTS = _os.environ.get("SANDBOX_DEBUG_PROMPTS", "1") == "1"
 
+
+def _clean_response(response: AIMessage) -> AIMessage:
+    """Strip reasoning model ``<think>`` blocks from the response content.
+
+    Keeps the response object intact (tool_calls, metadata) but removes
+    verbose reasoning chains that bloat state for subsequent nodes/turns.
+    """
+    from sandbox_agent.context_builders import strip_think_tags
+
+    content = getattr(response, "content", "")
+    if not isinstance(content, str) or "<think>" not in content:
+        return response
+    cleaned = strip_think_tags(content)
+    if cleaned == content:
+        return response
+    return AIMessage(
+        content=cleaned,
+        tool_calls=getattr(response, "tool_calls", []),
+        response_metadata=getattr(response, "response_metadata", {}),
+    )
+
 # Messages that trigger plan resumption rather than replanning.
 _CONTINUE_PHRASES = frozenset({
     "continue", "continue on the plan", "go on", "proceed",
@@ -673,7 +694,7 @@ async def planner_node(
         start_step = 0
 
     return {
-        "messages": [response],
+        "messages": [_clean_response(response)],
         "plan": plan,
         "plan_steps": new_plan_steps,
         "plan_version": plan_version,
@@ -977,7 +998,7 @@ async def executor_node(
         step_msgs.append(SystemMessage(content=f"[STEP_BOUNDARY {current_step}] {step_brief[:500]}"))
 
     result: dict[str, Any] = {
-        "messages": step_msgs + [response],
+        "messages": step_msgs + [_clean_response(response)],
         "current_step": current_step,
         **capture.token_fields(),
         "_budget_summary": budget.summary(),
@@ -1254,7 +1275,7 @@ async def reflector_node(
     )
 
     base_result: dict[str, Any] = {
-        "messages": [response],
+        "messages": [_clean_response(response)],
         "step_results": step_results,
         "recent_decisions": recent_decisions,
         "plan_steps": plan_steps,
@@ -1453,13 +1474,9 @@ async def reporter_node(
         results_text=results_text,
         limit_note=limit_note,
     )
-    # Filter dedup sentinel messages from conversation history passed to the
-    # reporter LLM so it cannot echo them in the final answer.
-    filtered_msgs = [
-        m for m in state["messages"]
-        if _DEDUP_SENTINEL not in str(getattr(m, "content", ""))
-    ]
-    reporter_messages = [SystemMessage(content=system_content)] + filtered_msgs
+    from sandbox_agent.context_builders import build_reporter_context
+
+    reporter_messages = build_reporter_context(state, system_content)
 
     # Use invoke_with_tool_loop when llm_reason is available (thinking mode),
     # otherwise fall back to single invoke_llm call.
@@ -1564,7 +1581,7 @@ async def reporter_node(
                 extra={"session_id": state.get("context_id", ""), "node": "reporter"})
 
     result: dict[str, Any] = {
-        "messages": [response],
+        "messages": [_clean_response(response)],
         "final_answer": text,
         "plan_status": terminal_status,
         "files_touched": files_touched[:30],  # cap at 30 files

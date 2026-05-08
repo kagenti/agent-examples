@@ -247,6 +247,114 @@ def build_reflector_context(
 
 
 # ---------------------------------------------------------------------------
+# Context compaction helpers
+# ---------------------------------------------------------------------------
+
+import re
+
+_THINK_RE = re.compile(r"<think>.*?</think>\s*", re.DOTALL)
+
+
+def strip_think_tags(text: str) -> str:
+    """Strip DeepSeek R1 ``<think>...</think>`` reasoning blocks.
+
+    Reasoning chains are useful during the current LLM call but bloat
+    state for subsequent nodes and turns.
+    """
+    if "<think>" not in text:
+        return text
+    cleaned = _THINK_RE.sub("", text).strip()
+    return cleaned or text
+
+
+def _summarize_messages(
+    messages: list[BaseMessage],
+    max_chars: int = 2000,
+) -> str:
+    """Produce a compact text summary of a message list (no LLM call).
+
+    Extracts key info from each message type:
+    - HumanMessage: full text (user requests are always important)
+    - AIMessage with tool_calls: "Called tool(args_summary)"
+    - ToolMessage: "Result: first 200 chars"
+    - AIMessage without tool_calls: "Agent: first 200 chars"
+    """
+    parts: list[str] = []
+    used = 0
+    for m in messages:
+        content = str(getattr(m, "content", ""))
+        content = strip_think_tags(content)
+        if isinstance(m, HumanMessage):
+            line = f"User: {content[:300]}"
+        elif isinstance(m, AIMessage):
+            tool_calls = getattr(m, "tool_calls", None)
+            if tool_calls:
+                names = [tc.get("name", "?") for tc in tool_calls[:3]]
+                line = f"Called: {', '.join(names)}"
+            else:
+                line = f"Agent: {content[:200]}"
+        elif isinstance(m, ToolMessage):
+            name = getattr(m, "name", "tool")
+            line = f"{name}: {content[:200]}"
+        elif isinstance(m, SystemMessage):
+            continue
+        else:
+            line = f"Msg: {content[:100]}"
+        if used + len(line) > max_chars:
+            parts.append("... (earlier messages truncated)")
+            break
+        parts.append(line)
+        used += len(line) + 1
+    return "\n".join(parts)
+
+
+# ---------------------------------------------------------------------------
+# Reporter context (windowed)
+# ---------------------------------------------------------------------------
+
+_MAX_REPORTER_RECENT = 30
+_MAX_REPORTER_SUMMARY_CHARS = 2000
+_DEDUP_SENTINEL_PREFIX = "[DEDUP]"
+
+
+def build_reporter_context(
+    state: dict[str, Any],
+    system_content: str,
+) -> list[BaseMessage]:
+    """Build the message list for the reporter node.
+
+    Uses a sliding window: keep the last ``_MAX_REPORTER_RECENT`` messages
+    verbatim and compress older messages into a text summary.  This prevents
+    context blowout in long multi-turn sessions while keeping enough detail
+    for the reporter to produce an accurate final answer.
+    """
+    messages = state.get("messages", [])
+    filtered = [
+        m for m in messages
+        if _DEDUP_SENTINEL_PREFIX not in str(getattr(m, "content", ""))[:20]
+    ]
+
+    if len(filtered) <= _MAX_REPORTER_RECENT:
+        return [SystemMessage(content=system_content)] + filtered
+
+    older = filtered[:-_MAX_REPORTER_RECENT]
+    recent = filtered[-_MAX_REPORTER_RECENT:]
+    summary = _summarize_messages(older, _MAX_REPORTER_SUMMARY_CHARS)
+
+    result = (
+        [SystemMessage(content=system_content)]
+        + [SystemMessage(content=f"[Previous conversation summary]\n{summary}")]
+        + recent
+    )
+    logger.info(
+        "Reporter context: %d recent + %d older summarized (%d chars)",
+        len(recent), len(older), len(summary),
+        extra={"session_id": state.get("context_id", ""), "node": "reporter"},
+    )
+    return result
+
+
+# ---------------------------------------------------------------------------
 # LLM invocation wrapper — captures exactly what the LLM sees
 # ---------------------------------------------------------------------------
 
