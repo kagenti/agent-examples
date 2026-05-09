@@ -63,6 +63,7 @@ _DEDUP_SENTINEL = (
 )
 
 import os as _os
+import re as _re
 
 # Debug prompts: include full system prompt + message history in events.
 # Disabled by default to reduce event size and prevent OOM on large sessions.
@@ -94,6 +95,13 @@ _CONTINUE_PHRASES = frozenset({
     "continue", "continue on the plan", "go on", "proceed",
     "keep going", "next", "carry on",
 })
+
+# Simple single-tool tasks that skip the planner (fast path).
+_SIMPLE_CMD_RE = _re.compile(
+    r"^(run\b.*?:|run this shell command:|echo |ls\b|cat |pwd\b|whoami\b"
+    r"|date\b|head |tail |wc |find |grep )",
+    _re.IGNORECASE,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -434,6 +442,29 @@ async def router_node(state: dict[str, Any]) -> dict[str, Any]:
     has_active_plan = plan_status == "awaiting_continue" and len(plan_steps) > 0
     is_continue = last_text_lower in _CONTINUE_PHRASES
 
+    # Fast path: simple single-tool tasks skip the planner entirely.
+    if not has_active_plan and _SIMPLE_CMD_RE.match(last_text.strip()):
+        plan_text = last_text.strip()
+        fast_steps = _make_plan_steps([plan_text], iteration=0)
+        store = ps.create_plan([plan_text], creator="router-fast")
+        logger.info(
+            "Router: FAST_PATH for simple task: %.80s",
+            plan_text,
+            extra={"session_id": state.get("context_id", ""), "node": "router"},
+        )
+        return {
+            "_route": "fast",
+            "plan": [plan_text],
+            "plan_steps": fast_steps,
+            "plan_version": 1,
+            "current_step": 0,
+            "iteration": 1,
+            "done": False,
+            "plan_status": "executing",
+            "original_request": last_text,
+            "_plan_store": store,
+        }
+
     if has_active_plan and is_continue:
         # Resume: mark next pending step as running
         current_step = state.get("current_step", 0)
@@ -480,11 +511,11 @@ async def router_node(state: dict[str, Any]) -> dict[str, Any]:
 
 
 def route_entry(state: dict[str, Any]) -> str:
-    """Conditional edge from router: resume → executor, else → planner."""
+    """Conditional edge from router: resume/fast → step_selector, else → planner."""
     route = state.get("_route", "new")
-    if route == "resume":
+    if route in ("resume", "fast"):
         return "resume"
-    return "plan"  # both "replan" and "new" go to planner
+    return "plan"
 
 
 def _is_trivial_text_request(messages: list) -> bool:
@@ -997,6 +1028,13 @@ async def executor_node(
     if tool_call_count == 0:
         step_msgs.append(SystemMessage(content=f"[STEP_BOUNDARY {current_step}] {step_brief[:500]}"))
 
+    response_has_tool_calls = bool(getattr(response, "tool_calls", None))
+    is_fast_single_step = (
+        len(plan) == 1
+        and state.get("plan_version", 0) == 1
+        and current_step + 1 >= len(plan)
+    )
+
     result: dict[str, Any] = {
         "messages": step_msgs + [_clean_response(response)],
         "current_step": current_step,
@@ -1007,6 +1045,12 @@ async def executor_node(
         "_tool_call_count": new_tool_call_count,
         **({"_last_tool_result": _last_tool_result} if _last_tool_result else {}),
     }
+    if is_fast_single_step and not response_has_tool_calls:
+        result["done"] = True
+        logger.info(
+            "Fast-path: single-step complete, skipping reflector",
+            extra={"session_id": state.get("context_id", ""), "node": "executor"},
+        )
     if sub_events:
         result["_sub_events"] = sub_events
     if parsed_tools:
