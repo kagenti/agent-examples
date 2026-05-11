@@ -978,6 +978,27 @@ async def executor_node(
                        "current_step": current_step, "tool_call_count": tool_call_count},
             )
         else:
+            # With tool_choice="any", the LLM should always produce tool
+            # calls. If it didn't, retry once immediately (cheaper than a
+            # full graph loop through reflector → step_selector → executor).
+            force_tools = _os.environ.get("SANDBOX_FORCE_TOOL_CHOICE", "0") == "1"
+            if force_tools and no_tool_count == 0:
+                logger.warning(
+                    "Executor: tool_choice=any but no tool calls — retrying LLM",
+                    extra={"session_id": state.get("context_id", ""), "node": "executor"},
+                )
+                retry_msgs = build_executor_context(state, system_content)
+                retry_response, retry_capture = await invoke_llm(
+                    llm, retry_msgs, node="executor_retry",
+                    session_id=state.get("context_id", ""),
+                )
+                retry_response = maybe_patch_tool_calls(retry_response)
+                if getattr(retry_response, "tool_calls", None):
+                    response = retry_response
+                    capture = retry_capture
+                    logger.info("Executor: retry produced %d tool calls",
+                                len(response.tool_calls))
+
             no_tool_count += 1
             logger.warning(
                 "Executor produced no tool calls for step %d (attempt %d/2)",
