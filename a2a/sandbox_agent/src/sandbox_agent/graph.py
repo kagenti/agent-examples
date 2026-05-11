@@ -820,8 +820,23 @@ def build_graph(
                 result_done["_plan_store"] = store
             return result_done
 
-        # Quick LLM call — write a focused brief for the executor
         step_text = plan[next_step] if next_step < len(plan) else "N/A"
+
+        # Fast path: single-step plans from router don't need an LLM brief
+        if len(plan) == 1 and state.get("plan_version", 0) == 1:
+            brief = step_text
+            logger.info("StepSelector: fast-path brief (no LLM): %s", brief[:100])
+            result: dict[str, Any] = {
+                "current_step": next_step,
+                "plan_steps": plan_steps,
+                "_tool_call_count": 0,
+                "skill_instructions": f"STEP BRIEF FROM COORDINATOR:\n{brief}\n\n---\n",
+            }
+            if store:
+                result["_plan_store"] = store
+            return result
+
+        # Quick LLM call — write a focused brief for the executor
         prompt = f"""You are a step coordinator. Write a 2-3 sentence brief for the executor.
 
 Plan progress:
