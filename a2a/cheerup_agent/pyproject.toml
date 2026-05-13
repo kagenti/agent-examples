@@ -5,7 +5,7 @@ description = "A cheerful conversational agent that brightens your day."
 license = { text = "Apache" }
 requires-python = ">=3.11"
 dependencies = [
-    "a2a-sdk[http-server]>=0.2.16",
+    "a2a-sdk[http-server]>=1.0.3",
     "openai>=1.0.0",
     "pydantic-settings>=2.8.1",
     "uvicorn>=0.30.0",
