@@ -7,5 +7,5 @@ requires-python = ">=3.10"
 dependencies = [
     "fastmcp>=3.2.0",   # Prevents CVE-2026-32871
     "requests>=2.32.3",
-    "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
+    "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
 ]
