@@ -12,9 +12,9 @@ dependencies = [
     "langgraph>=0.3.18",
     "pydantic>=2.10.6",
     "python-dotenv>=1.1.0",
-    "uvicorn>=0.34.2",
+    "uvicorn>=0.46.0",
     "langchain-openai>=0.2.14",
-    "pydantic-settings>=2.9.1",
+    "pydantic-settings>=2.14.1",
     "openinference-instrumentation-langchain>=0.1.36",
     "opentelemetry-exporter-otlp>=1.33.1",
     # The following are to avoid CVEs reported by Trivy and checked by our CI
@@ -23,7 +23,7 @@ dependencies = [
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
     "protobuf>=5.29.6",
     "langgraph-checkpoint>=3.0.0",
-    "langchain-core>=1.2.22",   # Indirect; prevents CVE-2026-34070
+    "langchain-core>=1.3.3",   # Indirect; prevents CVE-2026-34070
 ]
 
 [tool.hatch.build.targets.wheel]
