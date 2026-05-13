@@ -10,7 +10,7 @@ dependencies = [
     "boto3",
     "azure-storage-blob",
     "azure-core>=1.38.0",   # Indirect, prevents CVE-2026-21226
-    "authlib>=1.6.9",   # Indirect; prevents CVE-2026-27962
+    "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.22", # Indirect; prevents CVE-2026-24486
     "fastmcp>=3.2.0",           # prevents CVE-2026-32871
