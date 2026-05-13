@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "google-search-results>=2.4.2",
-    "requests>=2.32.3",
+    "requests>=2.34.0",
     "fastmcp>=3.2.0",           # Indirect; prevents CVE-2026-32871
 ]
 
