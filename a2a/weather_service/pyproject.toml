@@ -26,7 +26,7 @@ dependencies = [
     # Emits spans with gen_ai.* attributes for MLflow compatibility
     "opentelemetry-instrumentation-openai>=0.60.0",
     # OpenInference for LangChain instrumentation and AGENT span semantics
-    "openinference-semantic-conventions>=0.1.12",
+    "openinference-semantic-conventions>=0.1.29",
     "openinference-instrumentation-langchain>=0.1.63",
     "urllib3>=2.6.3",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.26", # Indirect; prevents CVE-2026-24486
