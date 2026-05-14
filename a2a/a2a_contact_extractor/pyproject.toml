@@ -15,7 +15,7 @@ dependencies = [
     "pydantic-ai>=1.56.0",      # Indirect; prevents CVE-2026-25580
     "filelock>=3.20.1",         # Indirect; prevents CVE-2025-68146
     "fastmcp>=3.2.4",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
-    "anthropic>=0.87.0",        # Indirect; prevents CVE-2026-34452, CVE-2026-34450
+    "anthropic>=0.102.0",        # Indirect; prevents CVE-2026-34452, CVE-2026-34450
     "aiohttp>=3.13.5",          # Indirect; prevents CVE-2026-34525, CVE-2026-34516, CVE-2026-34515, CVE-2026-22815
 ]
 
