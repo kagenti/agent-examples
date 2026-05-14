@@ -5,7 +5,7 @@ description = "Simple ollama-based Langgraph agent with MCP tool calling."
 requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk>=0.2.16",
-    "langgraph>=0.2.55",
+    "langgraph>=1.2.0",
     "langchain-core>=1.3.3",
     "langchain-community>=0.3.27",
     "langchain-ollama>=0.2.1",
