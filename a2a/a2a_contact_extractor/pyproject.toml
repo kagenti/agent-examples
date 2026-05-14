@@ -29,6 +29,6 @@ extend-select = ["I", "UP"]
 py-modules = ["agent", "agent_executor", "__main__"]
 
 [build-system]
-requires = ["setuptools>=80.8"]
+requires = ["setuptools>=82.0.1"]
 build-backend = "setuptools.build_meta"
 
