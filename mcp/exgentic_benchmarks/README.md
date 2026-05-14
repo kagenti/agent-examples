@@ -2,6 +2,8 @@
 
 A Docker-based MCP (Model Context Protocol) server that runs the [Exgentic](https://github.com/Exgentic/exgentic) benchmark system. This server clones the Exgentic repository, installs a specific benchmark at build time, and exposes it via the MCP protocol.
 
+The test harness used to evaluate the benchmark against agents is found in the [workload-harness repo](https://github.com/kagenti/workload-harness/blob/main/exgentic_a2a_runner/README.md).
+
 ## Overview
 
 This MCP server provides access to Exgentic benchmarks through a standardized interface. Each Docker image is built with a specific benchmark pre-installed, making it easy to deploy and run different benchmarks in isolated environments.

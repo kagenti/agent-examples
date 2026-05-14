@@ -1,6 +1,6 @@
 # Exgentic A2A Agent Wrapper
 
-A Docker-based wrapper that runs [Exgentic](https://github.com/Exgentic/exgentic) agents using the A2A (Agent-to-Agent) protocol. This wrapper clones the Exgentic repository, installs a specific agent at build time, and exposes it via the A2A interface.
+A Docker-based wrapper that runs [Exgentic](https://github.com/Exgentic/exgentic) agents using the A2A (Agent-to-Agent) protocol. This wrapper clones the Exgentic repository, installs a specific agent at build time, and exposes it via the A2A interface.  These agents are used for evaluation against the [Exgentic benchmarks mcp servers](mcp/README.md).  The test harness used to evaluate the agents against the benchmarks is found in the [workload-harness repo](https://github.com/kagenti/workload-harness/blob/main/exgentic_a2a_runner/README.md).
 
 ## Overview
 
