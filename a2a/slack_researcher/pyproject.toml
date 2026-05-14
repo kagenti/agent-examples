@@ -7,7 +7,7 @@ dependencies = [
     "ag2[openai,mcp]>=0.9.6",
     "tavily-python>=0.7.24",
     "python-dotenv>=1.2.2",
-    "a2a-sdk>=0.2.16",
+    "a2a-sdk>=1.0.3",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
 ]
 
