@@ -3657,7 +3657,7 @@ dependencies = [
 requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.3.26" },
     { name = "aiohttp", specifier = ">=3.13.5" },
-    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "cryptography", specifier = ">=46.0.7,<47" },
     { name = "gitpython", specifier = ">=3.1.47" },
     { name = "langchain-classic", specifier = ">=1.0.7" },
     { name = "langchain-community", specifier = ">=0.4.1" },

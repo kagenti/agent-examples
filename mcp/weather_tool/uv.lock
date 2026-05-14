@@ -515,7 +515,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = ">=1.7.2" },
-    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "cryptography", specifier = ">=46.0.7,<47" },
     { name = "fastmcp", specifier = ">=3.2.4" },
     { name = "opentelemetry-api", specifier = ">=1.27.0" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.27.0" },
