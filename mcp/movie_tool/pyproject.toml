@@ -5,7 +5,7 @@ description = "Simple movie review tool using OMDb Open Movie Database"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fastmcp>=3.2.4",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
+    "fastmcp>=3.3.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
     "requests>=2.34.0",
     "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
 ]
