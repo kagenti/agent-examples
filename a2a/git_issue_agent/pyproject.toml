@@ -10,7 +10,7 @@ dependencies = [
     # crewai requires openai>=2.30.0
     # but litellm requires openai==2.24.0
     "crewai[litellm]>=1.6.1",
-    "litellm>=1.83.7",          # Indirect, prevents CVE-2026-42271
+    "litellm>=1.84.0",          # Indirect, prevents CVE-2026-42271
     "crewai-tools[mcp]>=1.6.1",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.28", # Indirect; prevents CVE-2026-24486
