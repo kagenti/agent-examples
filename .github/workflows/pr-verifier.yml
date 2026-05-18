@@ -1,3 +1,10 @@
+# PR Verifier — caller workflow
+#
+# Invokes the org-level reusable PR title verifier defined in
+# kagenti/.github to enforce PR title prefix conventions (Feat,
+# Fix, Docs, etc.) on every pull request. Pinned to a SHA for
+# supply-chain hygiene; bump intentionally when upstream changes.
+
 name: PR Verifier
 
 on:
