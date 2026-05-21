@@ -1,0 +1,8 @@
+*.pyc
+__pycache__
+tests/
+PLAN.md
+.git
+
+# `expect` scripts
+test_startup.exp

@@ -1,0 +1,8 @@
+# CLI binary for this project
+/mcp-mitm
+
+# Mac stuff
+.DS_Store
+
+# IDE-related 
+.vscode

@@ -1,0 +1,20 @@
+[project]
+name = "reservation_tool"
+version = "0.1.0"
+description = "Restaurant reservation MCP server with provider abstraction"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "pydantic>=2.0.0",
+    "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
+    "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
+    "python-multipart>=0.0.28", # Indirect; prevents CVE-2026-24486
+    "fastmcp>=3.2.4",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=0.21.0",
+    "flake8>=6.0.0",
+]

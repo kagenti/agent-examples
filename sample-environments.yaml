@@ -1,0 +1,73 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: sample-environments
+data:
+  ollama: |
+    [
+      {"name": "LLM_API_BASE", "value": "http://host.docker.internal:11434/v1"},
+      {"name": "LLM_API_KEY", "value": "dummy"},
+      {"name": "LLM_MODEL", "value": "llama3.2:3b-instruct-fp16"}
+    ]
+  openai: |
+    [
+      {
+        "name": "OPENAI_API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "openai-secret", "key": "apikey"}}
+      },
+      {
+        "name": "LLM_API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "openai-secret", "key": "apikey"}}
+      },
+      {"name": "LLM_API_BASE", "value": "https://api.openai.com/v1"},
+      {"name": "LLM_MODEL", "value": "gpt-4o-mini-2024-07-18"}
+    ]
+  # mcp weather assumes we are using streamable-http transport
+  mcp-weather: |
+    [
+      {"name": "MCP_URL", "value": "http://weather-tool:8000/mcp"}
+    ]
+  mcp-slack: |
+    [
+      {"name": "MCP_URL", "value": "http://slack-tool:8000/mcp"}
+    ]
+  mcp-reservations: |
+    [
+      {"name": "MCP_URL", "value": "http://reservation-tool:8000/mcp"}
+    ]
+  mcp-slack-config: |
+    [
+      {
+        "name": "SLACK_BOT_TOKEN",
+        "valueFrom": {"secretKeyRef": {"name": "slack-secret", "key": "bot-token"}}
+      }
+    ]
+  # mcp shopping uses http transport
+  mcp-shopping: |
+    [
+      {"name": "MCP_URL", "value": "http://shopping-tool:8000/mcp"}
+    ]
+  mcp-shopping-config: |
+    [
+      {
+        "name": "SERPAPI_API_KEY",
+        "valueFrom": {"secretKeyRef": {"name": "shopping-secret", "key": "serpapi-key"}}
+      }
+    ]
+  slack-researcher-config: |
+    [
+      {"name": "TASK_MODEL_ID", "value": "granite3.3:8b"},
+      {"name": "EXTRA_HEADERS", "value": "{}"},
+      {"name": "MODEL_TEMPERATURE", "value": "0"},
+      {"name": "MAX_PLAN_STEPS", "value": "6"},
+      {"name": "SERVICE_PORT", "value": "8000"},
+      {"name": "LOG_LEVEL", "value": "INFO"}
+    ]
+  mcp-flight: |
+    [
+      {"name": "MCP_URL", "value": "http://flight-tool:8000/mcp"}
+    ]
+  mcp-image: |
+    [
+      {"name": "MCP_URL", "value": "http://image-tool:8000/mcp"}
+    ]

@@ -1,0 +1,20 @@
+[project]
+name = "trivia-agent"
+version = "0.0.1"
+description = "Conversational trivia quiz agent using Ollama."
+license = { text = "Apache" }
+requires-python = ">=3.11"
+dependencies = [
+    "a2a-sdk[http-server]>=0.2.16",
+    "openai>=2.36.0",
+    "pydantic-settings>=2.14.1",
+    "uvicorn>=0.46.0",
+    "opentelemetry-exporter-otlp",
+]
+
+[project.scripts]
+server = "trivia_agent.agent:run"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
