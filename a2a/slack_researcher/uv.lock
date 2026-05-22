@@ -23,7 +23,7 @@ wheels = [
 
 [[package]]
 name = "ag2"
-version = "0.12.3"
+version = "0.13.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -36,9 +36,9 @@ dependencies = [
     { name = "termcolor" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/9c/6add4a88368b23c6c7d8a01307e06de830d169033f9a4654e43519e71916/ag2-0.12.3.tar.gz", hash = "sha256:22bad945295b59a2679903f3cff39f661d1667acb656897f5cad722ff85496b7", size = 4274340, upload-time = "2026-05-06T05:01:03.428Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/36/f7/9efbfbce9fcf5b1b838b429e6b59942b9ab518511bdf2cd7cdd43da3f1cd/ag2-0.13.0.tar.gz", hash = "sha256:f7eaca6cf927a06d76a5c4a8498dfdb36bdfc4ae52343f5a034de433c4d73bc8", size = 4530682, upload-time = "2026-05-19T10:13:52.09Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/ca/913eb677b2f446b243599d3ea0f0d59fd49edf639a8c092c181723152a4c/ag2-0.12.3-py3-none-any.whl", hash = "sha256:97d70b44498fb1840009d66f80629b2895cbc68f0d87078f282e75b683b5cc49", size = 1276279, upload-time = "2026-05-06T05:01:00.323Z" },
+    { url = "https://files.pythonhosted.org/packages/82/ce/61ff21de7daa67549d02329d426a59a22988b18f1b9dd7bf95bea4119725/ag2-0.13.0-py3-none-any.whl", hash = "sha256:1f0388987599c2df96b0a8d6ea0a82b9115a25e5114768e033067f7a5dc8be8a", size = 1490242, upload-time = "2026-05-19T10:13:49.366Z" },
 ]
 
 [package.optional-dependencies]
@@ -726,7 +726,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.2.16" },
-    { name = "ag2", extras = ["openai", "mcp"], specifier = ">=0.12.3" },
+    { name = "ag2", extras = ["openai", "mcp"], specifier = ">=0.13.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "tavily-python", specifier = ">=0.7.24" },
     { name = "urllib3", specifier = ">=2.7.0" },
