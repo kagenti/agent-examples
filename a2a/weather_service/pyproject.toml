@@ -27,7 +27,7 @@ dependencies = [
     "opentelemetry-instrumentation-openai>=0.60.0",
     # OpenInference for LangChain instrumentation and AGENT span semantics
     "openinference-semantic-conventions>=0.1.29",
-    "openinference-instrumentation-langchain>=0.1.63",
+    "openinference-instrumentation-langchain>=0.1.66",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.28", # Indirect; prevents CVE-2026-24486
     "cryptography>=46.0.7,<47", # Indirect; prevents CVE-2026-26007
