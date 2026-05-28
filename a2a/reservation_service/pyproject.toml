@@ -10,14 +10,14 @@ license = { text = "Apache-2.0" }
 requires-python = ">=3.11"
 dependencies = [
     "a2a-sdk>=0.2.16",
-    "langgraph>=0.2.55",
+    "langgraph>=1.2.2",
     "langchain-core>=1.3.3",
-    "langchain-community>=0.3.27",
-    "langchain-ollama>=0.2.1",
-    "langchain-openai>=0.3.7",
-    "openinference-instrumentation-langchain>=0.1.65",
+    "langchain-community>=0.4.2",
+    "langchain-ollama>=1.1.0",
+    "langchain-openai>=1.2.2",
+    "openinference-instrumentation-langchain>=0.1.66",
     "pydantic-settings>=2.14.1",
-    "langchain-mcp-adapters>=0.1.0",
+    "langchain-mcp-adapters>=0.2.2",
     "python-keycloak>=5.5.1",
     "opentelemetry-exporter-otlp",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
