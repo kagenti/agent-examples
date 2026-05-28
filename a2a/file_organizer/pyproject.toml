@@ -28,7 +28,7 @@ dependencies = [
     "cryptography>=46.0.7,<47", # Indirect; prevents CVE-2026-26007
     "mcp>=1.23.0",              # Indirect; prevents CVE-2025-66416
     "orjson>=3.11.6",           # Indirect; prevents CVE-2025-67221
-    "protobuf>=6.33.5",         # Indirect; prevents CVE-2026-0994
+    "protobuf>=7.35.0",         # Indirect; prevents CVE-2026-0994
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
     "pyjwt>=2.12.1",            # Indirect; prevents CVE-2026-32597
 ]
