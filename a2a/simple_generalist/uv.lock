@@ -27,7 +27,7 @@ http-server = [
 
 [[package]]
 name = "ag2"
-version = "0.12.3"
+version = "0.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -40,9 +40,9 @@ dependencies = [
     { name = "termcolor" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/9c/6add4a88368b23c6c7d8a01307e06de830d169033f9a4654e43519e71916/ag2-0.12.3.tar.gz", hash = "sha256:22bad945295b59a2679903f3cff39f661d1667acb656897f5cad722ff85496b7", size = 4274340, upload-time = "2026-05-06T05:01:03.428Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/6c/d9/97d80fd533fa134d3dcfc0ac659b506f7d2bb2862d4a6a052f115e10f51e/ag2-0.13.1.tar.gz", hash = "sha256:c72718711a6f1d7ad927e32cfb37520a990c2ebf99c1419d533b97a9a924b8f1", size = 4578778, upload-time = "2026-05-23T01:21:46.133Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/ca/913eb677b2f446b243599d3ea0f0d59fd49edf639a8c092c181723152a4c/ag2-0.12.3-py3-none-any.whl", hash = "sha256:97d70b44498fb1840009d66f80629b2895cbc68f0d87078f282e75b683b5cc49", size = 1276279, upload-time = "2026-05-06T05:01:00.323Z" },
+    { url = "https://files.pythonhosted.org/packages/97/21/82d566fce37dbd43ce36066fc35a12955214ff47f87053668061fe2e9584/ag2-0.13.1-py3-none-any.whl", hash = "sha256:65f85779e5603e9b86bb72fece97cf5fe2601be1e205f47682f1af17e1ff3395", size = 1508484, upload-time = "2026-05-23T01:21:43.037Z" },
 ]
 
 [package.optional-dependencies]
@@ -474,7 +474,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.109.1"
+version = "2.38.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -486,9 +486,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/a1/a303104dc55fc546a3f6914c842d3da471c64eec92043aef8f652eb6c524/openai-1.109.1.tar.gz", hash = "sha256:d173ed8dbca665892a6db099b4a2dfac624f94d20a93f46eb0b56aae940ed869", size = 564133, upload-time = "2025-09-24T13:00:53.075Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/8f/12/cfa322c5f5dd8fa21aab9a7a8e979e7a11123800f86ca8d82eb68a83d213/openai-2.38.0.tar.gz", hash = "sha256:798694c6cf74145541fda94325b6f8f72d8e1fd0262cc137c8d728177a6a4ce3", size = 772764, upload-time = "2026-05-21T21:23:42.105Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1d/2a/7dd3d207ec669cacc1f186fd856a0f61dbc255d24f6fdc1a6715d6051b0f/openai-1.109.1-py3-none-any.whl", hash = "sha256:6bcaf57086cf59159b8e27447e4e7dd019db5d29a438072fbd49c290c7e65315", size = 948627, upload-time = "2025-09-24T13:00:50.754Z" },
+    { url = "https://files.pythonhosted.org/packages/0a/bf/ccff9be562e24207716d04ef9dc931c76aff0c89a7265da43e2104d7fe06/openai-2.38.0-py3-none-any.whl", hash = "sha256:ec6661c57b2dcc47414a767e6e3335c7ed3d19c9696999283a3c82e95c756a3c", size = 1344910, upload-time = "2026-05-21T21:23:39.636Z" },
 ]
 
 [[package]]
@@ -934,7 +934,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", extras = ["http-server"], specifier = ">=0.3.22" },
-    { name = "ag2", extras = ["openai", "mcp", "tracing"], specifier = ">=0.12.3" },
+    { name = "ag2", extras = ["openai", "mcp", "tracing"], specifier = ">=0.13.1" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "opentelemetry-exporter-otlp-proto-http", specifier = ">=1.20.0" },
     { name = "pydantic", specifier = ">=2.10.6" },
