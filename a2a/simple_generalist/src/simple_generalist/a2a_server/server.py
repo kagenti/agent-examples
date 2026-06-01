@@ -173,8 +173,8 @@ class SimpleGeneralistExecutor(AgentExecutor):
                 async with (
                     streamablehttp_client(
                         url=mcp_url,
-                        timeout=30,
-                        sse_read_timeout=300,
+                        timeout=self.settings.MCP_TIMEOUT,
+                        sse_read_timeout=self.settings.MCP_TIMEOUT,
                     ) as (
                         read_stream,
                         write_stream,

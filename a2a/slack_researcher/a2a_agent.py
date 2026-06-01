@@ -188,6 +188,8 @@ class ResearchExecutor(AgentExecutor):
                 async with (
                     streamablehttp_client(
                         url=settings.MCP_URL,
+                        timeout=settings.MCP_TIMEOUT,
+                        sse_read_timeout=settings.MCP_TIMEOUT,
                     ) as (
                         read_stream,
                         write_stream,

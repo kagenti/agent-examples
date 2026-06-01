@@ -7,6 +7,7 @@ class Configuration(BaseSettings):
     LLM_API_KEY: str = "dummy"
     MCP_URLS: str = "http://localhost:8000/mcp"
     MCP_TRANSPORT: str = "streamable_http"
+    MCP_TIMEOUT: int = 600
     MAX_EVENT_DISPLAY_LENGTH: int = 256
     AGENT_VERSION: str = "1.0.0"
     SKILL_FOLDERS: str = "/app/skills/"
