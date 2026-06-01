@@ -177,7 +177,7 @@ class GithubExecutor(AgentExecutor):
                     "transport": "streamable-http",
                     "headers": headers,
                 }
-                with MCPServerAdapter(server_params, connect_timeout=60) as mcp_tools:
+                with MCPServerAdapter(server_params, connect_timeout=settings.MCP_TIMEOUT) as mcp_tools:
                     # Keep only search and list issue-related tools.
                     issue_tools = [
                         tool

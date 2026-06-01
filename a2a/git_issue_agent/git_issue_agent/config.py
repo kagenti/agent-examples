@@ -73,6 +73,7 @@ class Settings(BaseSettings):
         ge=0,
     )
     MCP_URL: str = Field(os.getenv("MCP_URL", "https://api.githubcopilot.com/mcp/"), description="Endpoint for an option MCP server")
+    MCP_TIMEOUT: int = Field(os.getenv("MCP_TIMEOUT", 600), description="Timeout in seconds for MCP server connection")
     SERVICE_PORT: int = Field(os.getenv("SERVICE_PORT", 8000), description="Port on which the service will run.")
     GITHUB_TOKEN: Optional[str] = Field(os.getenv("GITHUB_TOKEN", None), description="If not using agent with authorization, the default Github token to use")
 

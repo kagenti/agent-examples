@@ -36,6 +36,10 @@ class Settings(BaseSettings):
         description="MCP server URL",
         validation_alias=AliasChoices("MCP_SERVER_URL", "MCP_SERVERS"),
     )
+    MCP_TIMEOUT: int = Field(
+        default=int(os.getenv("MCP_TIMEOUT", "600")),
+        description="Timeout in seconds for MCP server connection",
+    )
     
     # LLM Configuration
     LLM_MODEL: str = Field(

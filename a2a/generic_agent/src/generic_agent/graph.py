@@ -30,6 +30,7 @@ def get_mcpclient() -> MultiServerMCPClient:
         client_configs[f"mcp{i}"] = {
             "url": url,
             "transport": transport,
+            "timeout": config.MCP_TIMEOUT,
         }
     return MultiServerMCPClient(client_configs)
 

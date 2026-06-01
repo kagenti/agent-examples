@@ -74,6 +74,7 @@ class Settings(BaseSettings):
         ge=1,
     )
     MCP_URL: str = Field(os.getenv("MCP_URL", "http://slack-tool:8000"), description="Endpoint for an option MCP server")
+    MCP_TIMEOUT: int = Field(os.getenv("MCP_TIMEOUT", 600), description="Timeout in seconds for MCP server connection")
     SERVICE_PORT: int = Field(os.getenv("SERVICE_URL", 8000), description="Port on which the service will run.")
 
     # auth variables for token validation
