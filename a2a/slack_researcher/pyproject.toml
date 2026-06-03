@@ -9,6 +9,7 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "a2a-sdk>=0.2.16",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
+    "python-multipart>=0.0.27",  # Indirect; prevents CVE-2026-42561
 ]
 
 [tool.ruff]

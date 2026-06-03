@@ -24,6 +24,8 @@ dependencies = [
     "protobuf>=5.29.6",
     "langgraph-checkpoint>=4.1.1",
     "langchain-core>=1.3.3",   # Indirect; prevents CVE-2026-34070
+    "orjson>=3.11.6",          # Indirect; prevents CVE-2025-67221
+    "langsmith>=0.8.6",        # Indirect; prevents CVE-2026-45134
 ]
 
 [tool.hatch.build.targets.wheel]

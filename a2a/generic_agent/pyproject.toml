@@ -17,6 +17,7 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.29", # Indirect; prevents CVE-2026-24486
+    "langsmith>=0.8.6",         # Indirect; prevents CVE-2026-45134
 ]
 
 [project.scripts]

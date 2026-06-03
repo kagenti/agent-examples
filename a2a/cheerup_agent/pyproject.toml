@@ -10,6 +10,8 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "uvicorn>=0.48.0",
     "opentelemetry-exporter-otlp",
+    "urllib3>=2.7.0",   # Indirect; prevents CVE-2026-44431, CVE-2026-44432
+    "pyasn1>=0.6.3",    # Indirect; prevents CVE-2026-30922
 ]
 
 [project.scripts]
