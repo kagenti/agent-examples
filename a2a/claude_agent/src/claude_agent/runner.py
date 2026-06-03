@@ -117,6 +117,12 @@ async def run_turn(
         else:
             session.started = True
     finally:
+        # If the session was created (init event seen), the transcript exists on
+        # disk, so every subsequent turn MUST use --resume. Set this even on the
+        # timeout/error/cancel paths, or the next turn would re-run --session-id on
+        # an existing id and the CLI would reject it, wedging the context.
+        if translator.session_id is not None:
+            session.started = True
         # Never let the subprocess outlive this turn — on timeout, error, or
         # cancellation (A2A cancel / client disconnect). A lingering
         # --dangerously-skip-permissions process is especially undesirable.

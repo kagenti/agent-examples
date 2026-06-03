@@ -124,6 +124,30 @@ async def test_run_turn_timeout_kills_process(tmp_path, monkeypatch):
         os.kill(pid, 0)
 
 
+async def test_run_turn_marks_started_when_session_created_despite_timeout(tmp_path, monkeypatch):
+    # Emit a full successful stream, then hang (stdout stays open) so the consume
+    # loop times out. Because the init event was seen, the session exists on disk,
+    # so `started` must flip to True (next turn uses --resume, not --session-id).
+    stream = "\n".join(
+        [
+            '{"type":"system","subtype":"init","session_id":"SID"}',
+            '{"type":"result","subtype":"success","is_error":false,"result":"done","session_id":"SID"}',
+        ]
+    )
+    _write_fake_claude(tmp_path, monkeypatch, f"cat <<'EOF'\n{stream}\nEOF\nsleep 30\n")
+    cfg = Configuration(_env_file=None)
+    cfg.workspace_root = str(tmp_path / "ws")
+    cfg.home_dir = str(tmp_path / "home")
+    cfg.turn_timeout_s = 1
+    s = ClaudeSession("ctx-1", cfg.workspace_root)
+    translator = _mk_translator()
+
+    await run_turn(s, "hi", translator, cfg)
+
+    assert translator.session_id == "SID"
+    assert s.started is True  # session created → next turn must --resume
+
+
 async def test_run_turn_cancel_kills_process(tmp_path, monkeypatch):
     pidfile = tmp_path / "pid"
     _write_fake_claude(tmp_path, monkeypatch, f"echo $$ > {pidfile}\nsleep 30\n")

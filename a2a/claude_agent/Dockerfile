@@ -1,5 +1,6 @@
 # Claude needs Node (the CLI is an npm package); the A2A server is Python.
-FROM node:22-bookworm-slim
+# Pinned by multi-arch index digest for reproducible/supply-chain-safe builds.
+FROM node:22-bookworm-slim@sha256:7af03b14a13c8cdd38e45058fd957bf00a72bbe17feac43b1c15a689c029c732
 ARG RELEASE_VERSION="main"
 
 # System deps: git + ripgrep are used by Claude; ca-certificates for TLS.

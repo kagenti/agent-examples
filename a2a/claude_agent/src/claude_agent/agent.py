@@ -4,9 +4,6 @@ import os
 from textwrap import dedent
 
 import uvicorn
-from starlette.requests import Request
-from starlette.responses import Response
-from starlette.routing import Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
@@ -123,24 +120,9 @@ def run() -> None:
         task_store=InMemoryTaskStore(),
     )
     server = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
+    # build() serves the agent card at /.well-known/agent-card.json natively
+    # (a2a-sdk's default AGENT_CARD_WELL_KNOWN_PATH), plus the legacy
+    # /.well-known/agent.json for back-compat — no custom route needed.
     app = server.build()
-
-    # Serve the newer agent-card.json path alongside the legacy agent.json path.
-    # Use a standalone handler rather than the SDK's private _handle_get_agent_card,
-    # so we don't couple to an internal API.
-    card_json = agent_card.model_dump_json(by_alias=True, exclude_none=True)
-
-    async def serve_agent_card(_request: Request) -> Response:
-        return Response(card_json, media_type="application/json")
-
-    app.routes.insert(
-        0,
-        Route(
-            "/.well-known/agent-card.json",
-            serve_agent_card,
-            methods=["GET"],
-            name="agent_card_new",
-        ),
-    )
 
     uvicorn.run(app, host=config.host, port=config.port)
