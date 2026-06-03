@@ -810,7 +810,7 @@ requires-dist = [
     { name = "langsmith", specifier = ">=0.8.9" },
     { name = "mcp", specifier = ">=1.27.2" },
     { name = "openinference-instrumentation-langchain", specifier = ">=0.1.66" },
-    { name = "opentelemetry-exporter-otlp" },
+    { name = "opentelemetry-exporter-otlp", specifier = ">=1.42.1" },
     { name = "opentelemetry-proto", specifier = ">=1.42.1" },
     { name = "orjson", specifier = ">=3.11.6" },
     { name = "protobuf", specifier = ">=6.33.5" },

@@ -19,7 +19,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "langchain-mcp-adapters>=0.2.2",
     "python-keycloak>=7.1.1",
-    "opentelemetry-exporter-otlp",
+    "opentelemetry-exporter-otlp>=1.42.1",
     # Auto-instrument httpx so outgoing MCP tool calls propagate traceparent
     "opentelemetry-instrumentation-httpx>=0.49b0",
     # OpenTelemetry GenAI semantic convention instrumentation

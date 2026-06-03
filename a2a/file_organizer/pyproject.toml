@@ -19,7 +19,7 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "langchain-mcp-adapters>=0.2.2",
     "python-keycloak>=7.1.1",
-    "opentelemetry-exporter-otlp",
+    "opentelemetry-exporter-otlp>=1.42.1",
     "opentelemetry-proto>=1.42.1", # (Old versions of this dependency use obsolete protobufs)
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.30", # Indirect; prevents CVE-2026-24486
