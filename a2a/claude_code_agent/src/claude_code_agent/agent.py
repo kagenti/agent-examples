@@ -4,6 +4,8 @@ import os
 from textwrap import dedent
 
 import uvicorn
+from starlette.routing import Route
+
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -11,8 +13,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from a2a.utils import new_task
-from starlette.routing import Route
-
 from claude_code_agent.configuration import Configuration
 from claude_code_agent.events import StreamTranslator
 from claude_code_agent.runner import run_turn
