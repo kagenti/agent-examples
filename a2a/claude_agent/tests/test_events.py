@@ -14,11 +14,12 @@ def make_translator():
     return StreamTranslator(tu), tu
 
 
-async def test_init_event_captures_session_id():
+async def test_init_event_captures_session_id_without_status_update():
     t, tu = make_translator()
     await t.handle({"type": "system", "subtype": "init", "session_id": "abc"})
     assert t.session_id == "abc"
-    tu.update_status.assert_awaited()  # emitted a "started" working update
+    # init must NOT emit a working update (it fires on every turn, incl. --resume)
+    tu.update_status.assert_not_awaited()
 
 
 async def test_assistant_text_emits_working_update():

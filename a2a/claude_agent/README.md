@@ -77,7 +77,17 @@ Create, wait for the pod to be Ready, then open the agent in the chat and send a
 prompt.
 
 > Workspaces are ephemeral (pod lifetime). Each A2A session gets its own Claude
-> Code session + working directory; concurrent and multi-user sessions stay isolated.
+> session + working directory; concurrent and multi-user sessions stay isolated.
+
+### Session continuity (design gap)
+
+Each turn spawns a fresh `claude` process and resumes by `--resume <uuid>`, which
+reloads the conversation transcript stored on disk at `~/.claude/projects/<cwd>/<uuid>.jsonl`.
+Because the workspace is ephemeral (an `emptyDir`), a **pod restart loses that
+transcript**: a returning A2A `context_id` derives the same session UUID and so
+silently starts a *fresh* conversation that appears continuous to the caller.
+Durable continuity across restarts would require a persistent volume or an
+external session store — out of scope for this example.
 
 Pre-built manifests are also available at
 `kagenti/examples/agents/claude_agent_*.yaml` in the `kagenti/kagenti` repo.

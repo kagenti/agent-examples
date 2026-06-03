@@ -40,8 +40,10 @@ class StreamTranslator:
     async def handle(self, event: dict) -> None:
         etype = event.get("type")
         if etype == "system" and event.get("subtype") == "init":
+            # Capture the session id, but don't emit a status update: every turn
+            # (including each --resume) emits an init event, so surfacing it would
+            # repeat "session started" on every message.
             self.session_id = event.get("session_id")
-            await self._working("🟢 Claude session started")
         elif etype == "assistant":
             for block in event.get("message", {}).get("content", []):
                 btype = block.get("type")
