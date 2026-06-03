@@ -539,7 +539,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "authlib", specifier = ">=1.7.2" },
-    { name = "cryptography", specifier = ">=46.0.5" },
+    { name = "cryptography", specifier = ">=48.0.0,<49" },
     { name = "fast-flights", specifier = ">=0.1.0" },
     { name = "fastmcp", specifier = ">=3.4.0" },
     { name = "playwright", specifier = ">=1.60.0" },
