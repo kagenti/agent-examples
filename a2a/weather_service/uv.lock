@@ -3632,7 +3632,7 @@ requires-dist = [
     { name = "mako", specifier = ">=1.3.12" },
     { name = "marshmallow", specifier = ">=4.3.0" },
     { name = "mcp", specifier = ">=1.27.1" },
-    { name = "mlflow", extras = ["langchain", "kubernetes"], specifier = ">=3.12.0,<4" },
+    { name = "mlflow", extras = ["langchain", "kubernetes"], specifier = ">=3.13.0,<4" },
     { name = "openinference-instrumentation-langchain", specifier = ">=0.1.66" },
     { name = "openinference-semantic-conventions", specifier = ">=0.1.30" },
     { name = "opentelemetry-exporter-otlp" },
