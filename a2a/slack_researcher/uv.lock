@@ -729,7 +729,7 @@ requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.2.16" },
     { name = "ag2", extras = ["openai", "mcp"], specifier = ">=0.13.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
-    { name = "python-multipart", specifier = ">=0.0.27" },
+    { name = "python-multipart", specifier = ">=0.0.30" },
     { name = "tavily-python", specifier = ">=0.7.24" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]

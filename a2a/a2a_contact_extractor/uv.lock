@@ -31,15 +31,15 @@ requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.2.5,<0.4.0" },
     { name = "aiohttp", specifier = ">=3.13.5" },
     { name = "anthropic", specifier = ">=0.87.0" },
-    { name = "fastmcp", specifier = ">=3.2.4" },
+    { name = "fastmcp", specifier = ">=3.4.0" },
     { name = "filelock", specifier = ">=3.29.0" },
     { name = "mako", specifier = ">=1.3.12" },
     { name = "marvin", specifier = ">=3.2.0" },
     { name = "mcp", specifier = ">=1.27.1" },
     { name = "pyasn1", specifier = ">=0.6.3" },
     { name = "pydantic-ai", specifier = ">=1.103.0" },
-    { name = "python-multipart", specifier = ">=0.0.29" },
-    { name = "starlette", specifier = ">=1.2.0" },
+    { name = "python-multipart", specifier = ">=0.0.30" },
+    { name = "starlette", specifier = ">=1.2.1" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
 

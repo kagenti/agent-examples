@@ -685,9 +685,9 @@ requires-dist = [
     { name = "orjson", specifier = ">=3.11.6" },
     { name = "pillow", specifier = ">=12.2.0" },
     { name = "pyasn1", specifier = ">=0.6.3" },
-    { name = "python-dotenv", specifier = ">=1.1.0" },
-    { name = "python-multipart", specifier = ">=0.0.29" },
-    { name = "starlette", specifier = ">=1.2.0" },
+    { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "python-multipart", specifier = ">=0.0.30" },
+    { name = "starlette", specifier = ">=1.2.1" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
 
