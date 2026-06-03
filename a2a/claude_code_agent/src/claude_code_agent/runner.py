@@ -58,6 +58,11 @@ async def _consume(stdout, translator: StreamTranslator) -> None:
         await translator.handle(event)
 
 
+async def _drain(stream, sink: list[bytes]) -> None:
+    async for chunk in stream:
+        sink.append(chunk)
+
+
 async def run_turn(
     session: ClaudeSession,
     prompt: str,
@@ -82,6 +87,9 @@ async def run_turn(
         stderr=asyncio.subprocess.PIPE,
     )
 
+    stderr_chunks: list[bytes] = []
+    stderr_task = asyncio.ensure_future(_drain(proc.stderr, stderr_chunks))
+
     try:
         await asyncio.wait_for(
             _consume(proc.stdout, translator), timeout=config.turn_timeout_s
@@ -90,12 +98,15 @@ async def run_turn(
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
+        await stderr_task
         translator.errored = True
         translator.error_reason = f"turn timed out after {config.turn_timeout_s}s"
         return
 
+    await stderr_task
+
     if proc.returncode != 0 and translator.final_text is None:
-        stderr = (await proc.stderr.read()).decode(errors="replace")
+        stderr = b"".join(stderr_chunks).decode(errors="replace")
         logger.error("claude exited %s: %s", proc.returncode, stderr[:500])
         translator.errored = True
         translator.error_reason = f"claude exited with code {proc.returncode}"

@@ -4,7 +4,6 @@ import os
 from textwrap import dedent
 
 import uvicorn
-from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.routing import Route
 
 from a2a.server.agent_execution import AgentExecutor, RequestContext

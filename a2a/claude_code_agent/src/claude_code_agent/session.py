@@ -5,8 +5,9 @@ import time
 import uuid
 from collections import OrderedDict
 
-# Stable namespace so a given context_id always derives the same session UUID,
-# even across process restarts. Generated once; do not change.
+# Stable namespace so a given context_id always derives the same session UUID.
+# Note: only the UUID is stable — the workspace and `started` flag are in-memory
+# (pod-lifetime), so conversation state is not preserved across restarts.
 _NAMESPACE = uuid.UUID("6f8d2c4e-1b3a-4f5e-9a7b-0c1d2e3f4a5b")
 
 
