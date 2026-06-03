@@ -1,0 +1,36 @@
+# Claude Code needs Node (the CLI is an npm package); the A2A server is Python.
+FROM node:22-bookworm-slim
+ARG RELEASE_VERSION="main"
+
+# System deps: git + ripgrep are used by Claude Code; ca-certificates for TLS.
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends git ripgrep ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
+
+# The Claude Code CLI (`claude`).
+RUN npm install -g @anthropic-ai/claude-code
+
+# uv (Python package manager); it will fetch a managed CPython during `uv sync`.
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+
+# Install uv's managed CPython into a world-readable location so the non-root
+# user can use it (the default lives under root's HOME, which is mode 700).
+ENV UV_PYTHON_INSTALL_DIR=/opt/uv/python
+
+WORKDIR /app
+COPY . .
+RUN uv sync --no-cache --locked --link-mode copy
+
+# Non-root user with a writable HOME (for ~/.claude) and workspace root.
+RUN useradd -u 1001 -m -d /home/agent agent \
+    && mkdir -p /workspace \
+    && chown -R 1001:1001 /app /workspace /home/agent /opt/uv
+
+ENV HOME=/home/agent \
+    WORKSPACE_ROOT=/workspace \
+    PRODUCTION_MODE=True \
+    RELEASE_VERSION=${RELEASE_VERSION}
+
+USER 1001
+
+CMD ["uv", "run", "--no-sync", "server"]
