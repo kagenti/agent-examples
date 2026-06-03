@@ -23,7 +23,7 @@ wheels = [
 
 [[package]]
 name = "ag2"
-version = "0.12.3"
+version = "0.13.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -36,9 +36,9 @@ dependencies = [
     { name = "termcolor" },
     { name = "tiktoken" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/4f/9c/6add4a88368b23c6c7d8a01307e06de830d169033f9a4654e43519e71916/ag2-0.12.3.tar.gz", hash = "sha256:22bad945295b59a2679903f3cff39f661d1667acb656897f5cad722ff85496b7", size = 4274340, upload-time = "2026-05-06T05:01:03.428Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/06/d9/d7d0ec7e4875e70d85e24068ae4c1e04604af39146da585dc3ecfc9ee890/ag2-0.13.2.tar.gz", hash = "sha256:bfb6eb5e646a2ac9142256dcb7efdd442e337f616d00303f30856c04518445cf", size = 4682591, upload-time = "2026-05-29T01:00:59.722Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/c8/ca/913eb677b2f446b243599d3ea0f0d59fd49edf639a8c092c181723152a4c/ag2-0.12.3-py3-none-any.whl", hash = "sha256:97d70b44498fb1840009d66f80629b2895cbc68f0d87078f282e75b683b5cc49", size = 1276279, upload-time = "2026-05-06T05:01:00.323Z" },
+    { url = "https://files.pythonhosted.org/packages/07/63/30c188f0a5ca1462663811dbf61e7c165062e67a1728e837f03ad9a571dc/ag2-0.13.2-py3-none-any.whl", hash = "sha256:9f4edf29704042c713a4667fbab8b911590146b0c831c26df32ff93a9592516c", size = 1613805, upload-time = "2026-05-29T01:00:57.646Z" },
 ]
 
 [package.optional-dependencies]
@@ -376,7 +376,7 @@ wheels = [
 
 [[package]]
 name = "openai"
-version = "1.99.5"
+version = "2.40.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "anyio" },
@@ -388,9 +388,9 @@ dependencies = [
     { name = "tqdm" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2f/4a/16b1b6ee8a62cbfb59057f97f6d9b7bb5ce529047d80bc0b406f65dfdc48/openai-1.99.5.tar.gz", hash = "sha256:aa97ac3326cac7949c5e4ac0274c454c1d19c939760107ae0d3948fc26a924ca", size = 505144, upload-time = "2025-08-08T16:44:46.865Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f9/9f/136562ec6c3b1a50fe06eb0bb34ed21f0d7426ec0140e5cc43ac785b69a5/openai-2.40.0.tar.gz", hash = "sha256:9a756f91f274a24ad6026cbcb2042fd356c8d4a10e8f347b08d34465e585f7a2", size = 781177, upload-time = "2026-06-01T21:48:23.878Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/f2/2472ae020f5156a994710bf926a76915c71bc7b5debf7b81a11506ec8414/openai-1.99.5-py3-none-any.whl", hash = "sha256:4e870f9501b7c36132e2be13313ce3c4d6915a837e7a299c483aab6a6d4412e9", size = 786246, upload-time = "2025-08-08T16:44:45.062Z" },
+    { url = "https://files.pythonhosted.org/packages/f6/46/180e14be801a75bc13f234cb1b594b232adeb9c84e60a9ab1832e8333591/openai-2.40.0-py3-none-any.whl", hash = "sha256:2b205637ff214477f9ce9ab035e9f494db0e3fa8f1e599008953735fbf6ff1ff", size = 1350935, upload-time = "2026-06-01T21:48:21.462Z" },
 ]
 
 [[package]]
@@ -537,11 +537,11 @@ wheels = [
 
 [[package]]
 name = "python-multipart"
-version = "0.0.20"
+version = "0.0.30"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f3/87/f44d7c9f274c7ee665a29b885ec97089ec5dc034c7f3fafa03da9e39a09e/python_multipart-0.0.20.tar.gz", hash = "sha256:8dd0cab45b8e23064ae09147625994d090fa46f5b0d1e13af944c331a7fa9d13", size = 37158, upload-time = "2024-12-16T19:45:46.972Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4b/82/c8cd43a6e0719bf5a3b034f6726dd701f75829c08944c83d4b95d02ed0e8/python_multipart-0.0.30.tar.gz", hash = "sha256:0edfe0475c1f46ddd3ff7785a626f6118af32bdcf359bb21260367313bb32118", size = 46316, upload-time = "2026-05-31T19:24:55.198Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/45/58/38b5afbc1a800eeea951b9285d3912613f2603bdf897a4ab0f4bd7f405fc/python_multipart-0.0.20-py3-none-any.whl", hash = "sha256:8a62d3a8335e06589fe01f2a3e178cdcc632f3fbe0d492ad9ee0ec35aab1f104", size = 24546, upload-time = "2024-12-16T19:45:44.423Z" },
+    { url = "https://files.pythonhosted.org/packages/1c/fd/0318007beb234790993d3ec5afd051d1dbceb733e81e3afe2b981ece3f37/python_multipart-0.0.30-py3-none-any.whl", hash = "sha256:830964def8c90607ac5daa00514e3987815865713ade8d20febc9177ac0c3c5b", size = 29730, upload-time = "2026-05-31T19:24:53.814Z" },
 ]
 
 [[package]]
@@ -719,6 +719,7 @@ dependencies = [
     { name = "a2a-sdk" },
     { name = "ag2", extra = ["mcp", "openai"] },
     { name = "python-dotenv" },
+    { name = "python-multipart" },
     { name = "tavily-python" },
     { name = "urllib3" },
 ]
@@ -726,8 +727,9 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", specifier = ">=0.2.16" },
-    { name = "ag2", extras = ["openai", "mcp"], specifier = ">=0.12.3" },
+    { name = "ag2", extras = ["openai", "mcp"], specifier = ">=0.13.2" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
+    { name = "python-multipart", specifier = ">=0.0.30" },
     { name = "tavily-python", specifier = ">=0.7.24" },
     { name = "urllib3", specifier = ">=2.7.0" },
 ]
