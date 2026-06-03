@@ -1,0 +1,103 @@
+import asyncio
+import json
+import logging
+import os
+
+from claude_code_agent.configuration import Configuration
+from claude_code_agent.events import StreamTranslator
+from claude_code_agent.session import ClaudeSession
+
+logger = logging.getLogger(__name__)
+
+
+def build_argv(session: ClaudeSession, prompt: str, model: str | None) -> list[str]:
+    argv = [
+        "claude",
+        "-p",
+        prompt,
+        "--output-format",
+        "stream-json",
+        "--verbose",
+        "--dangerously-skip-permissions",
+    ]
+    if session.started:
+        argv += ["--resume", session.session_uuid]
+    else:
+        argv += ["--session-id", session.session_uuid]
+    if model:
+        argv += ["--model", model]
+    return argv
+
+
+def build_env(config: Configuration) -> dict[str, str]:
+    env = dict(os.environ)
+    env["ANTHROPIC_BASE_URL"] = config.anthropic_base_url
+    env["ANTHROPIC_AUTH_TOKEN"] = config.anthropic_auth_token
+    env["ANTHROPIC_MODEL"] = config.anthropic_model
+    if config.anthropic_default_haiku_model:
+        env["ANTHROPIC_DEFAULT_HAIKU_MODEL"] = config.anthropic_default_haiku_model
+    env["CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"] = config.disable_experimental_betas
+    env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = config.disable_nonessential_traffic
+    # Writable HOME so the subprocess can read/write ~/.claude.
+    env["HOME"] = config.home_dir
+    # Never let the subprocess inherit an x-api-key path; we use the bearer token.
+    env.pop("ANTHROPIC_API_KEY", None)
+    return env
+
+
+async def _consume(stdout, translator: StreamTranslator) -> None:
+    async for raw in stdout:
+        line = raw.decode(errors="replace").strip()
+        if not line:
+            continue
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            logger.debug("skipping non-JSON line: %s", line[:200])
+            continue
+        await translator.handle(event)
+
+
+async def run_turn(
+    session: ClaudeSession,
+    prompt: str,
+    translator: StreamTranslator,
+    config: Configuration,
+) -> None:
+    """Run one conversational turn as a `claude` subprocess in the session's cwd.
+
+    Caller must hold `session.lock`. On any failure, sets the translator's error
+    state; the caller calls `translator.finish()` to emit the terminal A2A state.
+    """
+    workdir = session.ensure_workdir()
+    os.makedirs(config.home_dir, exist_ok=True)
+    argv = build_argv(session, prompt, config.anthropic_model)
+    env = build_env(config)
+
+    proc = await asyncio.create_subprocess_exec(
+        *argv,
+        cwd=workdir,
+        env=env,
+        stdout=asyncio.subprocess.PIPE,
+        stderr=asyncio.subprocess.PIPE,
+    )
+
+    try:
+        await asyncio.wait_for(
+            _consume(proc.stdout, translator), timeout=config.turn_timeout_s
+        )
+        await asyncio.wait_for(proc.wait(), timeout=10)
+    except asyncio.TimeoutError:
+        proc.kill()
+        await proc.wait()
+        translator.errored = True
+        translator.error_reason = f"turn timed out after {config.turn_timeout_s}s"
+        return
+
+    if proc.returncode != 0 and translator.final_text is None:
+        stderr = (await proc.stderr.read()).decode(errors="replace")
+        logger.error("claude exited %s: %s", proc.returncode, stderr[:500])
+        translator.errored = True
+        translator.error_reason = f"claude exited with code {proc.returncode}"
+    else:
+        session.started = True
