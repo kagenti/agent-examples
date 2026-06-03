@@ -17,7 +17,7 @@ dependencies = [
     "opentelemetry-exporter-otlp",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.30", # Indirect; prevents CVE-2026-24486
-    "langsmith>=0.8.6",         # Indirect; prevents CVE-2026-45134
+    "langsmith>=0.8.9",         # Indirect; prevents CVE-2026-45134
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
     "starlette>=1.2.1",         # Indirect; prevents CVE-2025-62727
     "protobuf>=6.33.5",         # Indirect; prevents CVE-2026-0994
