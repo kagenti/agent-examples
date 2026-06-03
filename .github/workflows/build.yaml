@@ -25,7 +25,7 @@ jobs:
             path: ./a2a
           - name: a2a_currency_converter
             path: ./a2a
-          - name: claude_code_agent
+          - name: claude_agent
             path: ./a2a
           - name: file_organizer
             path: ./a2a

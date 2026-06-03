@@ -3,7 +3,7 @@ import stat
 
 import pytest
 
-# An NDJSON stream that mimics one Claude Code turn: init → assistant text →
+# An NDJSON stream that mimics one Claude turn: init → assistant text →
 # tool_use → tool_result → success result.
 _FAKE_STREAM = "\n".join(
     [

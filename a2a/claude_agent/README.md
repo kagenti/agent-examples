@@ -1,7 +1,7 @@
-# Claude Code A2A Agent
+# Claude A2A Agent
 
 An A2A agent that drives the `claude` CLI headlessly. Each A2A `context_id` maps to
-a persistent Claude Code session with its own isolated working directory, so the
+a persistent Claude session with its own isolated working directory, so the
 agent can serve concurrent sessions from one user and sessions from multiple users.
 The model is reached through a LiteLLM (Anthropic-compatible) endpoint.
 
@@ -23,7 +23,7 @@ Set `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`; everything else has a defau
 
 ## Security / trust model
 
-The agent runs Claude Code with `--dangerously-skip-permissions`, so **a prompt can
+The agent runs Claude with `--dangerously-skip-permissions`, so **a prompt can
 execute arbitrary code inside the container** (edit files, run shell/tools) and read
 the pod's environment. The container/pod is the only isolation boundary. Therefore:
 
@@ -51,17 +51,17 @@ The image is published to GHCR by the repo's `Build-Publish` workflow (on `v*`
 tags), so you just point Kagenti at it — no local build needed:
 
 ```
-ghcr.io/kagenti/agent-examples/claude_code_agent:latest
+ghcr.io/kagenti/agent-examples/claude_agent:latest
 ```
 
 UI → **Agents → Import New Agent** → **Deploy from Existing Image**:
 
 | Field | Value |
 |---|---|
-| Container Image | `ghcr.io/kagenti/agent-examples/claude_code_agent` |
+| Container Image | `ghcr.io/kagenti/agent-examples/claude_agent` |
 | Image Tag | `latest` (or a released `vX.Y.Z`) |
 | Namespace | `team1` |
-| Agent Name | `claude-code-agent` |
+| Agent Name | `claude-agent` |
 | Protocol | `a2a` |
 | Service port → target | `8080` → `8000` |
 
@@ -80,4 +80,4 @@ prompt.
 > Code session + working directory; concurrent and multi-user sessions stay isolated.
 
 Pre-built manifests are also available at
-`kagenti/examples/agents/claude_code_agent_*.yaml` in the `kagenti/kagenti` repo.
+`kagenti/examples/agents/claude_agent_*.yaml` in the `kagenti/kagenti` repo.

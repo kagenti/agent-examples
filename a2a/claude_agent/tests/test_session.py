@@ -1,6 +1,6 @@
 import os
 
-from claude_code_agent.session import ClaudeSession, SessionRegistry
+from claude_agent.session import ClaudeSession, SessionRegistry
 
 
 def test_session_uuid_is_deterministic_and_valid():

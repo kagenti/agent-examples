@@ -11,7 +11,7 @@ _NAMESPACE = uuid.UUID("6f8d2c4e-1b3a-4f5e-9a7b-0c1d2e3f4a5b")
 
 
 class ClaudeSession:
-    """One Claude Code conversation, isolated by its own working directory."""
+    """One Claude conversation, isolated by its own working directory."""
 
     def __init__(self, context_id: str, workspace_root: str):
         self.context_id = context_id

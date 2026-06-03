@@ -15,7 +15,7 @@ def _truncate(value, n: int = _TRUNC) -> str:
 
 
 class StreamTranslator:
-    """Translates Claude Code `stream-json` events into A2A task updates.
+    """Translates Claude `stream-json` events into A2A task updates.
 
     Intermediate events (assistant text, tool calls/results) become `working`
     status updates. The terminal `result` event is accumulated and emitted by
@@ -41,7 +41,7 @@ class StreamTranslator:
         etype = event.get("type")
         if etype == "system" and event.get("subtype") == "init":
             self.session_id = event.get("session_id")
-            await self._working("🟢 Claude Code session started")
+            await self._working("🟢 Claude session started")
         elif etype == "assistant":
             for block in event.get("message", {}).get("content", []):
                 btype = block.get("type")
@@ -67,7 +67,7 @@ class StreamTranslator:
     async def finish(self) -> None:
         """Emit the terminal A2A state based on what was accumulated."""
         if self.errored or self.final_text is None:
-            reason = self.error_reason or "Claude Code produced no result"
+            reason = self.error_reason or "Claude produced no result"
             await self._tu.add_artifact([TextPart(text=f"Error: {reason}")])
             await self._tu.failed()
         else:

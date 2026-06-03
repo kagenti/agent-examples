@@ -4,10 +4,10 @@ import stat
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
-from claude_code_agent.configuration import Configuration
-from claude_code_agent.events import StreamTranslator
-from claude_code_agent.runner import build_argv, build_env, run_turn
-from claude_code_agent.session import ClaudeSession
+from claude_agent.configuration import Configuration
+from claude_agent.events import StreamTranslator
+from claude_agent.runner import build_argv, build_env, run_turn
+from claude_agent.session import ClaudeSession
 
 
 def _mk_translator():

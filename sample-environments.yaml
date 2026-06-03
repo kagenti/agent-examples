@@ -22,9 +22,9 @@ data:
       {"name": "LLM_API_BASE", "value": "https://api.openai.com/v1"},
       {"name": "LLM_MODEL", "value": "gpt-4o-mini-2024-07-18"}
     ]
-  # Claude Code agent talking to a LiteLLM (Anthropic-compatible) endpoint.
+  # Claude agent talking to a LiteLLM (Anthropic-compatible) endpoint.
   # ANTHROPIC_AUTH_TOKEN is the only required value; sourced from a Secret.
-  claude-code: |
+  claude-agent: |
     [
       {
         "name": "ANTHROPIC_AUTH_TOKEN",

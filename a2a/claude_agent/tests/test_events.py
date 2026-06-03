@@ -1,6 +1,6 @@
 from unittest.mock import AsyncMock, MagicMock
 
-from claude_code_agent.events import StreamTranslator
+from claude_agent.events import StreamTranslator
 
 
 def make_translator():

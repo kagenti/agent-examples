@@ -1,4 +1,4 @@
-from claude_code_agent.configuration import Configuration
+from claude_agent.configuration import Configuration
 
 
 def test_defaults(monkeypatch):

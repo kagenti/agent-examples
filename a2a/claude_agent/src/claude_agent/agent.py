@@ -13,10 +13,10 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from a2a.utils import new_task
-from claude_code_agent.configuration import Configuration
-from claude_code_agent.events import StreamTranslator
-from claude_code_agent.runner import run_turn
-from claude_code_agent.session import SessionRegistry
+from claude_agent.configuration import Configuration
+from claude_agent.events import StreamTranslator
+from claude_agent.runner import run_turn
+from claude_agent.session import SessionRegistry
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -25,10 +25,10 @@ logger = logging.getLogger(__name__)
 def get_agent_card(host: str, port: int) -> AgentCard:
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
-        id="claude_code",
-        name="Claude Code",
-        description="General-purpose coding and reasoning assistant powered by Claude Code.",
-        tags=["coding", "claude-code", "agent"],
+        id="claude_agent",
+        name="Claude Agent",
+        description="General-purpose coding and reasoning assistant powered by Claude.",
+        tags=["coding", "claude", "agent"],
         examples=[
             "Write a Python function that reverses a linked list.",
             "Explain what this repository does.",
@@ -36,15 +36,15 @@ def get_agent_card(host: str, port: int) -> AgentCard:
         ],
     )
     return AgentCard(
-        name="Claude Code Agent",
+        name="Claude Agent",
         description=dedent(
             """\
-            An agent that drives Claude Code headlessly. Each A2A session maps to a
-            persistent Claude Code conversation with its own isolated workspace, so
+            An agent that drives Claude headlessly. Each A2A session maps to a
+            persistent Claude conversation with its own isolated workspace, so
             concurrent sessions (same or multiple users) stay separate.
 
             ## Input Parameters
-            - **prompt** (string) – the instruction or question for Claude Code.
+            - **prompt** (string) – the instruction or question for Claude.
             """
         ),
         url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
@@ -56,8 +56,8 @@ def get_agent_card(host: str, port: int) -> AgentCard:
     )
 
 
-class ClaudeCodeExecutor(AgentExecutor):
-    """Runs one Claude Code turn per A2A message, isolated per context_id."""
+class ClaudeAgentExecutor(AgentExecutor):
+    """Runs one Claude turn per A2A message, isolated per context_id."""
 
     def __init__(
         self,
@@ -104,11 +104,11 @@ def run() -> None:
     config = Configuration()
     if not config.has_auth_token:
         logger.warning(
-            "ANTHROPIC_AUTH_TOKEN is not set; Claude Code calls to the LiteLLM endpoint will fail until it is provided."
+            "ANTHROPIC_AUTH_TOKEN is not set; Claude calls to the LiteLLM endpoint will fail until it is provided."
         )
     if not config.anthropic_base_url:
         logger.warning(
-            "ANTHROPIC_BASE_URL is not set; Claude Code will use api.anthropic.com. "
+            "ANTHROPIC_BASE_URL is not set; Claude will use api.anthropic.com. "
             "Set it to your LiteLLM endpoint to route through the gateway."
         )
 
@@ -117,7 +117,7 @@ def run() -> None:
 
     agent_card = get_agent_card(host=config.host, port=config.port)
     request_handler = DefaultRequestHandler(
-        agent_executor=ClaudeCodeExecutor(config, registry, semaphore),
+        agent_executor=ClaudeAgentExecutor(config, registry, semaphore),
         task_store=InMemoryTaskStore(),
     )
     server = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)

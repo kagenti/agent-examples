@@ -3,9 +3,9 @@ import json
 import logging
 import os
 
-from claude_code_agent.configuration import Configuration
-from claude_code_agent.events import StreamTranslator
-from claude_code_agent.session import ClaudeSession
+from claude_agent.configuration import Configuration
+from claude_agent.events import StreamTranslator
+from claude_agent.session import ClaudeSession
 
 logger = logging.getLogger(__name__)
 

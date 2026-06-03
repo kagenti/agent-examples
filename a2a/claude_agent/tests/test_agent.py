@@ -2,9 +2,9 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-from claude_code_agent.agent import ClaudeCodeExecutor, get_agent_card
-from claude_code_agent.configuration import Configuration
-from claude_code_agent.session import SessionRegistry
+from claude_agent.agent import ClaudeAgentExecutor, get_agent_card
+from claude_agent.configuration import Configuration
+from claude_agent.session import SessionRegistry
 
 
 def test_agent_card_has_streaming_and_url():
@@ -19,7 +19,7 @@ async def test_executor_runs_turn_under_lock_and_finishes(tmp_path):
     cfg.workspace_root = str(tmp_path / "ws")
     registry = SessionRegistry(cfg.workspace_root, max_sessions=10)
     semaphore = asyncio.Semaphore(2)
-    executor = ClaudeCodeExecutor(cfg, registry, semaphore)
+    executor = ClaudeAgentExecutor(cfg, registry, semaphore)
 
     # Build a fake RequestContext + EventQueue.
     context = MagicMock()
@@ -34,8 +34,8 @@ async def test_executor_runs_turn_under_lock_and_finishes(tmp_path):
         session.started = True
 
     with (
-        patch("claude_code_agent.agent.run_turn", side_effect=fake_run_turn) as rt,
-        patch("claude_code_agent.agent.StreamTranslator") as ST,
+        patch("claude_agent.agent.run_turn", side_effect=fake_run_turn) as rt,
+        patch("claude_agent.agent.StreamTranslator") as ST,
     ):
         translator = MagicMock()
         translator.finish = AsyncMock()
@@ -49,6 +49,6 @@ async def test_executor_runs_turn_under_lock_and_finishes(tmp_path):
 async def test_cancel_raises_not_implemented(tmp_path):
     cfg = Configuration(_env_file=None)
     cfg.workspace_root = str(tmp_path / "ws")
-    executor = ClaudeCodeExecutor(cfg, SessionRegistry(cfg.workspace_root), asyncio.Semaphore(1))
+    executor = ClaudeAgentExecutor(cfg, SessionRegistry(cfg.workspace_root), asyncio.Semaphore(1))
     with pytest.raises(NotImplementedError):
         await executor.cancel(MagicMock(), MagicMock())
