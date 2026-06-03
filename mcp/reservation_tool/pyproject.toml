@@ -5,16 +5,16 @@ description = "Restaurant reservation MCP server with provider abstraction"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "pydantic>=2.0.0",
+    "pydantic>=2.13.4",
     "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
-    "python-multipart>=0.0.28", # Indirect; prevents CVE-2026-24486
-    "fastmcp>=3.3.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
+    "python-multipart>=0.0.30", # Indirect; prevents CVE-2026-24486
+    "fastmcp>=3.4.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
 ]
 
 [project.optional-dependencies]
 dev = [
     "pytest>=9.0.3",
-    "pytest-asyncio>=0.21.0",
+    "pytest-asyncio>=1.4.0",
     "flake8>=6.0.0",
 ]
