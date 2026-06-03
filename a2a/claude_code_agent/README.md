@@ -34,43 +34,21 @@ uv run server
 uv run pytest -v
 ```
 
-## Deploy on Kagenti (Kind)
+## Deploy on Kagenti
 
-Build the image, load it into the cluster's in-cluster registry, then create the
-agent from the UI.
+The image is published to GHCR by the repo's `Build-Publish` workflow (on `v*`
+tags), so you just point Kagenti at it — no local build needed:
 
-### 1. Build and push to the in-cluster registry
-
-`kubectl port-forward` to the registry is unreliable for large images on
-Kind/podman, so push from inside the Kind node over the cluster network:
-
-```bash
-# Build (run from this directory)
-podman build -t localhost/claude-code-agent:dev .
-
-# Load into the Kind node, then tag + push to the in-cluster registry
-kind load docker-image localhost/claude-code-agent:dev --name kagenti
-REG=registry.cr-system.svc.cluster.local:5000/claude-code-agent:v0.0.1
-podman exec kagenti-control-plane ctr -n k8s.io images tag \
-  localhost/claude-code-agent:dev $REG
-podman exec kagenti-control-plane ctr -n k8s.io images push --plain-http $REG
-
-# Verify
-podman exec kagenti-control-plane \
-  curl -s http://registry.cr-system.svc.cluster.local:5000/v2/claude-code-agent/tags/list
 ```
-
-(Replace `kagenti` / `kagenti-control-plane` if your cluster/node names differ.)
-
-### 2. Create the agent in the UI
+ghcr.io/kagenti/agent-examples/claude_code_agent:latest
+```
 
 UI → **Agents → Import New Agent** → **Deploy from Existing Image**:
 
 | Field | Value |
 |---|---|
-| Container Image | `registry.cr-system.svc.cluster.local:5000/claude-code-agent` |
-| Image Tag | `v0.0.1` |
-| Image Pull Secret | _(blank)_ |
+| Container Image | `ghcr.io/kagenti/agent-examples/claude_code_agent` |
+| Image Tag | `latest` (or a released `vX.Y.Z`) |
 | Namespace | `team1` |
 | Agent Name | `claude-code-agent` |
 | Protocol | `a2a` |
@@ -86,3 +64,6 @@ prompt.
 
 > Workspaces are ephemeral (pod lifetime). Each A2A session gets its own Claude
 > Code session + working directory; concurrent and multi-user sessions stay isolated.
+
+Pre-built manifests are also available at
+`kagenti/examples/agents/claude_code_agent_*.yaml` in the `kagenti/kagenti` repo.
