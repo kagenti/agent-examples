@@ -6,7 +6,7 @@ readme = "README.md"
 license = { text = "Apache" }
 requires-python = ">=3.11"
 dependencies = [
-    "a2a-sdk>=0.3.26",
+    "a2a-sdk==0.3.26",
     "pydantic-settings>=2.14.1",
     "uvicorn>=0.30",
 ]

@@ -1,7 +1,8 @@
 import json
 import logging
 
-from a2a.types import Part, TaskState
+from a2a.types import TaskState, TextPart
+from a2a.utils import new_agent_text_message
 
 logger = logging.getLogger(__name__)
 
@@ -31,8 +32,10 @@ class StreamTranslator:
     async def _working(self, text: str) -> None:
         if not text.strip():
             return
-        message = self._tu.new_agent_message([Part(text=text)])
-        await self._tu.update_status(TaskState.TASK_STATE_WORKING, message)
+        await self._tu.update_status(
+            TaskState.working,
+            new_agent_text_message(text, self._tu.context_id, self._tu.task_id),
+        )
 
     async def handle(self, event: dict) -> None:
         etype = event.get("type")
@@ -71,8 +74,8 @@ class StreamTranslator:
         """Emit the terminal A2A state based on what was accumulated."""
         if self.errored or self.final_text is None:
             reason = self.error_reason or "Claude Code produced no result"
-            await self._tu.add_artifact([Part(text=f"Error: {reason}")])
+            await self._tu.add_artifact([TextPart(text=f"Error: {reason}")])
             await self._tu.failed()
         else:
-            await self._tu.add_artifact([Part(text=self.final_text)])
+            await self._tu.add_artifact([TextPart(text=self.final_text)])
             await self._tu.complete()
