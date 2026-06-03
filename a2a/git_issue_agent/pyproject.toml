@@ -5,7 +5,7 @@ requires-python = ">=3.11,<3.13"
 description = "Git issue Agent module"
 dependencies = [
     "python-dotenv>=1.2.2",
-    "a2a-sdk>=0.2.16",
+    "a2a-sdk>=1.1.0",
     # We use 1.6.1 instead of the latest because
     # crewai requires openai>=2.30.0
     # but litellm requires openai==2.24.0
