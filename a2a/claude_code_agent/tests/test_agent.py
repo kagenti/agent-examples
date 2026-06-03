@@ -2,7 +2,6 @@ import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
-
 from claude_code_agent.agent import ClaudeCodeExecutor, get_agent_card
 from claude_code_agent.configuration import Configuration
 from claude_code_agent.session import SessionRegistry
@@ -34,8 +33,10 @@ async def test_executor_runs_turn_under_lock_and_finishes(tmp_path):
         translator.final_text = "ok"
         session.started = True
 
-    with patch("claude_code_agent.agent.run_turn", side_effect=fake_run_turn) as rt, \
-         patch("claude_code_agent.agent.StreamTranslator") as ST:
+    with (
+        patch("claude_code_agent.agent.run_turn", side_effect=fake_run_turn) as rt,
+        patch("claude_code_agent.agent.StreamTranslator") as ST,
+    ):
         translator = MagicMock()
         translator.finish = AsyncMock()
         ST.return_value = translator
@@ -43,3 +44,11 @@ async def test_executor_runs_turn_under_lock_and_finishes(tmp_path):
 
     rt.assert_awaited_once()
     translator.finish.assert_awaited_once()
+
+
+async def test_cancel_raises_not_implemented(tmp_path):
+    cfg = Configuration(_env_file=None)
+    cfg.workspace_root = str(tmp_path / "ws")
+    executor = ClaudeCodeExecutor(cfg, SessionRegistry(cfg.workspace_root), asyncio.Semaphore(1))
+    with pytest.raises(NotImplementedError):
+        await executor.cancel(MagicMock(), MagicMock())

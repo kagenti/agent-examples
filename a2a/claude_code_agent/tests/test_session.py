@@ -1,7 +1,4 @@
-import asyncio
 import os
-
-import pytest
 
 from claude_code_agent.session import ClaudeSession, SessionRegistry
 

@@ -30,8 +30,15 @@ def build_argv(session: ClaudeSession, prompt: str, model: str | None) -> list[s
 
 
 def build_env(config: Configuration) -> dict[str, str]:
+    # NOTE: this copies the full pod environment so the `claude` subprocess has a
+    # working runtime (PATH, HOME, TLS/CA, Node vars, etc.). Because the agent runs
+    # Claude with --dangerously-skip-permissions, a prompt can execute arbitrary
+    # code inside this container and read these env vars. Trust model: prompts are
+    # fully trusted and the container/pod is the isolation boundary — do not
+    # co-locate unrelated secrets in this pod, and isolate per tenant.
     env = dict(os.environ)
-    env["ANTHROPIC_BASE_URL"] = config.anthropic_base_url
+    if config.anthropic_base_url:
+        env["ANTHROPIC_BASE_URL"] = config.anthropic_base_url
     env["ANTHROPIC_AUTH_TOKEN"] = config.anthropic_auth_token
     env["ANTHROPIC_MODEL"] = config.anthropic_model
     if config.anthropic_default_haiku_model:
@@ -83,6 +90,7 @@ async def run_turn(
         *argv,
         cwd=workdir,
         env=env,
+        stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -91,24 +99,33 @@ async def run_turn(
     stderr_task = asyncio.ensure_future(_drain(proc.stderr, stderr_chunks))
 
     try:
-        await asyncio.wait_for(
-            _consume(proc.stdout, translator), timeout=config.turn_timeout_s
-        )
-        await asyncio.wait_for(proc.wait(), timeout=10)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+        try:
+            await asyncio.wait_for(_consume(proc.stdout, translator), timeout=config.turn_timeout_s)
+            await asyncio.wait_for(proc.wait(), timeout=10)
+        except asyncio.TimeoutError:
+            translator.errored = True
+            translator.error_reason = f"turn timed out after {config.turn_timeout_s}s"
+            return
+
         await stderr_task
-        translator.errored = True
-        translator.error_reason = f"turn timed out after {config.turn_timeout_s}s"
-        return
 
-    await stderr_task
-
-    if proc.returncode != 0 and translator.final_text is None:
-        stderr = b"".join(stderr_chunks).decode(errors="replace")
-        logger.error("claude exited %s: %s", proc.returncode, stderr[:500])
-        translator.errored = True
-        translator.error_reason = f"claude exited with code {proc.returncode}"
-    else:
-        session.started = True
+        if proc.returncode != 0 and translator.final_text is None:
+            stderr = b"".join(stderr_chunks).decode(errors="replace")
+            logger.error("claude exited %s: %s", proc.returncode, stderr[:500])
+            translator.errored = True
+            translator.error_reason = f"claude exited with code {proc.returncode}"
+        else:
+            session.started = True
+    finally:
+        # Never let the subprocess outlive this turn — on timeout, error, or
+        # cancellation (A2A cancel / client disconnect). A lingering
+        # --dangerously-skip-permissions process is especially undesirable.
+        if proc.returncode is None:
+            proc.kill()
+            await proc.wait()
+        if not stderr_task.done():
+            stderr_task.cancel()
+            try:
+                await stderr_task
+            except asyncio.CancelledError:
+                pass

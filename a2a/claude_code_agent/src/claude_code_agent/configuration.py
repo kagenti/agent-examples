@@ -9,17 +9,17 @@ class Configuration(BaseSettings):
 
     # --- Model / LiteLLM wiring ---
     anthropic_auth_token: str = ""
-    anthropic_base_url: str = "https://ete-litellm.ai-models.vpc-int.res.ibm.com"
+    # Required: the LiteLLM (Anthropic-compatible) endpoint, e.g.
+    # https://litellm.example.com. Empty by default so no environment-specific host
+    # is baked into this public example; when empty, Claude Code falls back to
+    # api.anthropic.com.
+    anthropic_base_url: str = ""
     anthropic_model: str = "sonnet"
     anthropic_default_haiku_model: str = "haiku"
     # These map to CLAUDE_CODE_* env vars Claude Code itself reads; kept here so the
     # runner forwards them deterministically to the subprocess.
-    disable_experimental_betas: str = Field(
-        default="1", validation_alias="CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS"
-    )
-    disable_nonessential_traffic: str = Field(
-        default="1", validation_alias="CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"
-    )
+    disable_experimental_betas: str = Field(default="1", validation_alias="CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS")
+    disable_nonessential_traffic: str = Field(default="1", validation_alias="CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC")
 
     # --- Sessions / workspaces ---
     workspace_root: str = "/workspace"

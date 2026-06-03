@@ -30,7 +30,7 @@ data:
         "name": "ANTHROPIC_AUTH_TOKEN",
         "valueFrom": {"secretKeyRef": {"name": "litellm-secret", "key": "auth-token"}}
       },
-      {"name": "ANTHROPIC_BASE_URL", "value": "https://ete-litellm.ai-models.vpc-int.res.ibm.com"},
+      {"name": "ANTHROPIC_BASE_URL", "value": "https://litellm.example.com"},
       {"name": "ANTHROPIC_MODEL", "value": "sonnet"},
       {"name": "ANTHROPIC_DEFAULT_HAIKU_MODEL", "value": "haiku"}
     ]

@@ -49,19 +49,13 @@ class StreamTranslator:
                     await self._working(block.get("text", ""))
                 elif btype == "tool_use":
                     name = block.get("name", "tool")
-                    await self._working(
-                        f"🔧 {name}: {_truncate(json.dumps(block.get('input', {})))}"
-                    )
+                    await self._working(f"🔧 {name}: {_truncate(json.dumps(block.get('input', {})))}")
         elif etype == "user":
             for block in event.get("message", {}).get("content", []):
                 if block.get("type") == "tool_result":
                     content = block.get("content", "")
                     if isinstance(content, list):
-                        content = " ".join(
-                            b.get("text", "")
-                            for b in content
-                            if isinstance(b, dict)
-                        )
+                        content = " ".join(b.get("text", "") for b in content if isinstance(b, dict))
                     await self._working(f"✓ {_truncate(content)}")
         elif etype == "result":
             if event.get("subtype") == "success" and not event.get("is_error"):

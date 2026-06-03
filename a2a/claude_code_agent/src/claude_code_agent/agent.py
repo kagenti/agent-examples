@@ -4,8 +4,6 @@ import os
 from textwrap import dedent
 
 import uvicorn
-from starlette.routing import Route
-
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
@@ -13,6 +11,7 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentSkill
 from a2a.utils import new_task
+from starlette.routing import Route
 
 from claude_code_agent.configuration import Configuration
 from claude_code_agent.events import StreamTranslator
@@ -95,15 +94,22 @@ class ClaudeCodeExecutor(AgentExecutor):
         await translator.finish()
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
-        raise Exception("cancel not supported")
+        # A2A cancel is not supported. Note: if the executing turn's coroutine is
+        # cancelled (e.g. client disconnect), run_turn() kills the subprocess in
+        # its finally block, so no claude process is orphaned.
+        raise NotImplementedError("cancel not supported")
 
 
 def run() -> None:
     config = Configuration()
     if not config.has_auth_token:
         logger.warning(
-            "ANTHROPIC_AUTH_TOKEN is not set; Claude Code calls to the LiteLLM "
-            "endpoint will fail until it is provided."
+            "ANTHROPIC_AUTH_TOKEN is not set; Claude Code calls to the LiteLLM endpoint will fail until it is provided."
+        )
+    if not config.anthropic_base_url:
+        logger.warning(
+            "ANTHROPIC_BASE_URL is not set; Claude Code will use api.anthropic.com. "
+            "Set it to your LiteLLM endpoint to route through the gateway."
         )
 
     registry = SessionRegistry(config.workspace_root, config.max_sessions)

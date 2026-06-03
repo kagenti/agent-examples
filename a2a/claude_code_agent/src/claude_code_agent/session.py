@@ -1,7 +1,6 @@
 import asyncio
 import os
 import shutil
-import time
 import uuid
 from collections import OrderedDict
 
@@ -21,7 +20,6 @@ class ClaudeSession:
         self.workdir = os.path.join(workspace_root, self.session_uuid)
         self.started = False  # False → use --session-id; True → use --resume
         self.lock = asyncio.Lock()  # serialize turns within this session
-        self.last_used = 0.0
 
     def ensure_workdir(self) -> str:
         os.makedirs(self.workdir, exist_ok=True)
@@ -41,24 +39,32 @@ class SessionRegistry:
         self._guard = asyncio.Lock()
 
     async def get_or_create(self, context_id: str) -> ClaudeSession:
+        victims: list[ClaudeSession] = []
         async with self._guard:
             session = self._sessions.get(context_id)
             if session is None:
                 session = ClaudeSession(context_id, self._workspace_root)
                 self._sessions[context_id] = session
-                self._evict_if_needed(protected=context_id)
+                victims = self._collect_evictions(protected=context_id)
             self._sessions.move_to_end(context_id)
-            session.last_used = time.monotonic()
-            return session
+        # Remove evicted workspaces off the event loop and outside the guard, so a
+        # large rmtree never blocks other sessions' lookups or the loop.
+        for victim in victims:
+            await asyncio.to_thread(victim.cleanup)
+        return session
 
     async def context_ids(self) -> list[str]:
         async with self._guard:
             return list(self._sessions.keys())
 
-    def _evict_if_needed(self, protected: str | None = None) -> None:
-        # Evict least-recently-used sessions that are not mid-turn. Never evict
-        # the just-created session (`protected`); if every other session is
-        # busy, allow temporary overflow rather than corrupt one.
+    def _collect_evictions(self, protected: str | None = None) -> list[ClaudeSession]:
+        """Pop least-recently-used sessions over the cap and return them.
+
+        Never evicts the just-created session (`protected`) or one whose lock is
+        held (mid-turn); if every other session is busy, allow temporary overflow
+        rather than corrupt one. Callers remove the returned workspaces.
+        """
+        victims: list[ClaudeSession] = []
         while len(self._sessions) > self._max_sessions:
             victim_key = None
             for key, sess in self._sessions.items():  # oldest first
@@ -69,5 +75,5 @@ class SessionRegistry:
                     break
             if victim_key is None:
                 break
-            victim = self._sessions.pop(victim_key)
-            victim.cleanup()
+            victims.append(self._sessions.pop(victim_key))
+        return victims

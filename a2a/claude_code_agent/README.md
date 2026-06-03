@@ -7,12 +7,12 @@ The model is reached through a LiteLLM (Anthropic-compatible) endpoint.
 
 ## Configuration
 
-The only required value is `ANTHROPIC_AUTH_TOKEN`. Everything else has a default.
+Set `ANTHROPIC_AUTH_TOKEN` and `ANTHROPIC_BASE_URL`; everything else has a default.
 
 | Env | Default |
 |---|---|
 | `ANTHROPIC_AUTH_TOKEN` | (required) |
-| `ANTHROPIC_BASE_URL` | `https://ete-litellm.ai-models.vpc-int.res.ibm.com` |
+| `ANTHROPIC_BASE_URL` | (required) — your LiteLLM endpoint, e.g. `https://litellm.example.com`; empty falls back to `api.anthropic.com` |
 | `ANTHROPIC_MODEL` | `sonnet` |
 | `ANTHROPIC_DEFAULT_HAIKU_MODEL` | `haiku` |
 | `WORKSPACE_ROOT` | `/workspace` |
@@ -20,6 +20,17 @@ The only required value is `ANTHROPIC_AUTH_TOKEN`. Everything else has a default
 | `MAX_CONCURRENT` | `8` |
 | `TURN_TIMEOUT_S` | `600` |
 | `HOST` / `PORT` | `0.0.0.0` / `8000` |
+
+## Security / trust model
+
+The agent runs Claude Code with `--dangerously-skip-permissions`, so **a prompt can
+execute arbitrary code inside the container** (edit files, run shell/tools) and read
+the pod's environment. The container/pod is the only isolation boundary. Therefore:
+
+- Treat prompts as fully trusted, and **isolate per tenant** (don't share one pod
+  across untrusted users).
+- **Do not co-locate unrelated secrets** in this pod — only the LiteLLM token it
+  needs. Workspaces are ephemeral (pod lifetime) and isolated per A2A session.
 
 ## Run locally
 
@@ -54,10 +65,13 @@ UI → **Agents → Import New Agent** → **Deploy from Existing Image**:
 | Protocol | `a2a` |
 | Service port → target | `8080` → `8000` |
 
-Under **Environment variables**, add `ANTHROPIC_AUTH_TOKEN` = your LiteLLM token
-(required; ui-v2 does not read the `sample-environments` ConfigMap). Override
-`ANTHROPIC_BASE_URL` / `ANTHROPIC_MODEL` only if the defaults don't fit — note the
-default base URL is IBM-internal and must be reachable from the cluster.
+Under **Environment variables**, add (ui-v2 does not read the `sample-environments`
+ConfigMap, so set these in the form):
+
+- `ANTHROPIC_AUTH_TOKEN` = your LiteLLM token — **required**
+- `ANTHROPIC_BASE_URL` = your LiteLLM endpoint (must be reachable from the cluster)
+  — **required**
+- `ANTHROPIC_MODEL` — optional, defaults to `sonnet`.
 
 Create, wait for the pod to be Ready, then open the agent in the chat and send a
 prompt.

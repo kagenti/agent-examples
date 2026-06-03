@@ -7,11 +7,12 @@ RUN apt-get update \
     && apt-get install -y --no-install-recommends git ripgrep ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# The Claude Code CLI (`claude`).
-RUN npm install -g @anthropic-ai/claude-code
+# The Claude Code CLI (`claude`). Pinned for reproducible/supply-chain-safe builds.
+RUN npm install -g @anthropic-ai/claude-code@2.1.161
 
 # uv (Python package manager); it will fetch a managed CPython during `uv sync`.
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /usr/local/bin/uv
+# Pinned to a fixed version (avoid floating :latest).
+COPY --from=ghcr.io/astral-sh/uv:0.11.18 /uv /usr/local/bin/uv
 
 # Install uv's managed CPython into a world-readable location so the non-root
 # user can use it (the default lives under root's HOME, which is mode 700).
