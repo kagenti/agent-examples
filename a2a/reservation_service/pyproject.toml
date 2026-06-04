@@ -19,10 +19,10 @@ dependencies = [
     "pydantic-settings>=2.14.1",
     "langchain-mcp-adapters>=0.2.2",
     "python-keycloak>=7.1.1",
-    "opentelemetry-exporter-otlp",
+    "opentelemetry-exporter-otlp>=1.42.1",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.30",  # Indirect; prevents CVE-2026-24486
-    "langsmith>=0.8.6",          # Indirect; prevents CVE-2026-45134
+    "langsmith>=0.8.9",          # Indirect; prevents CVE-2026-45134
 ]
 
 [project.scripts]
