@@ -1,0 +1,33 @@
+[project]
+name = "claude-agent"
+version = "0.0.1"
+description = "A2A agent that drives Claude headlessly, one persistent session per A2A context."
+readme = "README.md"
+license = { text = "Apache" }
+requires-python = ">=3.11"
+dependencies = [
+    # http-server extra pulls in the Starlette/SSE stack that A2AStarletteApplication needs.
+    "a2a-sdk[http-server]==0.3.26",
+    "pydantic-settings>=2.14.1",
+    "uvicorn>=0.30",
+    "starlette>=0.49.1",        # Indirect; prevents CVE-2025-62727
+]
+
+[project.scripts]
+server = "claude_agent.agent:run"
+
+[dependency-groups]
+dev = [
+    "pytest>=8",
+    "pytest-asyncio>=0.24",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/claude_agent"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

@@ -25,6 +25,8 @@ jobs:
             path: ./a2a
           - name: a2a_currency_converter
             path: ./a2a
+          - name: claude_agent
+            path: ./a2a
           - name: file_organizer
             path: ./a2a
           - name: generic_agent

@@ -22,6 +22,18 @@ data:
       {"name": "LLM_API_BASE", "value": "https://api.openai.com/v1"},
       {"name": "LLM_MODEL", "value": "gpt-4o-mini-2024-07-18"}
     ]
+  # Claude agent talking to a LiteLLM (Anthropic-compatible) endpoint.
+  # ANTHROPIC_AUTH_TOKEN is the only required value; sourced from a Secret.
+  claude-agent: |
+    [
+      {
+        "name": "ANTHROPIC_AUTH_TOKEN",
+        "valueFrom": {"secretKeyRef": {"name": "litellm-secret", "key": "auth-token"}}
+      },
+      {"name": "ANTHROPIC_BASE_URL", "value": "https://litellm.example.com"},
+      {"name": "ANTHROPIC_MODEL", "value": "sonnet"},
+      {"name": "ANTHROPIC_DEFAULT_HAIKU_MODEL", "value": "haiku"}
+    ]
   # mcp weather assumes we are using streamable-http transport
   mcp-weather: |
     [
