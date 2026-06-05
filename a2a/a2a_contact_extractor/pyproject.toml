@@ -8,11 +8,11 @@ dependencies = [
     "marvin>=3.2.0",  # 3.0.x/3.1.x incompatible with pydantic-ai>=1.56
     "a2a-sdk>=0.2.5,<0.4.0",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
-    "python-multipart>=0.0.30", # Indirect; prevents CVE-2026-24486
+    "python-multipart>=0.0.32", # Indirect; prevents CVE-2026-24486
     "starlette>=1.2.1",        # Indirect; prevents CVE-2025-62727
     "mcp>=1.27.2",              # Indirect; prevents CVE-2025-66416
     "pyasn1>=0.6.3",            # Indirect; prevents CVE-2026-30922
-    "pydantic-ai>=1.103.0",      # Indirect; prevents CVE-2026-25580
+    "pydantic-ai>=1.106.0",      # Indirect; prevents CVE-2026-25580
     "filelock>=3.29.1",         # Indirect; prevents CVE-2025-68146
     "fastmcp>=3.4.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
     "anthropic>=0.87.0",        # Indirect; prevents CVE-2026-34452, CVE-2026-34450
