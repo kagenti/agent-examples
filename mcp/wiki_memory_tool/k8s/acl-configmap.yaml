@@ -1,0 +1,78 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: wiki-memory-acl
+  namespace: wiki-memory-service
+data:
+  acl.yaml: |
+    # Per-topic ACL for Wiki Memory Service
+    # Identity prefixes:
+    #   spiffe://   — workload identity (agents)
+    #   github:user:<login>  — individual GitHub user
+    #   github:team:<org>/<team>  — GitHub team membership
+    #   github:org:<org>  — any member of GitHub org
+    #   *  — any authenticated identity
+
+    topics:
+      # AI/ML research topic — org members can read, ml-writers can write
+      ai:
+        writers:
+          - "spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent"
+          - "github:team:kaslomorg/ml-writers"
+          - "github:team:kaslomorg/platform-admins"
+        readers:
+          - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+          - "github:org:kaslomorg"
+          - "*"
+        admins:
+          - "github:user:aslom"
+          - "github:team:kaslomorg/platform-admins"
+
+      # Security research — restricted to security team
+      security:
+        writers:
+          - "spiffe://kagenti.example.com/ns/topic-security/sa/discovery-agent"
+          - "github:team:kaslomorg/security-team"
+          - "github:team:kaslomorg/platform-admins"
+        readers:
+          - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+          - "github:team:kaslomorg/security-team"
+          - "github:org:kaslomorg"
+        admins:
+          - "github:user:aslom"
+          - "github:team:kaslomorg/platform-admins"
+
+      # ML research — ml-team can read and write
+      ml:
+        writers:
+          - "spiffe://kagenti.example.com/ns/topic-ml/sa/discovery-agent"
+          - "github:team:kaslomorg/ml-team"
+          - "github:team:kaslomorg/ml-writers"
+        readers:
+          - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+          - "github:team:kaslomorg/ml-team"
+          - "github:org:kaslomorg"
+        admins:
+          - "github:user:aslom"
+          - "github:team:kaslomorg/platform-admins"
+
+      # Internal design — platform admins only
+      internal-design:
+        writers:
+          - "spiffe://kagenti.example.com/ns/topic-internal-design/sa/discovery-agent"
+          - "github:team:kaslomorg/platform-admins"
+        readers:
+          - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+          - "github:team:kaslomorg/platform-admins"
+          - "github:user:aslom"
+        admins:
+          - "github:user:aslom"
+          - "github:team:kaslomorg/platform-admins"
+
+      # System-level (for /admin endpoints)
+      _system:
+        writers: []
+        readers: []
+        admins:
+          - "github:user:aslom"
+          - "github:team:kaslomorg/platform-admins"
