@@ -21,7 +21,7 @@ dependencies = [
     "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp>=1.42.1",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
-    "python-multipart>=0.0.30",  # Indirect; prevents CVE-2026-24486
+    "python-multipart>=0.0.32",  # Indirect; prevents CVE-2026-24486
     "langsmith>=0.8.9",          # Indirect; prevents CVE-2026-45134
 ]
 
