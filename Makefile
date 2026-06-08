@@ -29,7 +29,7 @@ test-a2a:
 	done
 
 # Directories under mcp/ to skip in test-mcp
-TEST_MCP_SKIP := mcp/exgentic_benchmarks
+TEST_MCP_SKIP := mcp/exgentic_benchmarks mcp/wiki_memory_tool
 
 # Verify all of the MCP example Docker images can be built
 # (Optional KAGENTI_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)

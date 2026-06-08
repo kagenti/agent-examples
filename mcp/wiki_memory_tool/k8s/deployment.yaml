@@ -1,0 +1,112 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: wiki-memory-service
+  namespace: wiki-memory-service
+  labels:
+    app: wiki-memory-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: wiki-memory-service
+  template:
+    metadata:
+      labels:
+        app: wiki-memory-service
+    spec:
+      serviceAccountName: wiki-memory-service
+      containers:
+      - name: wiki-memory
+        image: quay.io/aslomnet/wiki-memory-service:0.2.0
+        imagePullPolicy: Always
+        ports:
+        - containerPort: 8000
+          name: http
+        env:
+        - name: WIKI_ROOT
+          value: /data/wiki
+        - name: ACL_FILE
+          value: /config/acl.yaml
+        - name: SPIFFE_TRUST_DOMAIN
+          value: kagenti.example.com
+        - name: WIKI_REMOTE_URL
+          valueFrom:
+            secretKeyRef:
+              name: wiki-github-remote
+              key: WIKI_REMOTE_URL
+              optional: true
+        - name: GITHUB_CLIENT_ID
+          valueFrom:
+            secretKeyRef:
+              name: wiki-github-oauth
+              key: GITHUB_CLIENT_ID
+              optional: true
+        - name: GITHUB_CLIENT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: wiki-github-oauth
+              key: GITHUB_CLIENT_SECRET
+              optional: true
+        - name: JWT_SECRET_KEY
+          valueFrom:
+            secretKeyRef:
+              name: wiki-github-oauth
+              key: JWT_SECRET_KEY
+        - name: JWT_EXPIRY_HOURS
+          value: "168"
+        volumeMounts:
+        - name: wiki-data
+          mountPath: /data/wiki
+        - name: acl-config
+          mountPath: /config
+        readinessProbe:
+          httpGet:
+            path: /healthz
+            port: 8000
+          initialDelaySeconds: 3
+        securityContext:
+          runAsNonRoot: true
+          runAsUser: 1001
+          readOnlyRootFilesystem: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: [ALL]
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: wiki-data
+        persistentVolumeClaim:
+          claimName: wiki-memory-pvc
+      - name: acl-config
+        configMap:
+          name: wiki-memory-acl
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: wiki-memory-service
+  namespace: wiki-memory-service
+spec:
+  selector:
+    app: wiki-memory-service
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: http
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: wiki-memory-pvc
+  namespace: wiki-memory-service
+spec:
+  accessModes: [ReadWriteOnce]
+  resources:
+    requests:
+      storage: 5Gi
