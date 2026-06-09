@@ -1,3 +1,4 @@
+import argparse
 import base64
 import logging
 import os
@@ -6,22 +7,26 @@ from textwrap import dedent
 import uvicorn
 from langchain_core.messages import HumanMessage
 from openinference.instrumentation.langchain import LangChainInstrumentor
-from starlette.routing import Route
+from starlette.applications import Starlette
 
+from a2a.helpers import (
+    new_data_part,
+    new_task_from_user_message,
+    new_text_message,
+    new_text_part,
+)
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
-    DataPart,
     TaskState,
-    TextPart,
 )
-from a2a.utils import new_agent_text_message, new_task
 from image_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
@@ -40,6 +45,8 @@ def get_agent_card(host: str, port: int):
         tags=["image"],
         examples=["give me a 100x100 image", "show me an image that is 400 by 400"],
     )
+    # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+    url = os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/"
     return AgentCard(
         name="Image Agent",
         description=dedent(
@@ -50,8 +57,9 @@ def get_agent_card(host: str, port: int):
             Input: a short text that may include two integers (height width).
             """
         ),
-        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+        supported_interfaces=[
+            AgentInterface(url=url, protocol_binding="JSONRPC"),
+        ],
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -68,7 +76,7 @@ class ImageTaskEventEmitter:
         logger.info("Emitting event %s", message)
 
         if final or failed:
-            parts = [TextPart(text=message)]
+            parts = [new_text_part(message)]
             await self.task_updater.add_artifact(parts)
             if final:
                 await self.task_updater.complete()
@@ -76,11 +84,11 @@ class ImageTaskEventEmitter:
                 await self.task_updater.failed()
         else:
             await self.task_updater.update_status(
-                TaskState.working,
-                new_agent_text_message(
+                TaskState.TASK_STATE_WORKING,
+                new_text_message(
                     message,
-                    self.task_updater.context_id,
-                    self.task_updater.task_id,
+                    context_id=self.task_updater.context_id,
+                    task_id=self.task_updater.task_id,
                 ),
             )
 
@@ -90,7 +98,7 @@ class ImageExecutor(AgentExecutor):
         """Fetch an image (base64) from the MCP image_tool and return it to the UI."""
         task = context.current_task
         if not task:
-            task = new_task(context.message)
+            task = new_task_from_user_message(context.message)
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = ImageTaskEventEmitter(task_updater)
@@ -164,8 +172,8 @@ class ImageExecutor(AgentExecutor):
                         content_b64 = str(image_base64)
 
                     parts = [
-                        DataPart(
-                            data={
+                        new_data_part(
+                            {
                                 "content": content_b64,
                                 "content_encoding": "base64",
                                 "content_type": "image/png",
@@ -206,31 +214,26 @@ class ImageExecutor(AgentExecutor):
 
 
 def run():
-    host = os.getenv("HOST", "0.0.0.0")
-    port = int(os.getenv("PORT", "8000"))
+    parser = argparse.ArgumentParser(description="Run the Image Agent A2A server.")
+    parser.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")))
+    args = parser.parse_args()
+    host, port = args.host, args.port
+
     agent_card = get_agent_card(host=host, port=port)
 
     request_handler = DefaultRequestHandler(
         agent_executor=ImageExecutor(),
         task_store=InMemoryTaskStore(),
-    )
-
-    server = A2AStarletteApplication(
         agent_card=agent_card,
-        http_handler=request_handler,
     )
 
-    app = server.build()
+    # A2AStarletteApplication was removed in a2a-sdk 1.x; build the Starlette
+    # app directly from the route factories. The agent card is served at the
+    # current /.well-known/agent-card.json path.
+    routes = create_agent_card_routes(agent_card)
+    routes += create_jsonrpc_routes(request_handler, rpc_url="/")
 
-    # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(
-        0,
-        Route(
-            "/.well-known/agent-card.json",
-            server._handle_get_agent_card,
-            methods=["GET"],
-            name="agent_card_new",
-        ),
-    )
+    app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)
