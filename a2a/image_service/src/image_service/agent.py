@@ -18,7 +18,10 @@ from a2a.helpers import (
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
+from a2a.server.routes import (
+    create_agent_card_routes,
+    create_jsonrpc_routes,
+)
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
@@ -27,6 +30,7 @@ from a2a.types import (
     AgentSkill,
     TaskState,
 )
+from starlette.applications import Starlette
 from image_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
@@ -35,7 +39,7 @@ logger = logging.getLogger(__name__)
 LangChainInstrumentor().instrument()
 
 
-def get_agent_card(host: str, port: int):
+def get_agent_card():
     """Returns the Agent Card for the Image Agent."""
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
@@ -45,8 +49,6 @@ def get_agent_card(host: str, port: int):
         tags=["image"],
         examples=["give me a 100x100 image", "show me an image that is 400 by 400"],
     )
-    # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-    url = os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/"
     return AgentCard(
         name="Image Agent",
         description=dedent(
@@ -57,9 +59,6 @@ def get_agent_card(host: str, port: int):
             Input: a short text that may include two integers (height width).
             """
         ),
-        supported_interfaces=[
-            AgentInterface(url=url, protocol_binding="JSONRPC"),
-        ],
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -214,13 +213,9 @@ class ImageExecutor(AgentExecutor):
 
 
 def run():
-    parser = argparse.ArgumentParser(description="Run the Image Agent A2A server.")
-    parser.add_argument("--host", default=os.getenv("HOST", "0.0.0.0"))
-    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")))
-    args = parser.parse_args()
-    host, port = args.host, args.port
-
-    agent_card = get_agent_card(host=host, port=port)
+    host = os.getenv("HOST", "0.0.0.0")
+    port = int(os.getenv("PORT", "8000"))
+    agent_card = get_agent_card()
 
     request_handler = DefaultRequestHandler(
         agent_executor=ImageExecutor(),
@@ -228,12 +223,9 @@ def run():
         agent_card=agent_card,
     )
 
-    # A2AStarletteApplication was removed in a2a-sdk 1.x; build the Starlette
-    # app directly from the route factories. The agent card is served at the
-    # current /.well-known/agent-card.json path.
-    routes = create_agent_card_routes(agent_card)
-    routes += create_jsonrpc_routes(request_handler, rpc_url="/")
-
+    routes = []
+    routes.extend(create_agent_card_routes(agent_card))
+    routes.extend(create_jsonrpc_routes(request_handler, '/'))
     app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)
