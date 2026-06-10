@@ -1,14 +1,9 @@
-import argparse
 import base64
 import logging
 import os
 from textwrap import dedent
 
 import uvicorn
-from langchain_core.messages import HumanMessage
-from openinference.instrumentation.langchain import LangChainInstrumentor
-from starlette.applications import Starlette
-
 from a2a.helpers import (
     new_data_part,
     new_task_from_user_message,
@@ -26,11 +21,13 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
-    AgentInterface,
     AgentSkill,
     TaskState,
 )
+from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
 from starlette.applications import Starlette
+
 from image_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
