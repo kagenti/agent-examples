@@ -76,4 +76,4 @@ with a validator to render things nicely if you want and maybe serialize weird t
 
 -   [Marvin Documentation](https://www.askmarvin.ai/)
 -   [Marvin GitHub Repository](https://github.com/prefecthq/marvin)
--   [A2A Protocol Documentation](https://google.github.io/A2A/#/documentation)
+-   [A2A Protocol Documentation](https://a2a-protocol.org/latest/)
