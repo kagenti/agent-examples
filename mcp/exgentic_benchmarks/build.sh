@@ -40,7 +40,7 @@ detect_runtime() {
 build_benchmark() {
     local benchmark=$1
     local runtime=$2
-    local image_name="exgentic-mcp-${benchmark}"
+    local image_name="localhost/exgentic-mcp-${benchmark}"
     local tag=$3
     local use_cache=$4
     
@@ -189,7 +189,7 @@ EOF
         echo ""
         print_info "Built images:"
         for benchmark in "${BENCHMARKS[@]}"; do
-            echo "  - exgentic-mcp-${benchmark}:${TAG}"
+            echo "  - localhost/exgentic-mcp-${benchmark}:${TAG}"
         done
     fi
 }
