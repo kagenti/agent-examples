@@ -225,7 +225,8 @@ def run():
 
     routes = []
     routes.extend(create_agent_card_routes(agent_card))
-    routes.extend(create_jsonrpc_routes(request_handler, '/'))
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes.extend(create_jsonrpc_routes(request_handler, '/', enable_v0_3_compat=True))
     app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)
