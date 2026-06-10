@@ -4,6 +4,10 @@ import os
 from textwrap import dedent
 
 import uvicorn
+from langchain_core.messages import HumanMessage
+from openinference.instrumentation.langchain import LangChainInstrumentor
+from starlette.applications import Starlette
+
 from a2a.helpers import (
     new_data_part,
     new_task_from_user_message,
@@ -21,13 +25,10 @@ from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
     TaskState,
 )
-from langchain_core.messages import HumanMessage
-from openinference.instrumentation.langchain import LangChainInstrumentor
-from starlette.applications import Starlette
-
 from image_service.graph import get_graph, get_mcpclient
 
 logging.basicConfig(level=logging.DEBUG)
@@ -36,7 +37,7 @@ logger = logging.getLogger(__name__)
 LangChainInstrumentor().instrument()
 
 
-def get_agent_card():
+def get_agent_card(host: str, port: int):
     """Returns the Agent Card for the Image Agent."""
     capabilities = AgentCapabilities(streaming=True)
     skill = AgentSkill(
@@ -61,6 +62,13 @@ def get_agent_card():
         default_output_modes=["text"],
         capabilities=capabilities,
         skills=[skill],
+        supported_interfaces=[
+            AgentInterface(
+                # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+                url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                protocol_binding="JSONRPC"
+            )
+        ]
     )
 
 
@@ -212,7 +220,7 @@ class ImageExecutor(AgentExecutor):
 def run():
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    agent_card = get_agent_card()
+    agent_card = get_agent_card(host, port)
 
     request_handler = DefaultRequestHandler(
         agent_executor=ImageExecutor(),
@@ -223,7 +231,7 @@ def run():
     routes = []
     routes.extend(create_agent_card_routes(agent_card))
     # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
-    routes.extend(create_jsonrpc_routes(request_handler, '/', enable_v0_3_compat=True))
+    routes.extend(create_jsonrpc_routes(request_handler, "/", enable_v0_3_compat=True))
     app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)
