@@ -40,7 +40,7 @@ detect_runtime() {
 build_agent() {
     local agent=$1
     local runtime=$2
-    local image_name="exgentic-a2a-${agent}"
+    local image_name="localhost/exgentic-a2a-${agent}"
     local tag=$3
     local use_cache=$4
     
@@ -184,7 +184,7 @@ EOF
         echo ""
         print_info "Built images:"
         for agent in "${AGENTS[@]}"; do
-            echo "  - exgentic-a2a-${agent}:${TAG}"
+            echo "  - localhost/exgentic-a2a-${agent}:${TAG}"
         done
     fi
 }
