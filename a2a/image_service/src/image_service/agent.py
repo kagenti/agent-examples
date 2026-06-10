@@ -66,9 +66,9 @@ def get_agent_card(host: str, port: int):
             AgentInterface(
                 # Allow env var AGENT_ENDPOINT to override the URL in the agent card
                 url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
-                protocol_binding="JSONRPC"
+                protocol_binding="JSONRPC",
             )
-        ]
+        ],
     )
 
 
