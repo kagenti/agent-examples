@@ -3,17 +3,31 @@ import os
 from textwrap import dedent
 
 import uvicorn
+from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
+from a2a.helpers import (
+    new_task_from_user_message,
+    new_text_message,
+    new_text_part,
+)
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import (
+    create_agent_card_routes,
+    create_jsonrpc_routes,
+)
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
-from a2a.utils import new_agent_text_message, new_task
+from a2a.types import (
+    AgentCapabilities,
+    AgentCard,
+    AgentInterface,
+    AgentSkill,
+    TaskState,
+)
 from recipe_agent.recipe_llm import chat
 
 logging.basicConfig(level=logging.DEBUG)
@@ -47,13 +61,18 @@ def get_agent_card(host: str, port: int):
             - Get 2-3 recipe suggestions with instructions
             """,
         ),
-        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
         capabilities=capabilities,
         skills=[skill],
+        supported_interfaces=[
+            AgentInterface(
+                # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+                url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                protocol_binding="JSONRPC",
+            )
+        ],
     )
 
 
@@ -63,7 +82,7 @@ class RecipeExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue):
         task = context.current_task
         if not task:
-            task = new_task(context.message)
+            task = new_task_from_user_message(context.message)
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
 
@@ -71,30 +90,30 @@ class RecipeExecutor(AgentExecutor):
         logger.info("Recipe agent received: %s (context=%s)", user_input, task.context_id)
 
         await task_updater.update_status(
-            TaskState.working,
-            new_agent_text_message(
+            TaskState.TASK_STATE_WORKING,
+            new_text_message(
                 "Thinking about recipes...",
-                task_updater.context_id,
-                task_updater.task_id,
+                context_id=task_updater.context_id,
+                task_id=task_updater.task_id,
             ),
         )
 
         try:
             reply = await chat(task.context_id, user_input)
 
-            parts = [TextPart(text=reply)]
+            parts = [new_text_part(reply)]
             await task_updater.add_artifact(parts)
             await task_updater.update_status(
-                TaskState.input_required,
-                new_agent_text_message(
+                TaskState.TASK_STATE_INPUT_REQUIRED,
+                new_text_message(
                     reply,
-                    task_updater.context_id,
-                    task_updater.task_id,
+                    context_id=task_updater.context_id,
+                    task_id=task_updater.task_id,
                 ),
             )
         except Exception as e:
             logger.error("Recipe agent error: %s", e)
-            parts = [TextPart(text="Sorry, something went wrong. Please try again.")]
+            parts = [new_text_part("Sorry, something went wrong. Please try again.")]
             await task_updater.add_artifact(parts)
             await task_updater.failed()
 
@@ -106,32 +125,23 @@ async def health(request: Request) -> JSONResponse:
     return JSONResponse({"status": "ok"})
 
 
-async def agent_card_compat(request: Request) -> JSONResponse:
-    """Serve agent card at /.well-known/agent-card.json for Kagenti backend compatibility."""
-    card = get_agent_card(host="0.0.0.0", port=8000)
-    return JSONResponse(card.model_dump(mode="json", exclude_none=True))
-
-
 def run():
     """Runs the A2A Agent application."""
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    agent_card = get_agent_card(host=host, port=port)
+    agent_card = get_agent_card(host, port)
 
     request_handler = DefaultRequestHandler(
         agent_executor=RecipeExecutor(),
         task_store=InMemoryTaskStore(),
-    )
-
-    server = A2AStarletteApplication(
         agent_card=agent_card,
-        http_handler=request_handler,
     )
 
-    app = server.build()
-
-    # Add custom routes
-    app.routes.insert(0, Route("/health", health, methods=["GET"]))
-    app.routes.insert(0, Route("/.well-known/agent-card.json", agent_card_compat, methods=["GET"]))
+    routes = [Route("/health", health, methods=["GET"])]
+    # create_agent_card_routes serves /.well-known/agent-card.json natively
+    routes.extend(create_agent_card_routes(agent_card))
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes.extend(create_jsonrpc_routes(request_handler, "/", enable_v0_3_compat=True))
+    app = Starlette(routes=routes)
 
     uvicorn.run(app, host=host, port=port)

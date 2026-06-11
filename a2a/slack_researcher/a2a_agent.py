@@ -13,23 +13,30 @@ from autogen.mcp.mcp_client import create_toolkit, Toolkit
 from mcp import ClientSession
 from mcp.client.streamable_http import streamablehttp_client
 
+from a2a.helpers import (
+    new_task_from_user_message,
+    new_text_message,
+    new_text_part,
+)
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import (
+    create_agent_card_routes,
+    create_jsonrpc_routes,
+)
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
-    TaskState,
-    TextPart,
-    SecurityScheme,
     HTTPAuthSecurityScheme,
+    SecurityScheme,
+    TaskState,
 )
-from a2a.utils import new_agent_text_message, new_task
 
-from starlette.routing import Route
+from starlette.applications import Starlette
 
 from slack_researcher.config import settings, Settings
 from slack_researcher.event import Event
@@ -55,20 +62,25 @@ def get_agent_card(host: str, port: int):
     return AgentCard(
         name="Web Research Agent",
         description="Answer queries by searching through a given slack server",
-        # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
         capabilities=capabilities,
         skills=[skill],
-        securitySchemes={
+        security_schemes={
             "Bearer": SecurityScheme(
-                root=HTTPAuthSecurityScheme(
-                    type="http", scheme="bearer", bearerFormat="JWT", description="OAuth 2.0 JWT token"
+                http_auth_security_scheme=HTTPAuthSecurityScheme(
+                    scheme="bearer", bearer_format="JWT", description="OAuth 2.0 JWT token"
                 )
             )
         },
+        supported_interfaces=[
+            AgentInterface(
+                # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+                url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                protocol_binding="JSONRPC",
+            )
+        ],
     )
 
 
@@ -100,16 +112,16 @@ class A2AEvent(Event):
         logger.info("Emitting event %s", message)
 
         if final:
-            parts = [TextPart(text=message)]
+            parts = [new_text_part(message)]
             await self.task_updater.add_artifact(parts)
             await self.task_updater.complete()
         else:
             await self.task_updater.update_status(
-                TaskState.working,
-                new_agent_text_message(
+                TaskState.TASK_STATE_WORKING,
+                new_text_message(
                     message,
-                    self.task_updater.context_id,
-                    self.task_updater.task_id,
+                    context_id=self.task_updater.context_id,
+                    task_id=self.task_updater.task_id,
                 ),
             )
 
@@ -150,7 +162,7 @@ class ResearchExecutor(AgentExecutor):
         user_input = [context.get_user_input()]
         task = context.current_task
         if not task:
-            task = new_task(context.message)  # type: ignore
+            task = new_task_from_user_message(context.message)  # type: ignore
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
@@ -223,24 +235,13 @@ def run():
     request_handler = DefaultRequestHandler(
         agent_executor=ResearchExecutor(),
         task_store=InMemoryTaskStore(),
-    )
-
-    server = A2AStarletteApplication(
         agent_card=agent_card,
-        http_handler=request_handler,
     )
 
-    app = server.build()  # this returns a Starlette app
-
-    # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(
-        0,
-        Route(
-            "/.well-known/agent-card.json",
-            server._handle_get_agent_card,
-            methods=["GET"],
-            name="agent_card_new",
-        ),
-    )
+    routes = []
+    routes.extend(create_agent_card_routes(agent_card))
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes.extend(create_jsonrpc_routes(request_handler, "/", enable_v0_3_compat=True))
+    app = Starlette(routes=routes)
 
     uvicorn.run(app, host="0.0.0.0", port=settings.SERVICE_PORT)
