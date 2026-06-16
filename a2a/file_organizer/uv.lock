@@ -535,7 +535,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "a2a-sdk", extras = ["http-server"], specifier = ">=1.1.0" },
+    { name = "a2a-sdk", extras = ["http-server"], specifier = ">=1.1.0,<2" },
     { name = "aiohttp", specifier = ">=3.14.0" },
     { name = "cryptography", specifier = ">=48.0.0,<49" },
     { name = "langchain-classic", specifier = ">=1.0.7" },
