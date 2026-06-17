@@ -3,20 +3,20 @@ import os
 import sys
 
 import click
-import httpx
 import uvicorn
 from dotenv import load_dotenv
+from starlette.applications import Starlette
 
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.request_handlers import DefaultRequestHandler
-from a2a.server.tasks import (
-    BasePushNotificationSender,
-    InMemoryPushNotificationConfigStore,
-    InMemoryTaskStore,
+from a2a.server.routes import (
+    create_agent_card_routes,
+    create_jsonrpc_routes,
 )
+from a2a.server.tasks import InMemoryTaskStore
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
 )
 from app.agent import CurrencyAgent
@@ -51,27 +51,32 @@ def main(host, port):
         agent_card = AgentCard(
             name="Currency Agent",
             description="Helps with exchange rates for currencies",
-            # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-            url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
             version="1.0.0",
             default_input_modes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
             default_output_modes=CurrencyAgent.SUPPORTED_CONTENT_TYPES,
             capabilities=capabilities,
             skills=[skill],
+            supported_interfaces=[
+                AgentInterface(
+                    # Allow env var AGENT_ENDPOINT to override the URL in the agent card
+                    url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                    protocol_binding="JSONRPC",
+                )
+            ],
         )
 
         # --8<-- [start:DefaultRequestHandler]
-        httpx_client = httpx.AsyncClient()
-        push_config_store = InMemoryPushNotificationConfigStore()
         request_handler = DefaultRequestHandler(
             agent_executor=CurrencyAgentExecutor(),
             task_store=InMemoryTaskStore(),
-            push_config_store=push_config_store,
-            push_sender=BasePushNotificationSender(httpx_client, push_config_store),
+            agent_card=agent_card,
         )
-        server = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
 
-        app = server.build()
+        routes = []
+        routes.extend(create_agent_card_routes(agent_card))
+        # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+        routes.extend(create_jsonrpc_routes(request_handler, "/", enable_v0_3_compat=True))
+        app = Starlette(routes=routes)
 
         uvicorn.run(app, host=host, port=port)
         # --8<-- [end:DefaultRequestHandler]
