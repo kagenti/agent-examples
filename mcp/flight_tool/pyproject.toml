@@ -9,8 +9,8 @@ dependencies = [
     "playwright>=1.60.0",
     "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
-    "fastmcp>=3.4.0",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
-    "protobuf>=6.33.5",         # Indirect; prevents CVE-2026-0994
+    "fastmcp>=3.4.2",           # Indirect; prevents CVE-2026-32871 (critical), CVE-2026-27124 (high)
+    "protobuf>=7.35.1",         # Indirect; prevents CVE-2026-0994
     "cryptography>=48.0.0,<49", # Indirect; prevents CVE-2026-26007
     "pyjwt>=2.13.0",            # Indirect; prevents CVE-2026-32597
 ]
