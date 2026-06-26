@@ -3,7 +3,7 @@ import os
 from pydantic_settings import BaseSettings
 from pydantic import model_validator
 from pydantic import Field
-from typing import Literal
+from typing import Literal, Optional
 
 
 class Settings(BaseSettings):
@@ -33,6 +33,20 @@ class Settings(BaseSettings):
     )
     MCP_URL: str = Field(
         os.getenv("MCP_URL", "http://slack-tool:8000"), description="Endpoint for an option MCP server"
+    )
+    MCP_TIMEOUT: int = Field(os.getenv("MCP_TIMEOUT", 600), description="Timeout in seconds for MCP server connection")
+
+    # auth variables for token validation
+    ISSUER: Optional[str] = Field(os.getenv("ISSUER", None), description="The issuer for incoming JWT tokens")
+    JWKS_URI: Optional[str] = Field(os.getenv("JWKS_URI", None), description="Endpoint to obtain JWKS from auth server")
+
+    # auth variables for token exchange
+    TOKEN_URL: Optional[str] = Field(
+        os.getenv("TOKEN_URL", None), description="Token endpoint to obtain new access tokens"
+    )
+
+    TARGET_SCOPES: Optional[str] = Field(
+        os.getenv("TARGET_SCOPES", None), description="Target scopes to request during token exchange"
     )
     SERVICE_PORT: int = Field(os.getenv("PORT", 8000), description="Port on which the service will run.")
 
