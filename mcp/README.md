@@ -100,6 +100,24 @@ curl -X POST http://localhost:8000/tools/recommend_products \
 - [QUICKSTART.md](shopping_agent/QUICKSTART.md) - Quick start guide
 - [ARCHITECTURE.md](shopping_agent/ARCHITECTURE.md) - Architecture details
 
+### 6. Xquik Tool (`xquik_tool/`)
+
+Search public X posts, users, and trends through Xquik.
+
+**Features**:
+- Public X post search
+- Public X user search
+- Public X trends by WOEID
+- Read-only FastMCP tools
+
+**Tools**:
+- `search_x_posts(query: str, query_type: str, limit: int, since_time: str, until_time: str)` - Search public X posts
+- `search_x_users(query: str, cursor: str)` - Search public X users
+- `get_x_trends(woeid: int, count: int)` - Fetch public X trends
+
+**Requirements**:
+- XQUIK_API_KEY environment variable
+
 ## Getting Started
 
 ### General Setup
@@ -165,6 +183,7 @@ Tools use annotations to describe their behavior:
 | Slack | Python | FastMCP | slack_sdk |
 | GitHub | Go | Custom | GitHub API |
 | Shopping Agent | Python | FastMCP | SerpAPI |
+| Xquik | Python | FastMCP | Xquik API |
 
 ## Advanced Example: Shopping Agent Architecture
 
@@ -267,4 +286,3 @@ When adding new MCP tools:
 ## License
 
 See the repository's LICENSE file for details.
-

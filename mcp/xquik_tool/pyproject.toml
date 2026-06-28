@@ -1,0 +1,14 @@
+[project]
+name = "xquik-mcp-tool"
+version = "0.1.0"
+description = "MCP tool for public X research through Xquik"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "fastmcp>=3.4.2",
+    "requests>=2.34.2",
+    "authlib>=1.7.2",
+    "urllib3>=2.7.0",
+    "cryptography>=48.0.0,<49",
+    "pyjwt>=2.13.0",
+]
