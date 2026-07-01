@@ -10,7 +10,8 @@ from claude_agent.session import SessionRegistry
 def test_agent_card_has_streaming_and_url():
     card = get_agent_card("0.0.0.0", 8000)
     assert card.capabilities.streaming is True
-    assert card.url.endswith("/")
+    # a2a-sdk 1.x moved the URL from AgentCard.url into supported_interfaces.
+    assert card.supported_interfaces[0].url.endswith("/")
     assert card.skills  # at least one skill advertised
 
 
