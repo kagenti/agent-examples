@@ -4,17 +4,17 @@ import re
 from textwrap import dedent
 
 import uvicorn
-from langchain_core.messages import HumanMessage
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.routing import Route
-
+from a2a.helpers import new_task_from_user_message, new_text_part
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill, TaskState, TextPart
-from a2a.utils import new_agent_text_message, new_task
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, TaskState
+from langchain_core.messages import HumanMessage
+from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from weather_service.configuration import Configuration
 from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
@@ -82,7 +82,12 @@ def get_agent_card(host: str, port: int):
             """,
         ),
         # Allow env var AGENT_ENDPOINT to override the URL in the agent card
-        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+        supported_interfaces=[
+            AgentInterface(
+                url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                protocol_binding="JSONRPC",
+            )
+        ],
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -106,7 +111,7 @@ class A2AEvent:
         logger.info("Emitting event %s", message)
 
         if final or failed:
-            parts = [TextPart(text=message)]
+            parts = [new_text_part(message)]
             await self.task_updater.add_artifact(parts)
             if final:
                 await self.task_updater.complete()
@@ -114,12 +119,8 @@ class A2AEvent:
                 await self.task_updater.failed()
         else:
             await self.task_updater.update_status(
-                TaskState.working,
-                new_agent_text_message(
-                    message,
-                    self.task_updater.context_id,
-                    self.task_updater.task_id,
-                ),
+                TaskState.TASK_STATE_WORKING,
+                self.task_updater.new_agent_message([new_text_part(message)]),
             )
 
 
@@ -136,7 +137,7 @@ class WeatherExecutor(AgentExecutor):
         # Setup Event Emitter
         task = context.current_task
         if not task:
-            task = new_task(context.message)  # type: ignore
+            task = new_task_from_user_message(context.message)  # type: ignore
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         event_emitter = A2AEvent(task_updater)
@@ -243,28 +244,19 @@ def run():
     request_handler = DefaultRequestHandler(
         agent_executor=WeatherExecutor(),
         task_store=InMemoryTaskStore(),
-    )
-
-    server = A2AStarletteApplication(
         agent_card=agent_card,
-        http_handler=request_handler,
     )
 
-    # Build the Starlette app
-    app = server.build()
-
-    # Add the new agent-card.json path alongside the legacy agent.json path
-    app.routes.insert(
-        0,
-        Route(
-            "/.well-known/agent-card.json",
-            server._handle_get_agent_card,
-            methods=["GET"],
-            name="agent_card_new",
-        ),
-    )
+    # a2a-sdk 1.x replaced A2AStarletteApplication with route factories that we
+    # assemble into a Starlette app ourselves.
+    routes = create_jsonrpc_routes(request_handler, rpc_url="/")
+    # Serve the current well-known path (/.well-known/agent-card.json) plus the
+    # legacy /.well-known/agent.json path for backward compatibility.
+    routes += create_agent_card_routes(agent_card)
+    routes += create_agent_card_routes(agent_card, card_url="/.well-known/agent.json")
 
     # Add tracing middleware - creates root span with MLflow/GenAI attributes
+    app = Starlette(routes=routes)
     app.add_middleware(BaseHTTPMiddleware, dispatch=create_tracing_middleware())
 
     uvicorn.run(app, host=host, port=port)
