@@ -236,7 +236,8 @@ def create_app(settings: Settings) -> Any:
 
     # a2a-sdk 1.x replaced A2AStarletteApplication with route factories that we
     # assemble into a Starlette app ourselves.
-    routes = create_jsonrpc_routes(request_handler, rpc_url="/")
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes = create_jsonrpc_routes(request_handler, rpc_url="/", enable_v0_3_compat=True)
     # Serve the current well-known path (/.well-known/agent-card.json) plus the
     # legacy /.well-known/agent.json path for backward compatibility.
     routes += create_agent_card_routes(agent_card)

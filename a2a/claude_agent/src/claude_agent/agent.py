@@ -130,7 +130,8 @@ def run() -> None:
     # assemble into a Starlette app ourselves. Serve the current well-known path
     # (/.well-known/agent-card.json) plus the legacy /.well-known/agent.json for
     # back-compat.
-    routes = create_jsonrpc_routes(request_handler, rpc_url="/")
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes = create_jsonrpc_routes(request_handler, rpc_url="/", enable_v0_3_compat=True)
     routes += create_agent_card_routes(agent_card)
     routes += create_agent_card_routes(agent_card, card_url="/.well-known/agent.json")
     app = Starlette(routes=routes)
