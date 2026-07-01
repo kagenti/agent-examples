@@ -4,14 +4,15 @@ import os
 from textwrap import dedent
 
 import uvicorn
+from starlette.applications import Starlette
 
+from a2a.helpers import new_task_from_user_message
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
-from a2a.types import AgentCapabilities, AgentCard, AgentSkill
-from a2a.utils import new_task
+from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill
 from claude_agent.configuration import Configuration
 from claude_agent.events import StreamTranslator
 from claude_agent.runner import run_turn
@@ -46,7 +47,12 @@ def get_agent_card(host: str, port: int) -> AgentCard:
             - **prompt** (string) – the instruction or question for Claude.
             """
         ),
-        url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+        supported_interfaces=[
+            AgentInterface(
+                url=os.getenv("AGENT_ENDPOINT", f"http://{host}:{port}").rstrip("/") + "/",
+                protocol_binding="JSONRPC",
+            )
+        ],
         version="1.0.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -71,7 +77,7 @@ class ClaudeAgentExecutor(AgentExecutor):
     async def execute(self, context: RequestContext, event_queue: EventQueue) -> None:
         task = context.current_task
         if not task:
-            task = new_task(context.message)  # type: ignore
+            task = new_task_from_user_message(context.message)  # type: ignore
             await event_queue.enqueue_event(task)
         task_updater = TaskUpdater(event_queue, task.id, task.context_id)
         translator = StreamTranslator(task_updater)
@@ -118,11 +124,16 @@ def run() -> None:
     request_handler = DefaultRequestHandler(
         agent_executor=ClaudeAgentExecutor(config, registry, semaphore),
         task_store=InMemoryTaskStore(),
+        agent_card=agent_card,
     )
-    server = A2AStarletteApplication(agent_card=agent_card, http_handler=request_handler)
-    # build() serves the agent card at /.well-known/agent-card.json natively
-    # (a2a-sdk's default AGENT_CARD_WELL_KNOWN_PATH), plus the legacy
-    # /.well-known/agent.json for back-compat — no custom route needed.
-    app = server.build()
+    # a2a-sdk 1.x replaced A2AStarletteApplication with route factories that we
+    # assemble into a Starlette app ourselves. Serve the current well-known path
+    # (/.well-known/agent-card.json) plus the legacy /.well-known/agent.json for
+    # back-compat.
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes = create_jsonrpc_routes(request_handler, rpc_url="/", enable_v0_3_compat=True)
+    routes += create_agent_card_routes(agent_card)
+    routes += create_agent_card_routes(agent_card, card_url="/.well-known/agent.json")
+    app = Starlette(routes=routes)
 
     uvicorn.run(app, host=config.host, port=config.port)

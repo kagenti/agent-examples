@@ -4,19 +4,20 @@ import logging
 import traceback
 from typing import Any
 from a2a.server.agent_execution import AgentExecutor, RequestContext
-from a2a.server.apps import A2AStarletteApplication
 from a2a.server.events.event_queue import EventQueue
 from a2a.server.request_handlers import DefaultRequestHandler
+from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import (
     AgentCapabilities,
     AgentCard,
+    AgentInterface,
     AgentSkill,
-    Part,
     TaskState,
-    TextPart,
 )
-from a2a.utils import new_agent_text_message, new_task
+from a2a.helpers import new_task_from_user_message, new_text_part
+
+from starlette.applications import Starlette
 
 from autogen.mcp.mcp_client import create_toolkit, Toolkit
 from mcp import ClientSession
@@ -69,7 +70,7 @@ def get_agent_card(settings: Settings) -> AgentCard:
     return AgentCard(
         name="Simple Generalist Agent",
         description="A generalist AG2 agent exposed via A2A, powered by MCP tools",
-        url=agent_url,
+        supported_interfaces=[AgentInterface(url=agent_url, protocol_binding="JSONRPC")],
         version="0.1.0",
         default_input_modes=["text"],
         default_output_modes=["text"],
@@ -125,7 +126,7 @@ class SimpleGeneralistExecutor(AgentExecutor):
         # Get or create task
         task = context.current_task
         if not task:
-            task = new_task(context.message)  # type: ignore
+            task = new_task_from_user_message(context.message)  # type: ignore
             await event_queue.enqueue_event(task)
 
         # Create task updater for progress events
@@ -138,24 +139,20 @@ class SimpleGeneralistExecutor(AgentExecutor):
 
             if final:
                 # Final message with artifact
-                parts = [Part(root=TextPart(text=message))]
+                parts = [new_text_part(message)]
                 await task_updater.add_artifact(parts)
                 await task_updater.complete()
             else:
                 # Progress update
                 await task_updater.update_status(
-                    TaskState.working,
-                    new_agent_text_message(
-                        message,
-                        task_updater.context_id,
-                        task_updater.task_id,
-                    ),
+                    TaskState.TASK_STATE_WORKING,
+                    task_updater.new_agent_message([new_text_part(message)]),
                 )
 
         async def error_callback(message: str):
             """Send error event and mark task as failed."""
             logger.info(f"Error event: {message}")
-            parts = [Part(root=TextPart(text=message))]
+            parts = [new_text_part(message)]
             await task_updater.add_artifact(parts)
             await task_updater.failed()
 
@@ -234,16 +231,19 @@ def create_app(settings: Settings) -> Any:
     request_handler = DefaultRequestHandler(
         agent_executor=SimpleGeneralistExecutor(settings),
         task_store=InMemoryTaskStore(),
-    )
-
-    # Create A2A server
-    server = A2AStarletteApplication(
         agent_card=agent_card,
-        http_handler=request_handler,
     )
 
-    # Build and return the app
-    app = server.build()
+    # a2a-sdk 1.x replaced A2AStarletteApplication with route factories that we
+    # assemble into a Starlette app ourselves.
+    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    routes = create_jsonrpc_routes(request_handler, rpc_url="/", enable_v0_3_compat=True)
+    # Serve the current well-known path (/.well-known/agent-card.json) plus the
+    # legacy /.well-known/agent.json path for backward compatibility.
+    routes += create_agent_card_routes(agent_card)
+    routes += create_agent_card_routes(agent_card, card_url="/.well-known/agent.json")
+
+    app = Starlette(routes=routes)
     logger.info("A2A server application created")
 
     return app
