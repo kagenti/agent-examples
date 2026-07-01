@@ -4,6 +4,10 @@ import re
 from textwrap import dedent
 
 import uvicorn
+from langchain_core.messages import HumanMessage
+from starlette.applications import Starlette
+from starlette.middleware.base import BaseHTTPMiddleware
+
 from a2a.helpers import new_task_from_user_message, new_text_part
 from a2a.server.agent_execution import AgentExecutor, RequestContext
 from a2a.server.events.event_queue import EventQueue
@@ -11,10 +15,6 @@ from a2a.server.request_handlers import DefaultRequestHandler
 from a2a.server.routes import create_agent_card_routes, create_jsonrpc_routes
 from a2a.server.tasks import InMemoryTaskStore, TaskUpdater
 from a2a.types import AgentCapabilities, AgentCard, AgentInterface, AgentSkill, TaskState
-from langchain_core.messages import HumanMessage
-from starlette.applications import Starlette
-from starlette.middleware.base import BaseHTTPMiddleware
-
 from weather_service.configuration import Configuration
 from weather_service.graph import get_graph, get_mcpclient
 from weather_service.observability import (
