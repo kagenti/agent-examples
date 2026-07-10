@@ -5,7 +5,7 @@ description = "MCP tool for searching flights via fast-flights API"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "fast_flights>=0.1.0",
+    "fast_flights>=3.0.2",
     "playwright>=1.61.0",
     "authlib>=1.7.2",   # Indirect; prevents CVE-2026-27962
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
