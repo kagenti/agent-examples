@@ -30,6 +30,21 @@ class Settings(BaseSettings):
         os.getenv("MCP_URL", "https://api.githubcopilot.com/mcp/"), description="Endpoint for an option MCP server"
     )
     MCP_TIMEOUT: int = Field(os.getenv("MCP_TIMEOUT", 600), description="Timeout in seconds for MCP server connection")
+    MCP_POLL_INTERVAL: float = Field(
+        os.getenv("MCP_POLL_INTERVAL", 1.0),
+        description="How often (seconds) to poll the MCP connection state so failures surface fast",
+        gt=0,
+    )
+    MAX_ISSUES: int = Field(
+        os.getenv("MAX_ISSUES", 30),
+        description="Max number of items kept from an MCP issue result set before it reaches the LLM",
+        gt=0,
+    )
+    MAX_TOOL_CHARS: int = Field(
+        os.getenv("MAX_TOOL_CHARS", 24000),
+        description="Hard character budget for any single tool observation fed to the LLM",
+        gt=0,
+    )
 
     # auth variables for token validation
     ISSUER: Optional[str] = Field(os.getenv("ISSUER", None), description="The issuer for incoming JWT tokens")

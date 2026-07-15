@@ -2,13 +2,14 @@
 Module for A2A Agent.
 """
 
+import asyncio
 import logging
 import os
 import sys
+import threading
 import traceback
 
 import uvicorn
-from crewai_tools import MCPServerAdapter
 from crewai_tools.adapters.tool_collection import ToolCollection
 
 
@@ -32,7 +33,8 @@ from starlette.applications import Starlette
 
 from git_issue_agent.config import settings, Settings
 from git_issue_agent.event import Event
-from git_issue_agent.main import GitIssueAgent
+from git_issue_agent.main import GitIssueAgent, TaskCancelled
+from git_issue_agent.mcp_connect import mcp_tools_session
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=settings.LOG_LEVEL, stream=sys.stdout, format="%(levelname)s: %(message)s")
@@ -115,11 +117,26 @@ class GithubExecutor(AgentExecutor):
     A class to handle research execution for A2A Agent.
     """
 
-    async def _run_agent(self, messages: dict, settings: Settings, event_emitter: Event, toolkit: ToolCollection):
+    def __init__(self):
+        # Per-request cooperative-cancel flags, keyed by task id. CrewAI runs its
+        # crew synchronously in a worker thread (kickoff_async -> asyncio.to_thread),
+        # so cancelling the awaiting coroutine cannot stop the work; instead the
+        # crew checks this Event between steps and stops itself.
+        self._cancel_events: dict[str, threading.Event] = {}
+
+    async def _run_agent(
+        self,
+        messages: dict,
+        settings: Settings,
+        event_emitter: Event,
+        toolkit: ToolCollection,
+        cancel_event: threading.Event,
+    ):
         git_issue_agent = GitIssueAgent(
             config=settings,
             eventer=event_emitter,
             mcp_toolkit=toolkit,
+            cancel_event=cancel_event,
         )
         result = await git_issue_agent.execute(messages)
         await event_emitter.emit_event(result, True)
@@ -163,6 +180,11 @@ class GithubExecutor(AgentExecutor):
                 }
             )
 
+        # Register a cooperative-cancel flag for this task so cancel()/disconnect
+        # can stop the (thread-bound) crew run.
+        cancel_event = threading.Event()
+        self._cancel_events[task.id] = cancel_event
+
         # Hook up MCP tools
         try:
             if settings.MCP_URL:
@@ -173,7 +195,13 @@ class GithubExecutor(AgentExecutor):
                     "transport": "streamable-http",
                     "headers": headers,
                 }
-                with MCPServerAdapter(server_params, connect_timeout=settings.MCP_TIMEOUT) as mcp_tools:
+                # mcp_tools_session fails fast if the connection errors out, while
+                # still allowing up to MCP_TIMEOUT for a slow (e.g. OAuth) connect.
+                async with mcp_tools_session(
+                    server_params,
+                    connect_timeout=settings.MCP_TIMEOUT,
+                    poll_interval=settings.MCP_POLL_INTERVAL,
+                ) as mcp_tools:
                     # Keep only search and list issue-related tools.
                     issue_tools = [
                         tool
@@ -187,21 +215,47 @@ class GithubExecutor(AgentExecutor):
                             "No issue-related tools found from the GitHub MCP server. "
                             "Ensure your PAT scopes allow issue access and the server is reachable."
                         )
-                    await self._run_agent(messages, settings, event_emitter, issue_tools)
+                    # Tool output is bounded inside GitIssueAgent (wrap_tool_output).
+                    await self._run_agent(messages, settings, event_emitter, issue_tools, cancel_event)
             else:
-                await self._run_agent(messages, settings, event_emitter, None)
+                await self._run_agent(messages, settings, event_emitter, None, cancel_event)
 
+        except (asyncio.CancelledError, TaskCancelled):
+            # A2A raises CancelledError in this task on cancel/disconnect; the crew
+            # may also surface TaskCancelled after observing the flag. Signal the
+            # worker thread to stop and report the task as cancelled.
+            cancel_event.set()
+            logging.info("Task %s cancelled; stopping crew run", task.id)
+            try:
+                await task_updater.cancel()
+            except Exception:  # noqa: BLE001 - best-effort status on an already-torn-down queue
+                pass
+            raise
         except Exception as e:
             traceback.print_exc()
             await event_emitter.emit_event(
                 f"I'm sorry I was unable to fulfill your request. I encountered the following exception: {str(e)}", True
             )
+        finally:
+            self._cancel_events.pop(task.id, None)
 
     async def cancel(self, context: RequestContext, event_queue: EventQueue) -> None:
         """
-        Not implemented
+        Signal the running crew for this task to stop, and report cancellation.
+
+        The crew runs in a worker thread, so we flip its cooperative-cancel flag;
+        it stops at the next step boundary rather than mid-LLM-call.
         """
-        raise Exception("cancel not supported")
+        task = context.current_task
+        task_id = task.id if task else None
+        cancel_event = self._cancel_events.get(task_id) if task_id else None
+        if cancel_event is not None:
+            cancel_event.set()
+            logging.info("Cancellation requested for task %s", task_id)
+
+        if task_id:
+            task_updater = TaskUpdater(event_queue, task_id, task.context_id)
+            await task_updater.cancel()
 
 
 def run():

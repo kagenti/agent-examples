@@ -5,8 +5,11 @@ from git_issue_agent.prompts import TOOL_CALL_PROMPT, INFO_PARSER_PROMPT
 
 
 class GitAgents:
-    def __init__(self, config: Settings, issue_tools):
+    def __init__(self, config: Settings, issue_tools, step_callback=None):
         self.llm = CrewLLM(config)
+        # step_callback is invoked by CrewAI after each agent step; we use it to
+        # cooperatively stop a run on cancellation.
+        self.step_callback = step_callback
 
         ###################
         # Pre-requisite validator
@@ -33,6 +36,7 @@ class GitAgents:
             tasks=[self.prereq_identifier_task],
             process=Process.sequential,
             verbose=True,
+            step_callback=step_callback,
         )
 
         ###################
@@ -49,6 +53,10 @@ class GitAgents:
             verbose=True,
             llm=self.llm.llm,
             inject_date=True,
+            # max_iter is the backstop for the context-overflow fallback: even if a
+            # tool result slips past the size caps (tool_limits.py) and triggers
+            # CrewAI's summarize-and-retry loop, the run terminates after this many
+            # iterations with a partial answer rather than looping unbounded.
             max_iter=6,
             max_retry_limit=3,
             respect_context_window=True,
@@ -75,4 +83,5 @@ class GitAgents:
             tasks=[self.issue_query_task],
             process=Process.sequential,
             verbose=True,
+            step_callback=step_callback,
         )
