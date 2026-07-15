@@ -17,7 +17,8 @@ dependencies = [
     "langchain-openai>=1.2.2",
     "openinference-instrumentation-langchain>=0.1.66",
     "pydantic-settings>=2.14.1",
-    "langchain-mcp-adapters>=0.2.2",
+    "langchain-mcp-adapters>=0.3.0",
+    "mcp>=1.27.2",               # Pin floor: adapters>=0.3.0 imports streamable_http_client (renamed in newer mcp); also prevents CVE-2025-66416
     "python-keycloak>=7.1.1",
     "opentelemetry-exporter-otlp>=1.42.1",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
