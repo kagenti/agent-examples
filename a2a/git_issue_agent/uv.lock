@@ -784,7 +784,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "a2a-sdk", specifier = ">=1.1.0,<2" },
-    { name = "crewai", extras = ["litellm"], specifier = ">=1.6.1" },
+    { name = "crewai", extras = ["litellm"], specifier = ">=1.15.2" },
     { name = "crewai-tools", extras = ["mcp"], specifier = ">=1.15.2" },
     { name = "cryptography", specifier = ">=49.0.0,<50" },
     { name = "litellm", specifier = ">=1.91.1" },
