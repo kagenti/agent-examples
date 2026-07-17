@@ -20,7 +20,7 @@ dependencies = [
     "langchain-mcp-adapters>=0.3.0",
     "mcp>=1.27.2",               # Pin floor: adapters>=0.3.0 imports streamable_http_client (renamed in newer mcp); also prevents CVE-2025-66416
     "python-keycloak>=7.1.1",
-    "opentelemetry-exporter-otlp>=1.43.0",
+    "opentelemetry-exporter-otlp>=1.44.0",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.32",  # Indirect; prevents CVE-2026-24486
     "langsmith>=0.10.5",          # Indirect; prevents CVE-2026-45134
