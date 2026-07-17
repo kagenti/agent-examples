@@ -11,7 +11,7 @@ dependencies = [
     # but litellm requires openai==2.24.0
     "crewai[litellm]>=1.15.2",
     "litellm>=1.91.1",          # Indirect, prevents CVE-2026-42271
-    "crewai-tools[mcp]>=1.15.2",
+    "crewai-tools[mcp]>=1.15.3",
     "urllib3>=2.7.0",   # Indirect; prevents CVE-2025-66418
     "python-multipart>=0.0.32", # Indirect; prevents CVE-2026-24486
     "cryptography>=49.0.0,<50", # Indirect; prevents CVE-2026-26007
