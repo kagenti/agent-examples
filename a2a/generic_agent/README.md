@@ -54,9 +54,9 @@ Once deployed, the agent can handle requests like:
 
 The agent automatically selects the appropriate tool from connected MCP servers and returns formatted results.
 
-## Running in Kagenti
+## Running in Rossoctl
 
-When deploying in the Kagenti UI:
+When deploying in the Rossoctl UI:
 
 1. Import your intended tools using the `Import New Tools` section.
 2. In the `Import New Agent` section, follow the given prompts and configure these environmental variables:

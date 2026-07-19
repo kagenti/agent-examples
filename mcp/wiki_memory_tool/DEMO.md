@@ -151,4 +151,4 @@ GitHub Pages initialized (6 files):
   assets/css/style.css
 ```
 
-After ~60 seconds, browse: https://kaslom.github.io/kagenti-wiki-research/
+After ~60 seconds, browse: https://kaslom.github.io/rossoctl-wiki-research/

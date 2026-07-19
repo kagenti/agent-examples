@@ -96,7 +96,7 @@ Without a cached token, the CLI uses simulated Query Agent SPIFFE headers with O
 |------|---------|-------------|
 | `--base-url` | `http://localhost:8321` | Service URL |
 | `--user` | `alice@example.com` | User identity for OBO |
-| `--trust-domain` | `kagenti.example.com` | SPIFFE trust domain |
+| `--trust-domain` | `rossoctl.example.com` | SPIFFE trust domain |
 
 ## Example Flow
 

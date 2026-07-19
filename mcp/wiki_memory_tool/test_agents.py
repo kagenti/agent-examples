@@ -26,11 +26,11 @@ import httpx
 BASE = os.environ.get("WIKI_SERVICE_URL", "http://localhost:8321")
 
 DISCOVERY_AGENT_HEADERS = {
-    "X-Spiffe-Id": "spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent",
+    "X-Spiffe-Id": "spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent",
 }
 
 QUERY_AGENT_HEADERS = {
-    "X-Spiffe-Id": "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent",
+    "X-Spiffe-Id": "spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent",
     "X-Original-Subject": "alice@example.com",
 }
 

@@ -84,7 +84,7 @@ sequenceDiagram
    uv run app/test_client.py
    ```
 
-## Running the agent on Kubernetes with [Kagenti](https://kagenti.github.io/.github/)
+## Running the agent on Kubernetes with [Rossoctl](https://rossoctl.github.io/.github/)
 
 Deploy the sample manifest:
 

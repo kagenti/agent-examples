@@ -140,7 +140,7 @@ If a command is NOT covered, add the pattern to `.claude/settings.json` in the `
 When validating multiple skills:
 
 ```
-TaskCreate: "kagenti | skills | <category> | Verify | Validate <skill-name>"
+TaskCreate: "rossoctl | skills | <category> | Verify | Validate <skill-name>"
 ```
 
 ## Related Skills

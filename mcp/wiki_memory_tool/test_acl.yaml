@@ -1,11 +1,11 @@
 topics:
   ai:
     writers:
-      - "spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent"
+      - "spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent"
       - "github:team:kaslomorg/ml-writers"
       - "github:team:kaslomorg/platform-admins"
     readers:
-      - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+      - "spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent"
       - "github:org:kaslomorg"
       - "*"
     admins:
@@ -14,11 +14,11 @@ topics:
 
   security:
     writers:
-      - "spiffe://kagenti.example.com/ns/topic-security/sa/discovery-agent"
+      - "spiffe://rossoctl.example.com/ns/topic-security/sa/discovery-agent"
       - "github:team:kaslomorg/security-team"
       - "github:team:kaslomorg/platform-admins"
     readers:
-      - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+      - "spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent"
       - "github:team:kaslomorg/security-team"
       - "github:org:kaslomorg"
     admins:
@@ -27,11 +27,11 @@ topics:
 
   ml:
     writers:
-      - "spiffe://kagenti.example.com/ns/topic-ml/sa/discovery-agent"
+      - "spiffe://rossoctl.example.com/ns/topic-ml/sa/discovery-agent"
       - "github:team:kaslomorg/ml-team"
       - "github:team:kaslomorg/ml-writers"
     readers:
-      - "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent"
+      - "spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent"
       - "github:team:kaslomorg/ml-team"
       - "github:org:kaslomorg"
     admins:

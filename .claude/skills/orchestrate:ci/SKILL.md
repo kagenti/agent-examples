@@ -39,8 +39,8 @@ management, and supply chain hardening.
 
 ## Prerequisites
 
-- Plan exists at `/tmp/kagenti/orchestrate/<target>/plan.md`
-- Scan report at `/tmp/kagenti/orchestrate/<target>/scan-report.md`
+- Plan exists at `/tmp/rossoctl/orchestrate/<target>/plan.md`
+- Scan report at `/tmp/rossoctl/orchestrate/<target>/scan-report.md`
 - Target repo in `.repos/<target>/`
 
 ## Read Scan Report First
@@ -391,7 +391,7 @@ gh pr create --repo org/repo --title "Add comprehensive CI workflows" --body "Ph
 
 ## Update Phase Status
 
-Set ci to `complete` in `/tmp/kagenti/orchestrate/<target>/phase-status.md`.
+Set ci to `complete` in `/tmp/rossoctl/orchestrate/<target>/phase-status.md`.
 
 ## Related Skills
 

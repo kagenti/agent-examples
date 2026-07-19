@@ -11,11 +11,11 @@ cd mcp/weather_tool
 uv run --no-sync weather_tool.py
 ```
 
-## Deploy the MCP server to Kagenti
+## Deploy the MCP server to Rossoctl
 
-### Deploy using the Kagenti UI
+### Deploy using the Rossoctl UI
 
-- Browse to http://kagenti-ui.localtest.me:8080/tools
+- Browse to http://rossoctl-ui.localtest.me:8080/tools
 - Import Tool
 - Deploy from Source
   - Select weather tool
@@ -26,9 +26,9 @@ Alternately, you can deploy a pre-built image using Kubernetes
 
 - `kubectl apply -f mcp/weather_tool/deployment/k8s.yaml`
 
-## Test the MCP server using Kagenti
+## Test the MCP server using Rossoctl
 
-- Visit http://kagenti-ui.localtest.me:8080/tools/team1/weather-tool
+- Visit http://rossoctl-ui.localtest.me:8080/tools/team1/weather-tool
 - Click "Connect & list tools"
 - Expand "get_weather"
 - Click "invoke tool"

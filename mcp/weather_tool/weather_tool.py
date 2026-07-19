@@ -63,7 +63,7 @@ _session = _build_resilient_session()
 def setup_tracing() -> None:
     """Initialize OpenTelemetry tracing with W3C trace context propagation."""
     otlp_endpoint = os.getenv(
-        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.kagenti-system.svc.cluster.local:8335"
+        "OTEL_EXPORTER_OTLP_ENDPOINT", "http://otel-collector.rossoctl-system.svc.cluster.local:8335"
     )
     service_name = os.getenv("OTEL_SERVICE_NAME", "weather-mcp-tool")
 

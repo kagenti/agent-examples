@@ -3,7 +3,7 @@ name = "reservation-service"
 version = "0.1.0"
 description = "Restaurant reservation agent using LangGraph and MCP tools"
 authors = [
-    { name = "Kagenti Contributors" }
+    { name = "Rossoctl Contributors" }
 ]
 readme = "README.md"
 license = { text = "Apache-2.0" }

@@ -11,9 +11,9 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: a2a-currency-converter
-    # kagenti.io/type=agent is required for the Agent to be discovered by Kagenti and show up in the UI
-    kagenti.io/type: agent
-    protocol.kagenti.io/a2a: ""
+    # rossoctl.io/type=agent is required for the Agent to be discovered by Rossoctl and show up in the UI
+    rossoctl.io/type: agent
+    protocol.rossoctl.io/a2a: ""
   name: a2a-currency-converter
   namespace: team1
 spec:
@@ -24,7 +24,7 @@ spec:
     targetPort: 8000
   selector:
     app.kubernetes.io/name: a2a-currency-converter
-    kagenti.io/type: agent
+    rossoctl.io/type: agent
   type: ClusterIP
 ---
 # Deploy a test build of the Agent
@@ -34,10 +34,10 @@ metadata:
   labels:
     app.kubernetes.io/component: agent
     app.kubernetes.io/name: a2a-currency-converter
-    kagenti.io/framework: LangGraph
-    kagenti.io/type: agent
-    kagenti.io/workload-type: deployment
-    protocol.kagenti.io/a2a: ""
+    rossoctl.io/framework: LangGraph
+    rossoctl.io/type: agent
+    rossoctl.io/workload-type: deployment
+    protocol.rossoctl.io/a2a: ""
   name: a2a-currency-converter
   namespace: team1
 spec:
@@ -47,14 +47,14 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: a2a-currency-converter
-      kagenti.io/type: agent
+      rossoctl.io/type: agent
   template:
     metadata:
       labels:
         app.kubernetes.io/name: a2a-currency-converter
-        kagenti.io/framework: LangGraph
-        kagenti.io/type: agent
-        protocol.kagenti.io/a2a: ""
+        rossoctl.io/framework: LangGraph
+        rossoctl.io/type: agent
+        protocol.rossoctl.io/a2a: ""
     spec:
       containers:
       - env:
@@ -68,7 +68,7 @@ spec:
         - name: AGENT_ENDPOINT
           value: http://a2a-currency-converter.team1.svc.cluster.local:8080/
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://otel-collector.kagenti-system.svc.cluster.local:8335
+          value: http://otel-collector.rossoctl-system.svc.cluster.local:8335
         - name: KEYCLOAK_URL
           value: http://keycloak.keycloak.svc.cluster.local:8080
         - name: UV_CACHE_DIR
@@ -102,9 +102,9 @@ spec:
         - name: GITHUB_SECRET_NAME
           value: github-token-secret
         # Pin to a specific version
-        image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:v0.1.0-alpha.1
+        image: ghcr.io/rossoctl/examples/a2a_currency_converter:v0.1.0-alpha.1
         # Or use the latest version
-        # image: ghcr.io/kagenti/agent-examples/a2a_currency_converter:latest
+        # image: ghcr.io/rossoctl/examples/a2a_currency_converter:latest
         imagePullPolicy: Always
         name: agent
         ports:

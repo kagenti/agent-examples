@@ -4,7 +4,7 @@
 
 This document outlines the implementation plan for the Restaurant Reservation MCP server, a new example for the agent-examples repository that demonstrates how to build a multi-tool MCP server with provider abstraction for future extensibility.
 
-## Alignment with Kagenti/agent-examples Conventions
+## Alignment with Rossoctl/agent-examples Conventions
 
 This implementation follows the established patterns in the agent-examples repository:
 
@@ -22,7 +22,7 @@ This implementation follows the established patterns in the agent-examples repos
   - `tests/` - Unit and integration tests
 
 ### MCP Tool Annotations
-All tools include Kagenti-specific MCP annotations:
+All tools include Rossoctl-specific MCP annotations:
 - `readOnlyHint`: True for search/query operations, False for mutations
 - `destructiveHint`: True only for cancel_reservation, False otherwise
 - `idempotentHint`: True for safe retry operations
@@ -188,7 +188,7 @@ The mock provider supports realistic workflows:
 - Environment variables table
 - Local run instructions (`uv run reservation_tool.py`)
 - Example curl commands for MCP initialization and tool calls
-- Sample Generic Agent prompts for testing with Kagenti
+- Sample Generic Agent prompts for testing with Rossoctl
 
 ### PLAN.md (this file)
 - Architecture decisions
@@ -232,7 +232,7 @@ These would be follow-up issues/PRs:
 4. **Observability**
    - Structured logging with trace IDs
    - Metrics for tool invocations
-   - Integration with Kagenti observability stack
+   - Integration with Rossoctl observability stack
 
 5. **Testing**
    - Contract tests for future providers

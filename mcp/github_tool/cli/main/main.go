@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"time"
 
-	lib "github.com/kagenti/mcp-mitm/gtlib"
+	lib "github.com/rossoctl/mcp-mitm/gtlib"
 )
 
 func main() {

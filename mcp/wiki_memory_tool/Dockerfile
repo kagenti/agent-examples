@@ -18,7 +18,7 @@ ENV UV_CACHE_DIR=/tmp/uv-cache
 ENV UV_LINK_MODE=copy
 ENV WIKI_ROOT=/data/wiki
 ENV ACL_FILE=/config/acl.yaml
-ENV SPIFFE_TRUST_DOMAIN=kagenti.example.com
+ENV SPIFFE_TRUST_DOMAIN=rossoctl.example.com
 
 EXPOSE 8000
 

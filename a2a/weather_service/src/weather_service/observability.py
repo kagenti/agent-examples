@@ -132,7 +132,7 @@ def setup_observability() -> None:
     namespace = os.getenv("K8S_NAMESPACE_NAME", "team1")
     otlp_endpoint = os.getenv(
         "OTEL_EXPORTER_OTLP_ENDPOINT",
-        "http://otel-collector.kagenti-system.svc.cluster.local:8335",
+        "http://otel-collector.rossoctl-system.svc.cluster.local:8335",
     )
 
     logger.info("=" * 60)

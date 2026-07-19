@@ -309,10 +309,10 @@ git -C .repos/<target> remote -v
 
 ## Output Format
 
-Save scan report to `/tmp/kagenti/orchestrate/<target>/scan-report.md`:
+Save scan report to `/tmp/rossoctl/orchestrate/<target>/scan-report.md`:
 
 ```bash
-mkdir -p /tmp/kagenti/orchestrate/<target>
+mkdir -p /tmp/rossoctl/orchestrate/<target>
 ```
 
 Report template:

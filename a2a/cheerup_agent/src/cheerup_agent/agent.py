@@ -142,7 +142,7 @@ def run():
     routes = [Route("/health", health, methods=["GET"])]
     # create_agent_card_routes serves /.well-known/agent-card.json natively
     routes.extend(create_agent_card_routes(agent_card))
-    # enable_v0_3_compat is needed because Kagenti uses A2A 0.3 client libraries
+    # enable_v0_3_compat is needed because Rossoctl uses A2A 0.3 client libraries
     routes.extend(create_jsonrpc_routes(request_handler, "/", enable_v0_3_compat=True))
     app = Starlette(routes=routes)
 

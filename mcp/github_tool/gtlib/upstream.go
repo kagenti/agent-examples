@@ -314,7 +314,7 @@ func (m *mcpAuthImpl) createMCPClient(ctx context.Context, authorization string,
 			ListChanged: true,
 		},
 	}
-	clientName := "kagenti-mitm-mcp"
+	clientName := "rossoctl-mitm-mcp"
 
 	initResp, err := httpClient.Initialize(ctx, mcp.InitializeRequest{
 		Params: mcp.InitializeParams{
@@ -380,9 +380,9 @@ func (m *mcpAuthImpl) getAuthorizationHeaderFromBearer(auth string) string {
 	/*
 		x := map[string]interface {}{
 			"acr":"1",
-			"allowed-origins":[]interface {}{"http://kagenti-ui.localtest.me:8080"},
+			"allowed-origins":[]interface {}{"http://rossoctl-ui.localtest.me:8080"},
 			"aud":[]interface {}{"demo-realm", "master-realm", "account"},
-			"azp":"kagenti",
+			"azp":"rossoctl",
 			"email_verified":false,
 			"exp":1.760644947e+09,
 			"iat":1.760644887e+09,

@@ -31,7 +31,7 @@ class AgentIdSpanProcessor(SpanProcessor):
 
     AG2's instrumentation sets gen_ai.agent.name but not gen_ai.agent.id.
     This processor maps agent names to stable IDs so downstream consumers
-    (e.g. kagenti-compatible backends) see the field they expect.
+    (e.g. rossoctl-compatible backends) see the field they expect.
     """
 
     def __init__(self, agent_ids: dict[str, str]) -> None:

@@ -1,8 +1,8 @@
 """
-Wiki Memory Service — Kagenti Research Wiki
+Wiki Memory Service — Rossoctl Research Wiki
 
 Simplest possible implementation for the Wiki Service component from
-the kagenti-research-wiki-2-simplified architecture.
+the rossoctl-research-wiki-2-simplified architecture.
 
 Supports:
 - Per-topic namespaces with ACL (reader/writer/admin)
@@ -41,7 +41,7 @@ from pydantic import BaseModel
 
 WIKI_ROOT = Path(os.environ.get("WIKI_ROOT", "/data/wiki"))
 ACL_FILE = Path(os.environ.get("ACL_FILE", "/config/acl.yaml"))
-TRUST_DOMAIN = os.environ.get("SPIFFE_TRUST_DOMAIN", "kagenti.example.com")
+TRUST_DOMAIN = os.environ.get("SPIFFE_TRUST_DOMAIN", "rossoctl.example.com")
 WIKI_REMOTE_URL = os.environ.get("WIKI_REMOTE_URL", "")
 WIKI_PUSH_STRATEGY = os.environ.get("WIKI_PUSH_STRATEGY", "immediate")
 
@@ -77,7 +77,7 @@ class Identity(BaseModel):
     kind: str  # "workload" | "user" | "obo"
     actor: str | None = None  # agent SPIFFE ID when kind=obo
     topics: list[str] = []  # topic scopes from token/SVID
-    groups: list[str] = []  # github teams (e.g. ["kagenti/ml-team"])
+    groups: list[str] = []  # github teams (e.g. ["rossoctl/ml-team"])
 
 
 class TopicACL(BaseModel):
@@ -344,12 +344,12 @@ def _ensure_repo():
         except RuntimeError:
             pass
     _git(["config", "user.name", "wiki-memory-service"])
-    _git(["config", "user.email", "wiki@kagenti.local"])
+    _git(["config", "user.email", "wiki@rossoctl.local"])
 
 
 def _commit(rel_path: str, msg: str, author: str):
     _git(["add", rel_path])
-    _git(["commit", "-m", msg, "--author", f"{author} <{author}@kagenti.local>", "--allow-empty"])
+    _git(["commit", "-m", msg, "--author", f"{author} <{author}@rossoctl.local>", "--allow-empty"])
     if WIKI_REMOTE_URL and WIKI_PUSH_STRATEGY == "immediate":
         try:
             _git(["pull", "--rebase", "origin", "main"], timeout=30)
@@ -653,9 +653,9 @@ Summary recommendation with rationale.
 
 _PAGES_SCAFFOLD = {
     "_config.yml": """\
-title: Kagenti Wiki Research
+title: Rossoctl Wiki Research
 description: Multi-agent research knowledge base
-baseurl: /kagenti-wiki-research
+baseurl: /rossoctl-wiki-research
 url: https://kaslom.github.io
 markdown: kramdown
 exclude:
@@ -683,7 +683,7 @@ layout: default
 title: Home
 ---
 
-# Kagenti Wiki Research
+# Rossoctl Wiki Research
 
 A multi-agent research knowledge base.
 
@@ -715,7 +715,7 @@ A multi-agent research knowledge base.
       {{ content }}
     </main>
     <footer class="site-footer">
-      <p>Powered by <a href="https://github.com/kagenti">Kagenti</a></p>
+      <p>Powered by <a href="https://github.com/rossoctl">Rossoctl</a></p>
     </footer>
   </div>
 </body>
@@ -1246,7 +1246,7 @@ def approve_draft(topic_id: str, path: str, request: Request):
     rel_live = str(live_file.relative_to(WIKI_ROOT))
     rel_draft = str(draft_file.relative_to(WIKI_ROOT))
     _git(["add", rel_live, rel_draft])
-    _git(["commit", "-m", f"approve: {topic_id}/{path}", "--author", f"{identity.subject} <admin@kagenti.local>"])
+    _git(["commit", "-m", f"approve: {topic_id}/{path}", "--author", f"{identity.subject} <admin@rossoctl.local>"])
     if WIKI_REMOTE_URL and WIKI_PUSH_STRATEGY == "immediate":
         try:
             _git(["pull", "--rebase", "origin", "main"], timeout=30)
@@ -1274,7 +1274,7 @@ def reject_draft(topic_id: str, path: str, body: DraftReject, request: Request):
     _git(["add", rel])
     reason = f" ({body.reason})" if body.reason else ""
     _git(
-        ["commit", "-m", f"reject: {topic_id}/{path}{reason}", "--author", f"{identity.subject} <admin@kagenti.local>"]
+        ["commit", "-m", f"reject: {topic_id}/{path}{reason}", "--author", f"{identity.subject} <admin@rossoctl.local>"]
     )
     return {"status": "rejected", "path": f"{topic_id}/{path}", "reason": body.reason}
 
@@ -1363,7 +1363,7 @@ def delete_page(topic_id: str, path: str, request: Request):
         full.unlink()
         rel = str(full.relative_to(WIKI_ROOT))
         _git(["add", rel])
-        _git(["commit", "-m", f"delete: {topic_id}/{path}", "--author", f"{identity.subject} <admin@kagenti.local>"])
+        _git(["commit", "-m", f"delete: {topic_id}/{path}", "--author", f"{identity.subject} <admin@rossoctl.local>"])
     return {"status": "deleted"}
 
 
@@ -1418,7 +1418,7 @@ def init_pages_scaffold(request: Request):
                 "-m",
                 "Initialize GitHub Pages layout and fix page front-matter",
                 "--author",
-                f"{identity.subject} <wiki@kagenti.local>",
+                f"{identity.subject} <wiki@rossoctl.local>",
                 "--allow-empty",
             ]
         )

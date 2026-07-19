@@ -1,6 +1,6 @@
 # Wiki Memory Tool
 
-Multi-agent wiki memory service for the Kagenti Research Wiki use case.
+Multi-agent wiki memory service for the Rossoctl Research Wiki use case.
 Provides persistent, git-backed knowledge storage with per-topic access control, GitHub OAuth login, and SPIFFE workload identity.
 
 ## Status
@@ -15,10 +15,10 @@ git-backed storage, and identity-aware access control.
 - Deployable to any Kubernetes cluster (Kind, OpenShift, etc.)
 
 **What this is not (yet):**
-- Not wired into the Kagenti operator (no AgentService CR)
+- Not wired into the Rossoctl operator (no AgentService CR)
 - No real SPIRE SVID verification (header-based, not mTLS)
 - No Keycloak federation
-- These are tracked as follow-up in [kagenti#1461](https://github.com/kagenti/kagenti/issues/1461)
+- These are tracked as follow-up in [rossoctl#1461](https://github.com/rossoctl/rossoctl/issues/1461)
 
 ## Quick Start (Local)
 
@@ -150,7 +150,7 @@ Without this, `GET /user/teams` returns an empty list even though the user belon
 Add this to your `~/.zshrc` (or `~/.bashrc`) so you can use `kwiki` from anywhere:
 
 ```bash
-alias kwiki='uv run --directory ~/sandbox/kagenti-mvp/agent-examples/mcp/wiki_memory_tool python wiki_cli.py --base-url https://wiki-memory-service-team1.apps.ykt1.hcp.res.ibm.com'
+alias kwiki='uv run --directory ~/sandbox/rossoctl-mvp/agent-examples/mcp/wiki_memory_tool python wiki_cli.py --base-url https://wiki-memory-service-team1.apps.ykt1.hcp.res.ibm.com'
 ```
 
 Then reload: `source ~/.zshrc`
@@ -683,7 +683,7 @@ curl -H "Authorization: Bearer <wiki-jwt>" https://wiki-service/topics
 
 **Option B: SPIFFE Headers** (for agents)
 ```bash
-curl -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent" \
+curl -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent" \
      https://wiki-service/topics/ai/pages/doc.md
 ```
 
@@ -1041,7 +1041,7 @@ wiki_memory_tool/
 |----------|---------|-------------|
 | `WIKI_ROOT` | `/data/wiki` | Local git repo path for wiki pages |
 | `ACL_FILE` | `/config/acl.yaml` | Path to per-topic ACL YAML |
-| `SPIFFE_TRUST_DOMAIN` | `kagenti.example.com` | SPIFFE trust domain |
+| `SPIFFE_TRUST_DOMAIN` | `rossoctl.example.com` | SPIFFE trust domain |
 | `WIKI_REMOTE_URL` | *(empty)* | Git remote URL (enables clone + push) |
 | `WIKI_PUSH_STRATEGY` | `immediate` | Push strategy: `immediate` |
 | `GITHUB_CLIENT_ID` | *(empty)* | GitHub OAuth App client ID |
@@ -1076,7 +1076,7 @@ Use this workflow to diagnose authorization issues on the cluster:
 
 ```bash
 # 1. Set KUBECONFIG if needed
-export KUBECONFIG=~/.kube/config-kagenti-eventing
+export KUBECONFIG=~/.kube/config-rossoctl-eventing
 
 # 2. Check the pod is running the expected image
 oc get pods -n <namespace> -o jsonpath='{.items[0].status.containerStatuses[0].imageID}'

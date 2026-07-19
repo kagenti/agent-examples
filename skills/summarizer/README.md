@@ -210,4 +210,4 @@ No external dependencies required!
 
 ## License
 
-Part of the Kagenti agent-examples project.
+Part of the Rossoctl agent-examples project.

@@ -1,4 +1,4 @@
-module github.com/kagenti/mcp-mitm
+module github.com/rossoctl/mcp-mitm
 
 go 1.24.9
 

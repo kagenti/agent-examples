@@ -1,5 +1,5 @@
 """
-Test all wiki skills as user bob-kagenti using FastAPI TestClient.
+Test all wiki skills as user bob-rossoctl using FastAPI TestClient.
 
 Verifies query and discovery operations work correctly with OAuth user identity.
 
@@ -25,13 +25,13 @@ from wiki_service import WIKI_ROOT, _ensure_repo, _sign_jwt, app  # noqa: E402
 
 client = TestClient(app)
 
-USER_LOGIN = "bob-kagenti"
+USER_LOGIN = "bob-rossoctl"
 USER_TOKEN = _sign_jwt(
     {
         "sub": f"github:{USER_LOGIN}",
         "github_login": USER_LOGIN,
-        "email": "bob@kagenti.io",
-        "groups": ["kagenti/ml-team"],
+        "email": "bob@rossoctl.io",
+        "groups": ["rossoctl/ml-team"],
         "iss": "wiki-memory-service",
         "iat": int(time.time()),
         "exp": int(time.time()) + 8 * 3600,
@@ -41,7 +41,7 @@ USER_TOKEN = _sign_jwt(
 AUTH_HEADERS = {"Authorization": f"Bearer {USER_TOKEN}"}
 
 DISCOVERY_HEADERS = {
-    "X-Spiffe-Id": "spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent",
+    "X-Spiffe-Id": "spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent",
 }
 
 
@@ -353,7 +353,7 @@ def main():
     if failed:
         print(f"  Failed: {failed}")
         sys.exit(1)
-    print("  All wiki skills verified for user bob-kagenti!")
+    print("  All wiki skills verified for user bob-rossoctl!")
 
     # Cleanup
     shutil.rmtree(WIKI_ROOT, ignore_errors=True)
