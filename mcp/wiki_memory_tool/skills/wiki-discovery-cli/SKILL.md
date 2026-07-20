@@ -67,7 +67,7 @@ Without a cached token, the CLI uses simulated SPIFFE headers.
 |------|---------|-------------|
 | `--base-url` | `http://localhost:8321` | Service URL |
 | `--topic` | `ai` | Default topic (used for SPIFFE ID) |
-| `--trust-domain` | `kagenti.example.com` | SPIFFE trust domain |
+| `--trust-domain` | `rossoctl.example.com` | SPIFFE trust domain |
 
 ## Example Flow
 

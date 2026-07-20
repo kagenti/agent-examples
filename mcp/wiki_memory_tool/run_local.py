@@ -16,7 +16,7 @@ DATA_DIR = SCRIPT_DIR / "data" / "wiki"
 
 os.environ["WIKI_ROOT"] = str(DATA_DIR)
 os.environ["ACL_FILE"] = str(SCRIPT_DIR / "test_acl.yaml")
-os.environ["SPIFFE_TRUST_DOMAIN"] = "kagenti.example.com"
+os.environ["SPIFFE_TRUST_DOMAIN"] = "rossoctl.example.com"
 os.environ.setdefault("JWT_SECRET_KEY", "local-dev-secret-do-not-use-in-production")
 os.environ["MCP_TRANSPORT"] = "streamable-http"
 os.environ["MCP_PORT"] = "8322"

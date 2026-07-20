@@ -2,7 +2,7 @@
 
 ## Introduction
 
-The Github Issue Agent is designed to perform tasks dealing with Github issues, leveraging large language models (LLMs) to generate plans, execute steps, and summarize findings. This agent integrates with [the upstream Github MCP Server](https://github.com/github/github-mcp-server) as a tool via MCP and utilizes AI models for data extraction, summarization, and more. This agent also integrates with [this MCP Man-in-the-Middle](https://github.com/kagenti/agent-examples/tree/main/mcp/github_tool) that will verify OAuth tokens and can be configured with Github PATs to communicate with the upstream Github MPC Server. 
+The Github Issue Agent is designed to perform tasks dealing with Github issues, leveraging large language models (LLMs) to generate plans, execute steps, and summarize findings. This agent integrates with [the upstream Github MCP Server](https://github.com/github/github-mcp-server) as a tool via MCP and utilizes AI models for data extraction, summarization, and more. This agent also integrates with [this MCP Man-in-the-Middle](https://github.com/rossoctl/examples/tree/main/mcp/github_tool) that will verify OAuth tokens and can be configured with Github PATs to communicate with the upstream Github MPC Server. 
 
 ## Architecture
 

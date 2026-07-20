@@ -147,7 +147,7 @@ def run_validation():
 
         # Test topic listing
         headers = {
-            "X-Spiffe-Id": "spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent",
+            "X-Spiffe-Id": "spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent",
             "X-Original-Subject": "alice@example.com",
         }
         resp = client.get(f"{base}/topics", headers=headers)
@@ -166,7 +166,7 @@ def run_validation():
 
         # Test write (discovery agent)
         write_headers = {
-            "X-Spiffe-Id": "spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent",
+            "X-Spiffe-Id": "spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent",
         }
         test_page = "_deploy-validation-test.md"
         resp = client.post(

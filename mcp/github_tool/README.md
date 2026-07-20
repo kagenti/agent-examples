@@ -71,14 +71,14 @@ curl -v ${MCP} -X POST -H "mcp-session-id: ${SESSION_ID}" -H "Content-Type: appl
 ' | jq
 ```
 
-Now we want to invoke a tool, to prove it works.  This facade expects an OIDC token.  We'll need one.  To get one from Keycloak in a Kagenti environment:
+Now we want to invoke a tool, to prove it works.  This facade expects an OIDC token.  We'll need one.  To get one from Keycloak in a Rossoctl environment:
 
 ```bash
 KEYCLOAK_USER=admin
 KEYCLOAK_PASSWORD=... # use yours
-KAGENTI_SECRET=$(oc -n kagenti-system get secret kagenti-ui-oauth-secret -o jsonpath="{.data.CLIENT_SECRET}" | base64 -d)
+ROSSOCTL_SECRET=$(oc -n rossoctl-system get secret rossoctl-ui-oauth-secret -o jsonpath="{.data.CLIENT_SECRET}" | base64 -d)
 MITM_TOKEN=$(curl -sX POST -H "Content-Type: application/x-www-form-urlencoded" \
-  -d "client_secret=$KAGENTI_SECRET" -d "client_id=kagenti" \
+  -d "client_secret=$ROSSOCTL_SECRET" -d "client_id=rossoctl" \
   -d "grant_type=password" \
   -d "username=${KEYCLOAK_USER}" -d "password=${KEYCLOAK_PASSWORD}" \
     "http://keycloak.localtest.me:8080/realms/master/protocol/openid-connect/token" | jq --raw-output ".access_token")
@@ -106,8 +106,8 @@ curl -v ${MCP} -H "Authorization: ${MITM_AUTH}" -H "mcp-session-id: ${SESSION_ID
   "params": {
     "name": "list_branches",
     "arguments": {
-      "owner": "kagenti",
-      "repo": "kagenti"
+      "owner": "rossoctl",
+      "repo": "rossoctl"
     }
   }
 }
@@ -116,9 +116,9 @@ curl -v ${MCP} -H "Authorization: ${MITM_AUTH}" -H "mcp-session-id: ${SESSION_ID
 
 If this works, you should see the list of tools, as JSON.
 
-# Deploying in Kagenti
+# Deploying in Rossoctl
 
-First, you'll need to give Kagenti credentials.  For the GitHub OAuth API key demo, you'll need to supply API keys
+First, you'll need to give Rossoctl credentials.  For the GitHub OAuth API key demo, you'll need to supply API keys
 
 oc -n team1 get configmap environments -o yaml > /tmp/environments.yaml
 (edit /tmp/environments.yaml) creating the following, and replacing `${GITHUB_TOKEN}` with your GitHub personal access token (PAT):
@@ -132,17 +132,17 @@ data:
   UPSTREAM_HEADER_TO_USE_IF_NOT_IN_AUDIENCE: Bearer rutabaga
 ```
 
-After adding the new env vars, apply to Kagenti using `kubectl apply -n team1 -f /tmp/environments.yaml`.
+After adding the new env vars, apply to Rossoctl using `kubectl apply -n team1 -f /tmp/environments.yaml`.
 
 Now that the environment variables are available, start an instance of the tool
 
-- Browse to http://kagenti-ui.localtest.me:8080/Import_New_Tool
+- Browse to http://rossoctl-ui.localtest.me:8080/Import_New_Tool
 - Select namespace 
 - Set the Target Port to 9090
 - Specify Subfolder `mcp/github_tool`
 - Click "Build & Deploy New Tool" to deploy.
 
-Once the tool is deployed, if you wish to test it from outside Kagenti you'll need to create an HTTPRoute for it.
+Once the tool is deployed, if you wish to test it from outside Rossoctl you'll need to create an HTTPRoute for it.
 
 ```bash
 cat <<EOF | > /tmp/expose-github-tool.yaml

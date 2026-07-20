@@ -45,20 +45,20 @@ uv run server
 uv run pytest -v
 ```
 
-## Deploy on Kagenti
+## Deploy on Rossoctl
 
 The image is published to GHCR by the repo's `Build-Publish` workflow (on `v*`
-tags), so you just point Kagenti at it — no local build needed:
+tags), so you just point Rossoctl at it — no local build needed:
 
 ```
-ghcr.io/kagenti/agent-examples/claude_agent:latest
+ghcr.io/rossoctl/examples/claude_agent:latest
 ```
 
 UI → **Agents → Import New Agent** → **Deploy from Existing Image**:
 
 | Field | Value |
 |---|---|
-| Container Image | `ghcr.io/kagenti/agent-examples/claude_agent` |
+| Container Image | `ghcr.io/rossoctl/examples/claude_agent` |
 | Image Tag | `latest` (or a released `vX.Y.Z`) |
 | Namespace | `team1` |
 | Agent Name | `claude-agent` |
@@ -90,4 +90,4 @@ Durable continuity across restarts would require a persistent volume or an
 external session store — out of scope for this example.
 
 Pre-built manifests are also available at
-`kagenti/examples/agents/claude_agent_*.yaml` in the `kagenti/kagenti` repo.
+`rossoctl/examples/agents/claude_agent_*.yaml` in the `rossoctl/rossoctl` repo.

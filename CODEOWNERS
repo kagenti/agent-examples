@@ -1,16 +1,16 @@
 # Default owners for everything
-* @kagenti/maintainers
+* @rossoctl/maintainers
 
 # CI and platform tooling
-.github/ @kagenti/platform
-Makefile @kagenti/platform
+.github/ @rossoctl/platform
+Makefile @rossoctl/platform
 
 # A2A agents
-a2a/ @kagenti/agents
+a2a/ @rossoctl/agents
 
 # MCP tools
-mcp/ @kagenti/agents
+mcp/ @rossoctl/agents
 
 # Documentation
-docs/ @kagenti/maintainers
-*.md @kagenti/maintainers
+docs/ @rossoctl/maintainers
+*.md @rossoctl/maintainers

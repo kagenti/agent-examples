@@ -34,8 +34,8 @@ The Slack Researcher Agent is designed to perform research tasks across Slack ch
 > If all of `TOKEN_URL`, `CLIENT_ID`, and `CLIENT_SECRET` are set in addition, token exchange will be performed using Bearer tokens from incoming requests, to send to the MCP endpoint.
 > In addition to `TOKEN_URL`, `CLIENT_ID`, `CLIENT_SECRET`, which trigger token exchange, `TARGET_SCOPES` can be optionally configured to be the `scope` in the token exchange request.
 
-## Running in Kagenti
-When deploying in the Kagenti UI - You will need to attach 3 environments to the agent deployment:
+## Running in Rossoctl
+When deploying in the Rossoctl UI - You will need to attach 3 environments to the agent deployment:
 
 ![alt text](docs/environments.png)
 

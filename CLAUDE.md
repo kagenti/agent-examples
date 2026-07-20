@@ -4,7 +4,7 @@ This file provides guidance for AI assistants working with this repository.
 
 ## Overview
 
-Community examples of AI agents (A2A protocol) and MCP tools for the Kagenti platform.
+Community examples of AI agents (A2A protocol) and MCP tools for the Rossoctl platform.
 Each agent/tool is a self-contained Python project with its own `pyproject.toml` and `Dockerfile`.
 
 ## Repository Structure

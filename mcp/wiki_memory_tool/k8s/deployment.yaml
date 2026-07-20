@@ -29,7 +29,7 @@ spec:
         - name: ACL_FILE
           value: /config/acl.yaml
         - name: SPIFFE_TRUST_DOMAIN
-          value: kagenti.example.com
+          value: rossoctl.example.com
         - name: WIKI_REMOTE_URL
           valueFrom:
             secretKeyRef:

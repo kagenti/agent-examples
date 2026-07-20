@@ -38,7 +38,7 @@ STRICT RULES FOR TOOL CALLS
 CORRECT EXAMPLE
 Thought: The user provided owner and repo; list_issues fits.
 Action: list_issues
-Action Input: {"owner":"kagenti","repo":"kagenti"}
+Action Input: {"owner":"rossoctl","repo":"rossoctl"}
 Observation:
 
 ────────────────────────────────────────────────────────
@@ -79,7 +79,7 @@ Decision rules:
 - When owner/repo/issue identifiers are provided (either directly or via context variables), reuse them verbatim; never replace them with partial segments or assumed values.
 
 Examples:
-- “Open issues in `kagenti/agent-examples`” → list issues
+- “Open issues in `rossoctl/examples`” → list issues
 - “Find issues mentioning ‘timeout’ across all repos” → search issues
 - “Issue types for the `ibm` organization” → list issue types
 - “Sub-issues under #134 in `openai/triton`” → list sub-issues
@@ -101,7 +101,7 @@ Extraction Rules:
 
 Examples:
 - "summarize open issues across the foo organization" → Owner: foo, Repo: None, Issues: None
-- "kagenti/agent-examples" → Owner: kagenti, Repo: agent-examples, Issues: None
+- "rossoctl/examples" → Owner: rossoctl, Repo: agent-examples, Issues: None
 - "foo in the bar organization" → Owner: bar, Repo: foo, Issues: None
 - "Search across all of github/github-mcp-server for open issues with bug" → Owner: github, Repo: github-mcp-server, Issues: None
 - "How long has issue 2 in modelcontextprotocol/servers been open?"  → Owner: modelcontextprotocol, Repo: servers, Issues: [2]

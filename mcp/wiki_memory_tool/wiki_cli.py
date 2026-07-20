@@ -35,7 +35,7 @@ from pathlib import Path
 import httpx
 
 DEFAULT_BASE_URL = "http://localhost:8321"
-DEFAULT_TRUST_DOMAIN = "kagenti.example.com"
+DEFAULT_TRUST_DOMAIN = "rossoctl.example.com"
 TOKEN_DIR = Path.home() / ".wiki-memory"
 TOKEN_FILE = TOKEN_DIR / "token.json"
 

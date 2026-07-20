@@ -79,15 +79,15 @@ List all my reservations using email jane@example.com
 Cancel reservation res_12345 because plans changed
 ```
 
-## Deployment in Kagenti
+## Deployment in Rossoctl
 
-### Via Kagenti UI
+### Via Rossoctl UI
 
-1. Navigate to **Import New Agent** in the Kagenti UI
+1. Navigate to **Import New Agent** in the Rossoctl UI
 2. Fill in the deployment details:
    - **Namespace**: `team1` (or your namespace)
    - **Environment Variable Sets**: Select `ollama` and `mcp-reservations`
-   - **Agent Source Repository URL**: `https://github.com/kagenti/agent-examples`
+   - **Agent Source Repository URL**: `https://github.com/rossoctl/examples`
    - **Git Branch or Tag**: `main`
    - **Protocol**: `a2a`
    - **Source Subfolder**: `a2a/reservation_service`

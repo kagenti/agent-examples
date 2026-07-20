@@ -17,7 +17,7 @@ Authorization: Bearer <wiki-jwt-token>
 ### Option B: SPIFFE Headers (agent OBO user)
 
 ```
-X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent
+X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent
 X-Original-Subject: alice@example.com
 ```
 
@@ -27,7 +27,7 @@ X-Original-Subject: alice@example.com
 
 ```bash
 curl -s http://localhost:8321/topics \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -35,7 +35,7 @@ curl -s http://localhost:8321/topics \
 
 ```bash
 curl -s -X POST http://localhost:8321/topics/{topic_id}/query \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com" \
   -H "Content-Type: application/json" \
   -d '{"query": "search terms", "limit": 10}'
@@ -45,7 +45,7 @@ curl -s -X POST http://localhost:8321/topics/{topic_id}/query \
 
 ```bash
 curl -s -X POST http://localhost:8321/search \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com" \
   -H "Content-Type: application/json" \
   -d '{"query": "search terms", "limit": 10}'
@@ -55,7 +55,7 @@ curl -s -X POST http://localhost:8321/search \
 
 ```bash
 curl -s http://localhost:8321/topics/{topic_id}/pages/{path} \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -64,12 +64,12 @@ curl -s http://localhost:8321/topics/{topic_id}/pages/{path} \
 ```bash
 # Global
 curl -s http://localhost:8321/activity \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 
 # Topic-specific
 curl -s "http://localhost:8321/topics/{topic_id}/activity?limit=10" \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -77,7 +77,7 @@ curl -s "http://localhost:8321/topics/{topic_id}/activity?limit=10" \
 
 ```bash
 curl -s http://localhost:8321/topics/{topic_id}/backlinks/{path} \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -86,12 +86,12 @@ curl -s http://localhost:8321/topics/{topic_id}/backlinks/{path} \
 ```bash
 # List tags
 curl -s http://localhost:8321/topics/{topic_id}/tags \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 
 # Pages by tag
 curl -s http://localhost:8321/topics/{topic_id}/tags/{tag} \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -99,7 +99,7 @@ curl -s http://localhost:8321/topics/{topic_id}/tags/{tag} \
 
 ```bash
 curl -s http://localhost:8321/topics/{topic_id}/graph \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/wiki-system/sa/query-agent" \
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/wiki-system/sa/query-agent" \
   -H "X-Original-Subject: alice@example.com"
 ```
 
@@ -114,7 +114,7 @@ curl -s http://localhost:8321/templates/paper-summary
 
 ```bash
 curl -s http://localhost:8321/topics/{topic_id}/drafts \
-  -H "X-Spiffe-Id: spiffe://kagenti.example.com/ns/topic-ai/sa/discovery-agent"
+  -H "X-Spiffe-Id: spiffe://rossoctl.example.com/ns/topic-ai/sa/discovery-agent"
 ```
 
 ## Notes

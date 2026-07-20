@@ -11,9 +11,9 @@ kind: Service
 metadata:
   labels:
     app.kubernetes.io/name: weather-tool
-    # kagenti.io/type=tool is required for the MCP Server that provides tool to be discovered by Kagenti and show up in the UI
-    kagenti.io/type: tool
-    protocol.kagenti.io/mcp: ""
+    # rossoctl.io/type=tool is required for the MCP Server that provides tool to be discovered by Rossoctl and show up in the UI
+    rossoctl.io/type: tool
+    protocol.rossoctl.io/mcp: ""
   name: weather-tool-mcp
   namespace: team1
 spec:
@@ -24,7 +24,7 @@ spec:
     targetPort: 8000
   selector:
     app.kubernetes.io/name: weather-tool
-    kagenti.io/type: tool
+    rossoctl.io/type: tool
   type: ClusterIP
 ---
 # Deploy a test build of the Tool
@@ -33,12 +33,12 @@ kind: Deployment
 metadata:
   labels:
     app.kubernetes.io/name: weather-tool
-    kagenti.io/framework: Python
-    # Set inject to true for [AuthBridge](https://github.com/kagenti/kagenti-extensions/tree/main/AuthBridge)
-    kagenti.io/inject: disabled
-    kagenti.io/type: tool
-    kagenti.io/workload-type: deployment
-    protocol.kagenti.io/mcp: ""
+    rossoctl.io/framework: Python
+    # Set inject to true for [AuthBridge](https://github.com/rossoctl/rossocortex/tree/main/AuthBridge)
+    rossoctl.io/inject: disabled
+    rossoctl.io/type: tool
+    rossoctl.io/workload-type: deployment
+    protocol.rossoctl.io/mcp: ""
   name: weather-tool
   namespace: team1
 spec:
@@ -48,17 +48,17 @@ spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: weather-tool
-      kagenti.io/type: tool
+      rossoctl.io/type: tool
   template:
     metadata:
       labels:
         app.kubernetes.io/name: weather-tool
-        kagenti.io/framework: Python
-        # Set inject to true for [AuthBridge](https://github.com/kagenti/kagenti-extensions/tree/main/AuthBridge)
-        kagenti.io/inject: disabled
-        kagenti.io/transport: streamable_http
-        kagenti.io/type: tool
-        protocol.kagenti.io/mcp: ""
+        rossoctl.io/framework: Python
+        # Set inject to true for [AuthBridge](https://github.com/rossoctl/rossocortex/tree/main/AuthBridge)
+        rossoctl.io/inject: disabled
+        rossoctl.io/transport: streamable_http
+        rossoctl.io/type: tool
+        protocol.rossoctl.io/mcp: ""
     spec:
       containers:
       - env:
@@ -69,22 +69,22 @@ spec:
         - name: HOST
           value: 0.0.0.0
         - name: OTEL_EXPORTER_OTLP_ENDPOINT
-          value: http://otel-collector.kagenti-system.svc.cluster.local:8335
+          value: http://otel-collector.rossoctl-system.svc.cluster.local:8335
         - name: KEYCLOAK_URL
           value: http://keycloak.keycloak.svc.cluster.local:8080
         - name: UV_CACHE_DIR
           value: /app/.cache/uv
         # Pin to a specific version
-        image: ghcr.io/kagenti/agent-examples/weather_tool:v0.1.0-alpha.1
+        image: ghcr.io/rossoctl/examples/weather_tool:v0.1.0-alpha.1
         # Or use the latest version
-        # image: ghcr.io/kagenti/agent-examples/weather_tool:latest
+        # image: ghcr.io/rossoctl/examples/weather_tool:latest
         imagePullPolicy: Always
         name: mcp
         ports:
         - containerPort: 8000
           name: http
           protocol: TCP
-        # Note that a readinessProbe is recommended.  Kagenti doesn't generate one for UI
+        # Note that a readinessProbe is recommended.  Rossoctl doesn't generate one for UI
         # deployments, and we follow that pattern in this example, but you may want to add one for your own tools.
         resources:
           limits:

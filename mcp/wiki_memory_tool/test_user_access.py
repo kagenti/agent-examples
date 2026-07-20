@@ -1,5 +1,5 @@
 """
-Test wiki access as logged-in user (bob-kagenti) against the live server.
+Test wiki access as logged-in user (bob-rossoctl) against the live server.
 
 Tests both query and discovery operations using the user's OAuth token.
 

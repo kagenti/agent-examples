@@ -175,7 +175,7 @@ curl -X POST "$MCP_URL" \
 
 ## Testing with a Generic Agent
 
-If you're using this MCP server with a Kagenti-deployed agent, you can test with prompts like:
+If you're using this MCP server with a Rossoctl-deployed agent, you can test with prompts like:
 
 ```
 Find me Italian restaurants in Boston with a price tier of 3
@@ -292,11 +292,11 @@ Availability is generated deterministically based on:
 
 This ensures consistent results for testing while simulating realistic availability patterns.
 
-## Deployment in Kagenti
+## Deployment in Rossoctl
 
-### 1. Deploy via Kagenti UI
+### 1. Deploy via Rossoctl UI
 
-1. Navigate to **Import New Tool** in the Kagenti UI
+1. Navigate to **Import New Tool** in the Rossoctl UI
 2. Select your namespace (e.g., `team1`)
 3. Set **Target Port** to `8000`
 4. Set **Source Subfolder** to `mcp/reservation_tool`

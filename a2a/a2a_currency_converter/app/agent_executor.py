@@ -108,8 +108,8 @@ Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
         except AuthenticationError as e:
             msg = f"""CurrencyAgentExecutor reports an authentication error.
 
-When importing this agent into Kagenti, expand Environment Variables and Add Variable,
-or import https://github.com/kagenti/agent-examples/blob/main/a2a/a2a_currency_converter/.env.openai
+When importing this agent into Rossoctl, expand Environment Variables and Add Variable,
+or import https://github.com/rossoctl/examples/blob/main/a2a/a2a_currency_converter/.env.openai
 
 Use `kubectl -n <namespace> logs deployment/<agent-name>` for details.
 

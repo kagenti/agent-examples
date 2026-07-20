@@ -58,7 +58,7 @@ Local:
    uv run server
    ```
 
-Kagenti:
+Rossoctl:
 
 1. Import `.env.template` in the UI as environment variables.
 2. Customize the values as needed for your deployment.

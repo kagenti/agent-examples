@@ -16,7 +16,7 @@ test-docker: test-a2a test-mcp test-exgentic-agent test-exgentic-tool
 TEST_A2A_SKIP := a2a/exgentic_agent
 
 # Verify all of the A2A example Docker images can be built
-# (Optional KAGENTI_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)
+# (Optional ROSSOCTL_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)
 test-a2a:
 	@for f in $(shell find a2a -mindepth 1 -maxdepth 1 -type d); do \
 		case " $(TEST_A2A_SKIP) " in \
@@ -24,7 +24,7 @@ test-a2a:
 		esac; \
 		pushd $${f} || exit; \
 		echo "Building Docker image for $${f}..."; \
-		docker build ${KAGENTI_DOCKER_FLAGS} --tag $${f##*/} . || exit; \
+		docker build ${ROSSOCTL_DOCKER_FLAGS} --tag $${f##*/} . || exit; \
 		popd; \
 	done
 
@@ -32,7 +32,7 @@ test-a2a:
 TEST_MCP_SKIP := mcp/exgentic_benchmarks mcp/wiki_memory_tool
 
 # Verify all of the MCP example Docker images can be built
-# (Optional KAGENTI_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)
+# (Optional ROSSOCTL_DOCKER_FLAGS for docker build, e.g. --no-cache or --load)
 test-mcp:
 	@for f in $(shell find mcp -mindepth 1 -maxdepth 1 -type d); do \
 		case " $(TEST_MCP_SKIP) " in \
@@ -40,7 +40,7 @@ test-mcp:
 		esac; \
 		pushd $${f} || exit; \
 		echo "Building Docker image for $${f}..."; \
-		docker build ${KAGENTI_DOCKER_FLAGS} --tag $${f##*/} . || exit; \
+		docker build ${ROSSOCTL_DOCKER_FLAGS} --tag $${f##*/} . || exit; \
 		popd; \
 	done
 
