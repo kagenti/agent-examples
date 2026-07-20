@@ -34,7 +34,7 @@ metadata:
   labels:
     app.kubernetes.io/name: weather-tool
     rossoctl.io/framework: Python
-    # Set inject to true for [AuthBridge](https://github.com/rossoctl/rossocortex/tree/main/AuthBridge)
+    # Set inject to true for [AuthBridge](https://github.com/rossoctl/cortex/tree/main/AuthBridge)
     rossoctl.io/inject: disabled
     rossoctl.io/type: tool
     rossoctl.io/workload-type: deployment
@@ -54,7 +54,7 @@ spec:
       labels:
         app.kubernetes.io/name: weather-tool
         rossoctl.io/framework: Python
-        # Set inject to true for [AuthBridge](https://github.com/rossoctl/rossocortex/tree/main/AuthBridge)
+        # Set inject to true for [AuthBridge](https://github.com/rossoctl/cortex/tree/main/AuthBridge)
         rossoctl.io/inject: disabled
         rossoctl.io/transport: streamable_http
         rossoctl.io/type: tool
